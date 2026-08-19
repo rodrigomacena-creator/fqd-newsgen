@@ -1,5 +1,5 @@
 import { getOpenRouterClient, OPENROUTER_TEXT_MODEL, extractCompletionText } from "./openrouter";
-import { DEFAULT_ARTICLE_PROMPT } from "./prompts";
+import { DEFAULT_ARTICLE_PROMPT, MULTI_SOURCE_INSTRUCTION } from "./prompts";
 
 export interface ArticleSectionDraft {
   heading: string;
@@ -59,7 +59,12 @@ export async function generateArticleDraft(
 ): Promise<ArticleDraft> {
   const client = getOpenRouterClient();
 
-  const systemPrompt = [instructionPrompt, styleguideContext, JSON_FORMAT_INSTRUCTIONS]
+  const systemPrompt = [
+    instructionPrompt,
+    MULTI_SOURCE_INSTRUCTION,
+    styleguideContext,
+    JSON_FORMAT_INSTRUCTIONS,
+  ]
     .filter(Boolean)
     .join("\n\n");
 
