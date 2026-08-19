@@ -22,15 +22,18 @@ as cores das imagens geradas.
 
 ## Stack
 
-Next.js 16 (App Router) + TypeScript + Tailwind CSS v4, Prisma 7 + SQLite, OpenRouter para
-texto e imagem, `@mozilla/readability` para scraping de páginas, `pdf-parse`/`sharp` para
-extração de styleguide.
+Next.js 16 (App Router) + TypeScript + Tailwind CSS v4, Prisma 7 + Postgres (Prisma Postgres),
+Vercel Blob para as imagens geradas e os styleguides enviados, OpenRouter para texto e imagem,
+`@mozilla/readability` para scraping de páginas, `pdf-parse`/`sharp` para extração de styleguide.
 
 ## Rodando localmente
 
+Precisa de um banco Postgres (ex.: [Prisma Postgres](https://console.prisma.io)) e de um Vercel
+Blob store (`vercel blob create-store <nome> --access public`) — veja `.env.example`.
+
 ```bash
 npm install
-cp .env.example .env   # preencha OPENROUTER_API_KEY (https://openrouter.ai/keys)
+cp .env.example .env   # preencha DATABASE_URL, BLOB_READ_WRITE_TOKEN e OPENROUTER_API_KEY
 npx prisma migrate deploy
 npx prisma generate
 npm run dev

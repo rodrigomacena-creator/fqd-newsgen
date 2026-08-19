@@ -1,4 +1,3 @@
-import { readFile } from "fs/promises";
 import sharp from "sharp";
 import "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
@@ -87,11 +86,11 @@ async function dominantColorsFromImageBuffer(
 }
 
 export async function extractStyleguideInfo(
-  absoluteFilePath: string,
+  buffer: Buffer,
   ext: "pdf" | "png" | "jpg" | "svg"
 ): Promise<StyleguideExtraction> {
   if (ext === "svg") {
-    const svgText = await readFile(absoluteFilePath, "utf8");
+    const svgText = buffer.toString("utf8");
     const colors = extractHexFromText(svgText).slice(0, MAX_COLORS);
     const titleMatch = svgText.match(/<title>([^<]+)<\/title>/i);
     const descMatch = svgText.match(/<desc>([^<]+)<\/desc>/i);
@@ -103,13 +102,11 @@ export async function extractStyleguideInfo(
   }
 
   if (ext === "png" || ext === "jpg") {
-    const buffer = await readFile(absoluteFilePath);
     const colors = await dominantColorsFromImageBuffer(buffer);
     return { colors, summary: null };
   }
 
   // pdf
-  const buffer = await readFile(absoluteFilePath);
   const parser = new PDFParse({ data: buffer });
   try {
     const textResult = await parser.getText({ first: 5 });

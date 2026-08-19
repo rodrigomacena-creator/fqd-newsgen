@@ -1,8 +1,8 @@
-import { mkdir, rm, writeFile } from "fs/promises";
-import path from "path";
+import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { extractStyleguideInfo } from "@/lib/styleguide";
+import { deleteBlobIfOwned } from "@/lib/blobStorage";
 
 const MAX_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
 
@@ -12,15 +12,6 @@ const ALLOWED_TYPES: Record<string, "pdf" | "png" | "jpg" | "svg"> = {
   "image/jpeg": "jpg",
   "image/svg+xml": "svg",
 };
-
-async function deleteExistingFile(styleguidePath: string | null) {
-  if (!styleguidePath) return;
-  try {
-    await rm(path.join(process.cwd(), "public", styleguidePath), { force: true });
-  } catch {
-    // arquivo já não existe — ignora
-  }
-}
 
 export async function POST(
   request: Request,
@@ -57,21 +48,21 @@ export async function POST(
     return NextResponse.json({ error: "Arquivo muito grande (máximo 15MB)." }, { status: 400 });
   }
 
-  await deleteExistingFile(profile.styleguidePath);
+  await deleteBlobIfOwned(profile.styleguidePath);
 
-  const dir = path.join(process.cwd(), "public", "styleguides", id);
-  await mkdir(dir, { recursive: true });
-
-  const fileName = `styleguide.${ext}`;
-  const filePath = path.join(dir, fileName);
   const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(filePath, buffer);
+
+  const blob = await put(`styleguides/${id}/styleguide.${ext}`, buffer, {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+  });
 
   let colors: string[] = [];
   let summary: string | null = null;
   let extractionWarning: string | undefined;
   try {
-    const extracted = await extractStyleguideInfo(filePath, ext);
+    const extracted = await extractStyleguideInfo(buffer, ext);
     colors = extracted.colors;
     summary = extracted.summary;
     if (colors.length === 0 && !summary) {
@@ -87,7 +78,7 @@ export async function POST(
     where: { id },
     data: {
       styleguideFileName: file.name,
-      styleguidePath: `/styleguides/${id}/${fileName}`,
+      styleguidePath: blob.url,
       styleguideColors: colors.length > 0 ? JSON.stringify(colors) : null,
       styleguideSummary: summary,
     },
@@ -107,7 +98,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Perfil não encontrado." }, { status: 404 });
   }
 
-  await deleteExistingFile(profile.styleguidePath);
+  await deleteBlobIfOwned(profile.styleguidePath);
 
   const updated = await prisma.instructionProfile.update({
     where: { id },

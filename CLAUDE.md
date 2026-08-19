@@ -18,8 +18,12 @@ reais encontradas ao construir o projeto, não só a estrutura.
   metadata, etc.), confira `node_modules/next/dist/docs/`.
 - **Tailwind CSS v4** — tema definido como variáveis CSS em `src/app/globals.css`
   (`@theme inline`), **não** existe `tailwind.config.ts`.
-- **Prisma 7.9.1 + SQLite**, generator `"prisma-client"` (não o antigo `"prisma-client-js"`),
-  saída em `src/generated/prisma` (gitignored, gerado via `npx prisma generate`).
+- **Prisma 7.9.1 + Postgres** (Prisma Postgres), generator `"prisma-client"` (não o antigo
+  `"prisma-client-js"`), saída em `src/generated/prisma` (gitignored, gerado via
+  `npx prisma generate`). Adapter `@prisma/adapter-pg` (não `better-sqlite3` — projeto migrou
+  de SQLite local pra Postgres pra rodar na Vercel, ver armadilha #12).
+- **Vercel Blob** (`@vercel/blob`) pra armazenar imagens geradas e styleguides enviados —
+  filesystem local não persiste em runtime serverless da Vercel.
 - **OpenRouter** (SDK `openai` apontando pra `https://openrouter.ai/api/v1`) pra texto (chat
   completions) e imagem (API dedicada `/api/v1/images`, formato diferente do chat).
 - **@mozilla/readability + jsdom** pra extrair texto de páginas genéricas (fontes não-YouTube).
@@ -82,6 +86,21 @@ reais encontradas ao construir o projeto, não só a estrutura.
     `globals.css` (`--background #121214`, `--accent-yellow #FFD02A`, etc.), fonte Poppins —
     replicado do site real da FQD Studios (não confundir com a paleta roxa antiga do repo local
     `fqd-studios`, que está desatualizada).
+
+12. **Storage é 100% remoto (Postgres + Vercel Blob), nunca filesystem local.** O projeto rodava
+    originalmente com SQLite (`dev.db`) e imagens em `public/generated`/`public/styleguides` —
+    isso foi migrado pra Prisma Postgres + Vercel Blob porque a Vercel roda em serverless com
+    filesystem efêmero (nada gravado em disco sobrevive entre requisições/deploys). `src/lib/prisma.ts`
+    usa `PrismaPg` (pacote `pg` + `@prisma/adapter-pg`), e todo código que salva/apaga imagem
+    (`generateImages.ts`, `blobStorage.ts`, rotas de artigos/perfis) usa `put()`/`del()`/`list()`
+    do `@vercel/blob` com `addRandomSuffix: false, allowOverwrite: true` — nunca `fs.writeFile`/
+    `fs.unlink`. Se precisar rodar uma migração de dados pontual (ex.: importar um dump antigo),
+    **não** escreva um script `.mjs` standalone que importa o client gerado do Prisma 7 — o
+    `client.ts` gerado usa imports relativos sem extensão (`from "./enums"`), que o bundler do
+    Next.js resolve mas o Node ESM puro (mesmo com `--experimental-strip-types`) rejeita com
+    `ERR_MODULE_NOT_FOUND`. O caminho que funcionou: criar uma rota de API temporária dentro do
+    próprio app (reaproveitando `@/lib/prisma`, que o Next já sabe resolver), chamá-la uma vez
+    via `curl`/`fetch`, e apagar a rota depois.
 
 ## Onde as coisas ficam
 

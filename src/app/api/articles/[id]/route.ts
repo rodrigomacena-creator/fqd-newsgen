@@ -1,7 +1,6 @@
-import { rm, unlink } from "fs/promises";
-import path from "path";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { deleteBlobIfOwned, deleteBlobsByPrefix } from "@/lib/blobStorage";
 
 interface ArticleSection {
   heading: string;
@@ -15,15 +14,6 @@ interface PatchBody {
   instagramCaption?: string;
   section?: { index: number; heading?: string; text?: string };
   removeImage?: "cover" | "instagram" | number;
-}
-
-async function deleteLocalImage(imagePath: string | null | undefined) {
-  if (!imagePath || !imagePath.startsWith("/generated/")) return;
-  try {
-    await unlink(path.join(process.cwd(), "public", imagePath));
-  } catch {
-    // arquivo já não existe — ignora
-  }
 }
 
 export async function PATCH(
@@ -97,17 +87,17 @@ export async function PATCH(
 
   if (body.removeImage !== undefined) {
     if (body.removeImage === "cover") {
-      await deleteLocalImage(article.coverImage);
+      await deleteBlobIfOwned(article.coverImage);
       data.coverImage = null;
     } else if (body.removeImage === "instagram") {
-      await deleteLocalImage(article.instagramImage);
+      await deleteBlobIfOwned(article.instagramImage);
       data.instagramImage = null;
     } else if (typeof body.removeImage === "number" && sections) {
       const section = sections[body.removeImage];
       if (!section) {
         return NextResponse.json({ error: "Seção não encontrada." }, { status: 400 });
       }
-      await deleteLocalImage(section.image);
+      await deleteBlobIfOwned(section.image);
       section.image = undefined;
     }
   }
@@ -136,10 +126,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Notícia não encontrada." }, { status: 404 });
   }
 
-  await rm(path.join(process.cwd(), "public", "generated", id), {
-    recursive: true,
-    force: true,
-  });
+  await deleteBlobsByPrefix(`generated/${id}/`);
 
   return NextResponse.json({ ok: true });
 }

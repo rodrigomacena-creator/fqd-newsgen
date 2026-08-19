@@ -1,5 +1,4 @@
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
+import { put } from "@vercel/blob";
 import { OPENROUTER_IMAGE_MODEL } from "./openrouter";
 
 interface OpenRouterImageResponse {
@@ -56,11 +55,12 @@ export async function generateAndSaveImage(
 ): Promise<string> {
   const buffer = await requestImage(prompt, model, aspectRatio);
 
-  const dir = path.join(process.cwd(), "public", "generated", articleId);
-  await mkdir(dir, { recursive: true });
+  const blob = await put(`generated/${articleId}/${fileName}.png`, buffer, {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: "image/png",
+  });
 
-  const filePath = path.join(dir, `${fileName}.png`);
-  await writeFile(filePath, buffer);
-
-  return `/generated/${articleId}/${fileName}.png`;
+  return blob.url;
 }

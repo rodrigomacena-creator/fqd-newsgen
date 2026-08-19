@@ -1,7 +1,6 @@
-import { rm } from "fs/promises";
-import path from "path";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { deleteBlobsByPrefix } from "@/lib/blobStorage";
 
 export async function DELETE(request: Request) {
   let body: { ids?: string[] };
@@ -18,14 +17,7 @@ export async function DELETE(request: Request) {
 
   await prisma.article.deleteMany({ where: { id: { in: ids } } });
 
-  await Promise.all(
-    ids.map((id) =>
-      rm(path.join(process.cwd(), "public", "generated", id), {
-        recursive: true,
-        force: true,
-      })
-    )
-  );
+  await Promise.all(ids.map((id) => deleteBlobsByPrefix(`generated/${id}/`)));
 
   return NextResponse.json({ ok: true, count: ids.length });
 }
