@@ -102,6 +102,24 @@ reais encontradas ao construir o projeto, não só a estrutura.
     próprio app (reaproveitando `@/lib/prisma`, que o Next já sabe resolver), chamá-la uma vez
     via `curl`/`fetch`, e apagar a rota depois.
 
+13. **`jsdom` >= 27 quebra em runtime na Vercel (funciona local, falha só em produção lá).**
+    `jsdom` está na lista padrão de `serverExternalPackages` do próprio Next.js (não precisa —
+    e não deve — ser adicionado manualmente; e forçá-lo pra dentro do bundle via
+    `transpilePackages` quebra de outro jeito, porque o jsdom lê um `default-stylesheet.css`
+    do disco relativo ao próprio pacote, e isso não sobrevive ao bundling). A partir do
+    `html-encoding-sniffer@6.0.0` (dependência do jsdom 27+), o pacote passou a fazer
+    `require("@exodus/bytes/encoding-lite.js")`, mas `@exodus/bytes` é ESM puro
+    (`"type": "module"`) — isso funciona local (`next dev`/`next build && next start`) porque o
+    Node local suporta `require(esm)`, mas quebra especificamente na Lambda da Vercel com
+    `ERR_REQUIRE_ESM`, retornando um 500 com corpo vazio (o front-end aí mostra algo tipo
+    `Failed to execute 'json' on 'Response': Unexpected end of JSON input"`, que é só o sintoma
+    no cliente). A correção foi **fixar `jsdom` em `^26.1.0`** (última versão cuja cadeia de
+    dependências usa `html-encoding-sniffer@^4.0.0` + `whatwg-encoding`, sem `@exodus/bytes`) —
+    não mexer no `next.config.ts` pra isso. Se um dia for atualizar o `jsdom`, teste
+    `curl -X POST` no `/api/generate` (ou outra rota que exercite scraping de página) **contra o
+    deploy de produção real**, não só local — esse bug não aparece em `next dev` nem em
+    `next build && next start` local.
+
 ## Onde as coisas ficam
 
 - `src/lib/prisma.ts` — client Prisma (singleton + driver adapter)
