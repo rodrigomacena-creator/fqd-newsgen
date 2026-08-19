@@ -11,12 +11,14 @@ export function ProfileManager() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPrompt, setNewPrompt] = useState(DEFAULT_ARTICLE_PROMPT);
+  const [newMaxSectionImages, setNewMaxSectionImages] = useState("");
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   function startCreating() {
     setNewName("");
     setNewPrompt(DEFAULT_ARTICLE_PROMPT);
+    setNewMaxSectionImages("");
     setCreateError(null);
     setCreating(true);
   }
@@ -30,7 +32,12 @@ export function ProfileManager() {
       const res = await fetch("/api/profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName, prompt: newPrompt }),
+        body: JSON.stringify({
+          name: newName,
+          prompt: newPrompt,
+          maxSectionImages:
+            newMaxSectionImages.trim() === "" ? null : Number(newMaxSectionImages),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Não foi possível criar o perfil.");
@@ -99,6 +106,26 @@ export function ProfileManager() {
             rows={10}
             className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-4 py-3 font-mono text-xs leading-relaxed outline-none focus:border-accent-yellow disabled:opacity-50"
           />
+
+          <div className="mt-3 flex items-center gap-2">
+            <label htmlFor="new-profile-max-images" className="text-xs text-text-secondary">
+              Máximo de imagens de seção
+            </label>
+            <input
+              id="new-profile-max-images"
+              type="number"
+              min={0}
+              step={1}
+              value={newMaxSectionImages}
+              onChange={(e) => setNewMaxSectionImages(e.target.value)}
+              disabled={saving}
+              placeholder="sem limite"
+              className="w-24 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent-yellow disabled:opacity-50"
+            />
+            <span className="text-[11px] text-text-secondary/70">
+              vazio = gera imagem em todas as seções
+            </span>
+          </div>
 
           <div className="mt-3 flex items-center gap-4">
             <button

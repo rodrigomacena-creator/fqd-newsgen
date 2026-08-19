@@ -9,18 +9,23 @@ export function getInstructionProfile(id: string) {
   return prisma.instructionProfile.findUnique({ where: { id } });
 }
 
-export function createInstructionProfile(data: { name: string; prompt?: string }) {
+export function createInstructionProfile(data: {
+  name: string;
+  prompt?: string;
+  maxSectionImages?: number | null;
+}) {
   return prisma.instructionProfile.create({
     data: {
       name: data.name,
       prompt: data.prompt?.trim() || DEFAULT_ARTICLE_PROMPT,
+      maxSectionImages: data.maxSectionImages ?? null,
     },
   });
 }
 
 export function updateInstructionProfile(
   id: string,
-  data: { name?: string; prompt?: string }
+  data: { name?: string; prompt?: string; maxSectionImages?: number | null }
 ) {
   return prisma.instructionProfile.update({ where: { id }, data });
 }

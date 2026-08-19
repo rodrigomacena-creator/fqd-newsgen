@@ -7,7 +7,7 @@ export async function PATCH(
 ) {
   const { id } = await ctx.params;
 
-  let body: { name?: string; prompt?: string };
+  let body: { name?: string; prompt?: string; maxSectionImages?: number | null };
   try {
     body = await request.json();
   } catch {
@@ -24,8 +24,22 @@ export async function PATCH(
     );
   }
 
+  if (
+    body.maxSectionImages != null &&
+    (!Number.isInteger(body.maxSectionImages) || body.maxSectionImages < 0)
+  ) {
+    return NextResponse.json(
+      { error: "Máximo de imagens de seção precisa ser um número inteiro ≥ 0." },
+      { status: 400 }
+    );
+  }
+
   try {
-    const profile = await updateInstructionProfile(id, { name, prompt });
+    const profile = await updateInstructionProfile(id, {
+      name,
+      prompt,
+      maxSectionImages: body.maxSectionImages,
+    });
     return NextResponse.json(profile);
   } catch {
     return NextResponse.json({ error: "Perfil não encontrado." }, { status: 404 });

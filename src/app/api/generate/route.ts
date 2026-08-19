@@ -58,8 +58,14 @@ export async function POST(request: Request) {
       imageModel
     ).catch(() => coverFallback);
 
+    const maxSectionImages = profile?.maxSectionImages ?? Infinity;
+
     const sections = await Promise.all(
       draft.sections.map(async (section, index) => {
+        if (index >= maxSectionImages) {
+          return { heading: section.heading, text: section.text };
+        }
+
         const image = await generateAndSaveImage(
           section.imagePrompt,
           articleId,

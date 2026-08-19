@@ -16,6 +16,9 @@ export function ProfileCard({
 }) {
   const [name, setName] = useState(profile.name);
   const [prompt, setPrompt] = useState(profile.prompt);
+  const [maxSectionImages, setMaxSectionImages] = useState(
+    profile.maxSectionImages != null ? String(profile.maxSectionImages) : ""
+  );
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -27,7 +30,12 @@ export function ProfileCard({
   const [fileWarning, setFileWarning] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const dirty = name !== profile.name || prompt !== profile.prompt;
+  const initialMaxSectionImages =
+    profile.maxSectionImages != null ? String(profile.maxSectionImages) : "";
+  const dirty =
+    name !== profile.name ||
+    prompt !== profile.prompt ||
+    maxSectionImages !== initialMaxSectionImages;
 
   let colors: string[] = [];
   if (profile.styleguideColors) {
@@ -45,7 +53,11 @@ export function ProfileCard({
       const res = await fetch(`/api/profiles/${profile.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, prompt }),
+        body: JSON.stringify({
+          name,
+          prompt,
+          maxSectionImages: maxSectionImages.trim() === "" ? null : Number(maxSectionImages),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Não foi possível salvar o perfil.");
@@ -140,13 +152,35 @@ export function ProfileCard({
       </div>
 
       {expanded && (
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          disabled={saving || deleting}
-          rows={10}
-          className="mt-3 w-full resize-y rounded-lg border border-border bg-background px-4 py-3 font-mono text-xs leading-relaxed outline-none focus:border-accent-yellow disabled:opacity-50"
-        />
+        <>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            disabled={saving || deleting}
+            rows={10}
+            className="mt-3 w-full resize-y rounded-lg border border-border bg-background px-4 py-3 font-mono text-xs leading-relaxed outline-none focus:border-accent-yellow disabled:opacity-50"
+          />
+
+          <div className="mt-3 flex items-center gap-2">
+            <label htmlFor={`max-images-${profile.id}`} className="text-xs text-text-secondary">
+              Máximo de imagens de seção
+            </label>
+            <input
+              id={`max-images-${profile.id}`}
+              type="number"
+              min={0}
+              step={1}
+              value={maxSectionImages}
+              onChange={(e) => setMaxSectionImages(e.target.value)}
+              disabled={saving || deleting}
+              placeholder="sem limite"
+              className="w-24 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent-yellow disabled:opacity-50"
+            />
+            <span className="text-[11px] text-text-secondary/70">
+              vazio = gera imagem em todas as seções
+            </span>
+          </div>
+        </>
       )}
 
       <div className="mt-3 flex items-center gap-4">

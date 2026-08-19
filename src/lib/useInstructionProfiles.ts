@@ -6,6 +6,7 @@ export interface InstructionProfile {
   id: string;
   name: string;
   prompt: string;
+  maxSectionImages?: number | null;
   styleguideFileName?: string | null;
   styleguidePath?: string | null;
   styleguideColors?: string | null;

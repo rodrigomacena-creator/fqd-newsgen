@@ -41,6 +41,7 @@ model InstructionProfile {
   id                  String   @id @default(cuid())
   name                String
   prompt              String
+  maxSectionImages    Int? // limite de seções com imagem gerada; null = sem limite (todas)
   styleguideFileName  String? // nome original do arquivo enviado pelo usuário
   styleguidePath      String? // caminho público do arquivo salvo (/styleguides/{id}/...)
   styleguideColors    String? // JSON: string[] de cores hex extraídas do arquivo
