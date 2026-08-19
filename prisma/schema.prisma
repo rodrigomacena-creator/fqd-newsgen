@@ -1,0 +1,50 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Article {
+  id          String   @id @default(cuid())
+  sources     String // JSON string: { type: "youtube"|"webpage"; url: string; title: string; content: string; videoId?: string }[]
+  title       String
+  subtitle    String
+  coverImage  String?
+  sections    String // JSON string: { heading: string; text: string; image?: string }[]
+  status      String   @default("done") // pending | done | failed
+  textModel         String
+  imageModel        String
+  profileId         String? // id do perfil usado (para releituras futuras, ex.: revisão); pode não existir mais
+  profileName       String? // nome do perfil de instrução usado (snapshot; null = padrão neutro)
+  instagramCaption  String?
+  instagramImage    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Settings {
+  id                String   @id @default("default")
+  defaultTextModel  String
+  defaultImageModel String
+  updatedAt         DateTime @updatedAt
+}
+
+model InstructionProfile {
+  id                  String   @id @default(cuid())
+  name                String
+  prompt              String
+  styleguideFileName  String? // nome original do arquivo enviado pelo usuário
+  styleguidePath      String? // caminho público do arquivo salvo (/styleguides/{id}/...)
+  styleguideColors    String? // JSON: string[] de cores hex extraídas do arquivo
+  styleguideSummary   String? // texto/contexto extraído do arquivo (ex.: trecho de PDF)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}

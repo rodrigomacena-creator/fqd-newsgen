@@ -1,0 +1,64 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+/src/generated/prisma
+
+# database (Prisma's DATABASE_URL="file:./dev.db" resolves relative to the
+# project root when the CLI runs, so the real file lands here, not in /prisma)
+/dev.db
+/dev.db-journal
+/prisma/dev.db
+/prisma/dev.db-journal
+
+# generated article images
+/public/generated
+
+# uploaded profile styleguides
+/public/styleguides
+
+# skill reference bundles auto-installed by `prisma init` (tooling scaffolding,
+# not part of the app)
+/.agents/skills
+/.claude/skills
+/.windsurf/skills
+skills-lock.json
