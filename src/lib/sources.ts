@@ -42,6 +42,9 @@ async function fetchSource(url: string): Promise<ArticleSource> {
         videoId,
       };
     } catch (err) {
+      if (!(err instanceof YoutubeUrlError)) {
+        console.error(`Falha ao buscar transcrição de ${url}:`, err);
+      }
       const message =
         err instanceof YoutubeUrlError ? err.message : "Não foi possível processar este vídeo.";
       throw new SourceFetchError(url, message);
@@ -52,6 +55,9 @@ async function fetchSource(url: string): Promise<ArticleSource> {
     const { title, content } = await fetchWebpageContent(url);
     return { type: "webpage", url, title, content };
   } catch (err) {
+    if (!(err instanceof WebpageFetchError)) {
+      console.error(`Falha ao buscar conteúdo de ${url}:`, err);
+    }
     const message =
       err instanceof WebpageFetchError ? err.message : "Não foi possível processar essa página.";
     throw new SourceFetchError(url, message);
