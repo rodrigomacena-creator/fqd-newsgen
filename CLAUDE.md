@@ -120,6 +120,21 @@ reais encontradas ao construir o projeto, não só a estrutura.
     deploy de produção real**, não só local — esse bug não aparece em `next dev` nem em
     `next build && next start` local.
 
+14. **Extração de transcrição do YouTube precisa de proxy residencial em produção.**
+    O YouTube trata IPs de datacenter (Vercel, VPS da Hostinger, proxies "datacenter" da
+    Bright Data/Webshare) de forma diferente de IPs residenciais — bloqueia (`Transcript is
+    disabled`) ou rate-limita (`429`) a extração de transcrição especificamente para esses IPs,
+    mesmo em vídeos com legenda normal. Testado e confirmado: Vercel, VPS própria (Hostinger) e
+    proxies "datacenter"/"Proxy List" (Bright Data, Webshare) todos falham; só um proxy
+    **residencial rotativo** de verdade resolve (testado com Webshare "Residential" —
+    cuidado, é um produto separado de "Proxy List" no dashboard deles, que é datacenter). A
+    integração fica em `src/lib/proxyFetch.ts` (`getYoutubeFetch()`, usa `undici`'s `ProxyAgent`
+    com sessão aleatória por chamada pra rotacionar IP) e é passada como `config.fetch` pro
+    `YoutubeTranscript.fetchTranscript()` em `src/lib/youtube.ts`. Sem as variáveis
+    `RESIDENTIAL_PROXY_*` no ambiente, cai pra fetch direto (é assim que funciona em dev local,
+    onde o IP residencial de casa já passa sem problema). Scraping de página comum
+    (`webpage.ts`, sites de notícia) não usa esse proxy — o problema é específico do YouTube.
+
 ## Onde as coisas ficam
 
 - `src/lib/prisma.ts` — client Prisma (singleton + driver adapter)

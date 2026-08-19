@@ -1,4 +1,5 @@
 import { YoutubeTranscript } from "youtube-transcript";
+import { getYoutubeFetch } from "./proxyFetch";
 
 export class YoutubeUrlError extends Error {}
 
@@ -31,7 +32,7 @@ export function thumbnailUrl(videoId: string): string {
 }
 
 export async function fetchVideoTranscript(videoId: string): Promise<string> {
-  const parts = await YoutubeTranscript.fetchTranscript(videoId);
+  const parts = await YoutubeTranscript.fetchTranscript(videoId, { fetch: getYoutubeFetch() });
   const text = parts
     .map((p) => p.text)
     .join(" ")
