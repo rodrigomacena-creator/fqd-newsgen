@@ -55,14 +55,11 @@ export default function SettingsPage() {
     <div className="flex min-h-full flex-col">
       <Header />
 
-      <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-12">
-        <h1 className="text-2xl font-bold">Configurações</h1>
-        <p className="mt-2 text-sm text-text-secondary">
-          Escolha os modelos padrão da OpenRouter usados para gerar o texto e as
-          imagens das notícias. Modelos mais avançados custam mais, mas tendem a
-          produzir resultados melhores — modelos mais baratos são ótimos para
-          testes ou notícias mais simples. Você também pode escolher um modelo
-          diferente para cada notícia na hora de gerar.
+      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12 sm:py-16">
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Configurações</h1>
+        <p className="mt-3 text-text-secondary">
+          Modelos padrão de IA e perfis de tom de voz. Cada notícia também deixa
+          escolher um modelo diferente na hora de gerar.
         </p>
 
         {modelsError && (
@@ -71,48 +68,52 @@ export default function SettingsPage() {
           </p>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-          <ModelPicker
-            id="default-text-model"
-            label="Modelo de texto"
-            hint="Usado para redigir título, subtítulos e o corpo da notícia."
-            value={textModel}
-            onChange={setTextModel}
-            options={textOptions}
-            disabled={loadingSettings || loadingModels}
-          />
+        <section className="mt-8 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            Modelos padrão
+          </h2>
 
-          <ModelPicker
-            id="default-image-model"
-            label="Modelo de imagem"
-            hint="Usado para gerar a capa e as imagens de cada seção."
-            value={imageModel}
-            onChange={setImageModel}
-            options={imageOptions}
-            disabled={loadingSettings || loadingModels}
-          />
+          <form onSubmit={handleSubmit} className="mt-4 space-y-5">
+            <ModelPicker
+              id="default-text-model"
+              label="Modelo de texto"
+              hint="Usado para redigir título, subtítulos e o corpo da notícia."
+              value={textModel}
+              onChange={setTextModel}
+              options={textOptions}
+              disabled={loadingSettings || loadingModels}
+            />
 
-          <button
-            type="submit"
-            disabled={saving || loadingSettings}
-            className="rounded-lg bg-accent-yellow px-6 py-3 text-sm font-semibold text-accent-yellow-ink transition hover:bg-accent-yellow/90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? "Salvando…" : "Salvar configurações"}
-          </button>
+            <ModelPicker
+              id="default-image-model"
+              label="Modelo de imagem"
+              hint="Usado para gerar a capa e as imagens de cada seção."
+              value={imageModel}
+              onChange={setImageModel}
+              options={imageOptions}
+              disabled={loadingSettings || loadingModels}
+            />
 
-          {error && (
-            <p className="rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
-              {error}
-            </p>
-          )}
-          {success && !error && (
-            <p className="text-sm text-emerald-400">
-              Configurações salvas com sucesso.
-            </p>
-          )}
-        </form>
+            <button
+              type="submit"
+              disabled={saving || loadingSettings}
+              className="rounded-lg bg-accent-yellow px-6 py-3 text-sm font-semibold text-accent-yellow-ink transition hover:bg-accent-yellow/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Salvando…" : "Salvar configurações"}
+            </button>
 
-        <div className="mt-12 border-t border-border pt-8">
+            {error && (
+              <p className="rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
+                {error}
+              </p>
+            )}
+            {success && !error && (
+              <p className="text-sm text-emerald-400">Configurações salvas com sucesso.</p>
+            )}
+          </form>
+        </section>
+
+        <div className="mt-8">
           <ProfileManager />
         </div>
       </main>

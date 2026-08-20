@@ -4,8 +4,9 @@
 
 Protótipo Next.js que transforma vídeos do YouTube e/ou páginas da web em notícias completas
 geradas por IA (título, subtítulos, texto, imagens e post de Instagram), com edição inline,
-histórico paginado, perfis de instrução por "destino" (tom/estilo) e extração de paleta de
-cores a partir de um styleguide (PDF/imagem/SVG) por perfil.
+histórico paginado, perfis de instrução por "destino" (só tom/estilo — estrutura é escolhida
+por notícia, ver abaixo) e extração de paleta de cores a partir de um styleguide (PDF/imagem/SVG)
+por perfil.
 
 Leia este arquivo por inteiro antes de mexer no código — ele documenta decisões e armadilhas
 reais encontradas ao construir o projeto, não só a estrutura.
@@ -141,7 +142,18 @@ reais encontradas ao construir o projeto, não só a estrutura.
 - `src/lib/sources.ts`, `youtube.ts`, `webpage.ts` — busca de conteúdo multi-fonte (YouTube
   transcript e/ou página via Readability), `MAX_SOURCES = 5`
 - `src/lib/generateArticle.ts` + `src/lib/prompts.ts` — geração da matéria + post de Instagram
-  (uma chamada de IA só); `DEFAULT_ARTICLE_PROMPT` é a instrução neutra padrão
+  (uma chamada de IA só). O prompt do sistema é montado em camadas SEMPRE nesta ordem:
+  `instructionPrompt` (perfil escolhido, ou `DEFAULT_ARTICLE_PROMPT` se nenhum) → sempre
+  `MULTI_SOURCE_INSTRUCTION` → sempre `buildStructureInstruction(...)` → `styleguideContext` →
+  `JSON_FORMAT_INSTRUCTIONS`. As camadas "sempre" existem porque perfis customizados SUBSTITUEM
+  `instructionPrompt` por completo — sem injetar essas regras à parte, um perfil escrito sem
+  pensar em múltiplas fontes (ou um perfil antigo com contagem de seção hardcoded) faz a IA
+  ignorar regras importantes silenciosamente. **Quantidade de subtítulos/parágrafos/fotos e
+  instruções extras são escolhidas pelo usuário a cada notícia** (campos em `src/app/page.tsx`,
+  vão pro corpo do POST `/api/generate` como `subtitleCount`/`paragraphCount`/`photoCount`/
+  `extraInstructions`) — **não** ficam mais salvas no perfil (isso existiu brevemente como
+  `InstructionProfile.maxSectionImages` e foi removido; se vir menção a isso em versões antigas
+  do código/migrations, é histórico, não use como referência).
 - `src/lib/reviseArticle.ts` — fluxo "Pedir ajuste à IA": edita a MESMA notícia em vigor, nunca
   cria uma nova
 - `src/lib/generateImages.ts` — wrapper da Images API da OpenRouter
@@ -178,5 +190,8 @@ Antes de considerar qualquer tarefa concluída: rodar `typegen` (se mexeu em rot
 
 ## Variáveis de ambiente
 
-Copiar `.env.example` para `.env` e preencher `OPENROUTER_API_KEY` (obrigatória, pega em
-https://openrouter.ai/keys). `OPENROUTER_TEXT_MODEL`/`OPENROUTER_IMAGE_MODEL` são opcionais.
+Copiar `.env.example` para `.env` e preencher: `DATABASE_URL` (Postgres), `BLOB_READ_WRITE_TOKEN`
+(Vercel Blob) e `OPENROUTER_API_KEY` são obrigatórias. `OPENROUTER_TEXT_MODEL`/
+`OPENROUTER_IMAGE_MODEL` são opcionais. `RESIDENTIAL_PROXY_HOST`/`_PORT`/`_USER`/`_PASSWORD` são
+opcionais em dev local (cai pra fetch direto sem elas) mas **obrigatórias em produção** pra
+extração de transcrição do YouTube funcionar (ver armadilha #14).

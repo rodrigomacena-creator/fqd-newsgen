@@ -34,11 +34,13 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
     <div className="flex min-h-full flex-col">
       <Header />
 
-      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
-        <p className="text-xs font-semibold uppercase tracking-widest text-accent-yellow">
-          Gerado por IA a partir de {sources.length}{" "}
-          {sources.length === 1 ? "fonte" : "fontes"}
-        </p>
+      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12 sm:py-16">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-xs font-semibold uppercase tracking-widest text-accent-yellow">
+            Gerado por IA · {sources.length} {sources.length === 1 ? "fonte" : "fontes"}
+          </p>
+          <DeleteArticleButton articleId={article.id} redirectTo="/noticias" />
+        </div>
         <p className="mt-1 text-xs text-text-secondary/70">
           Clique em qualquer texto abaixo para editar — salva automaticamente.
         </p>
@@ -56,36 +58,40 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
           initialValue={article.subtitle}
           className="mt-4 text-lg text-text-secondary"
         />
-        <p className="mt-4 text-xs text-text-secondary">
-          Publicado em{" "}
-          {new Intl.DateTimeFormat("pt-BR", {
-            dateStyle: "long",
-            timeStyle: "short",
-          }).format(article.createdAt)}{" "}
-          · <DeleteArticleButton articleId={article.id} redirectTo="/noticias" />
-        </p>
-        <p className="mt-1 text-xs text-text-secondary">
-          Fontes:{" "}
-          {sources.map((source, index) => (
-            <span key={index}>
-              {index > 0 && " · "}
-              <a
-                href={source.url}
-                target="_blank"
-                rel="noreferrer"
-                className="underline hover:text-accent-yellow"
-                title={source.title}
-              >
-                {source.type === "youtube" ? "YouTube" : "Página"}
-                {sources.length > 1 ? ` ${index + 1}` : ""}
-              </a>
-            </span>
-          ))}
-        </p>
-        <p className="mt-1 text-xs text-text-secondary/60">
-          Perfil: {article.profileName ?? "Padrão (neutro)"} · Texto: {article.textModel} ·
-          Imagens: {article.imageModel}
-        </p>
+
+        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">
+          <span>
+            {new Intl.DateTimeFormat("pt-BR", {
+              dateStyle: "long",
+              timeStyle: "short",
+            }).format(article.createdAt)}
+          </span>
+          <span className="text-text-secondary/40">·</span>
+          <span>
+            Fontes:{" "}
+            {sources.map((source, index) => (
+              <span key={index}>
+                {index > 0 && " · "}
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline hover:text-accent-yellow"
+                  title={source.title}
+                >
+                  {source.type === "youtube" ? "YouTube" : "Página"}
+                  {sources.length > 1 ? ` ${index + 1}` : ""}
+                </a>
+              </span>
+            ))}
+          </span>
+          <span className="text-text-secondary/40">·</span>
+          <span>Perfil: {article.profileName ?? "Padrão (neutro)"}</span>
+          <span className="text-text-secondary/40">·</span>
+          <span>
+            IA: {article.textModel} / {article.imageModel}
+          </span>
+        </div>
 
         {article.coverImage && (
           <RemovableImage
@@ -94,7 +100,7 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
             src={withVersion(article.coverImage)}
             alt={article.title}
             sizes="(min-width: 768px) 768px, 100vw"
-            className="relative mt-8 aspect-video w-full overflow-hidden rounded-xl border border-border bg-surface"
+            className="relative mt-8 aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface"
           />
         )}
 
@@ -115,7 +121,7 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
                   src={withVersion(section.image)}
                   alt={section.heading}
                   sizes="(min-width: 768px) 768px, 100vw"
-                  className="relative my-4 aspect-video w-full overflow-hidden rounded-xl border border-border bg-surface"
+                  className="relative my-4 aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface"
                 />
               )}
               <EditableText

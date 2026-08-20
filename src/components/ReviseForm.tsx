@@ -57,7 +57,7 @@ export function ReviseForm({
   }
 
   return (
-    <div className="mt-12 rounded-xl border border-border bg-surface p-5">
+    <div className="mt-12 rounded-2xl border border-border bg-surface p-5 sm:p-6">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-text-secondary">
         Pedir ajuste à IA
       </h3>

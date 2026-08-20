@@ -15,8 +15,28 @@ import {
   MAX_SOURCES,
 } from "@/lib/sources";
 
+const MIN_PARAGRAPHS = 1;
+const MAX_PARAGRAPHS = 15;
+const MIN_SUBTITLES = 1;
+const MAX_SUBTITLES = 10;
+
+function clampInt(value: unknown, fallback: number, min: number, max: number): number {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
 export async function POST(request: Request) {
-  let body: { urls?: string[]; textModel?: string; imageModel?: string; profileId?: string };
+  let body: {
+    urls?: string[];
+    textModel?: string;
+    imageModel?: string;
+    profileId?: string;
+    subtitleCount?: number;
+    paragraphCount?: number;
+    photoCount?: number;
+    extraInstructions?: string;
+  };
   try {
     body = await request.json();
   } catch {
@@ -34,6 +54,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const subtitleCount = clampInt(body.subtitleCount, 4, MIN_SUBTITLES, MAX_SUBTITLES);
+  const paragraphCount = clampInt(
+    body.paragraphCount,
+    Math.max(8, subtitleCount),
+    MIN_PARAGRAPHS,
+    MAX_PARAGRAPHS
+  );
+  const photoCount = clampInt(body.photoCount, Math.min(4, subtitleCount), 0, subtitleCount);
+  const extraInstructions = body.extraInstructions?.trim() || undefined;
+
   try {
     const settings = await getSettings();
     const textModel = body.textModel?.trim() || settings.defaultTextModel;
@@ -46,7 +76,13 @@ export async function POST(request: Request) {
 
     const sources = await fetchAllSources(urls);
     const sourcesText = buildSourcesText(sources);
-    const draft = await generateArticleDraft(sourcesText, textModel, instructionPrompt, styleguideContext);
+    const draft = await generateArticleDraft(
+      sourcesText,
+      { subtitleCount, paragraphCount, photoCount, extraInstructions },
+      textModel,
+      instructionPrompt,
+      styleguideContext
+    );
 
     const articleId = randomUUID();
     const coverFallback = firstYoutubeThumbnail(sources);
@@ -58,11 +94,9 @@ export async function POST(request: Request) {
       imageModel
     ).catch(() => coverFallback);
 
-    const maxSectionImages = profile?.maxSectionImages ?? Infinity;
-
     const sections = await Promise.all(
       draft.sections.map(async (section, index) => {
-        if (index >= maxSectionImages) {
+        if (index >= photoCount || !section.imagePrompt?.trim()) {
           return { heading: section.heading, text: section.text };
         }
 

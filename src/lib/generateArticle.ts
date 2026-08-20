@@ -1,5 +1,12 @@
 import { getOpenRouterClient, OPENROUTER_TEXT_MODEL, extractCompletionText } from "./openrouter";
-import { DEFAULT_ARTICLE_PROMPT, MULTI_SOURCE_INSTRUCTION } from "./prompts";
+import { DEFAULT_ARTICLE_PROMPT, MULTI_SOURCE_INSTRUCTION, buildStructureInstruction } from "./prompts";
+
+export interface ArticleStructure {
+  subtitleCount: number;
+  paragraphCount: number;
+  photoCount: number;
+  extraInstructions?: string;
+}
 
 export interface ArticleSectionDraft {
   heading: string;
@@ -53,6 +60,7 @@ function extractJson(raw: string): string {
 
 export async function generateArticleDraft(
   sourcesText: string,
+  structure: ArticleStructure,
   model: string = OPENROUTER_TEXT_MODEL,
   instructionPrompt: string = DEFAULT_ARTICLE_PROMPT,
   styleguideContext: string | null = null
@@ -62,6 +70,7 @@ export async function generateArticleDraft(
   const systemPrompt = [
     instructionPrompt,
     MULTI_SOURCE_INSTRUCTION,
+    buildStructureInstruction(structure),
     styleguideContext,
     JSON_FORMAT_INSTRUCTIONS,
   ]

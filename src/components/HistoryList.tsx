@@ -91,7 +91,7 @@ export function HistoryList({
 
   return (
     <div>
-      <div className="mt-6 flex items-center justify-between">
+      <div className="mt-8 flex items-center justify-between">
         <label className="flex items-center gap-2 text-sm text-text-secondary">
           <input
             type="checkbox"
@@ -117,9 +117,16 @@ export function HistoryList({
         )}
       </div>
 
-      <ul className="mt-3 divide-y divide-border">
+      <ul className="mt-3 space-y-2">
         {items.map((article) => (
-          <li key={article.id} className="flex items-center gap-4 py-5">
+          <li
+            key={article.id}
+            className={`flex items-center gap-4 rounded-2xl border p-3 transition ${
+              selected.has(article.id)
+                ? "border-accent-yellow/50 bg-accent-yellow/5"
+                : "border-border bg-surface"
+            }`}
+          >
             <input
               type="checkbox"
               checked={selected.has(article.id)}
@@ -128,7 +135,7 @@ export function HistoryList({
               className="h-4 w-4 shrink-0 accent-accent-yellow"
             />
 
-            <div className="relative h-16 w-28 shrink-0 overflow-hidden rounded-lg border border-border bg-surface">
+            <div className="relative h-16 w-28 shrink-0 overflow-hidden rounded-lg border border-border bg-surface-2">
               {article.coverImage && (
                 <Image
                   src={article.coverImage}

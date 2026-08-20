@@ -34,8 +34,8 @@ export function InstagramPostCard({
         Post sugerido para Instagram
       </h3>
 
-      <div className="mt-3 grid gap-4 rounded-xl border border-border bg-surface p-4 sm:grid-cols-[220px_1fr]">
-        <div className="relative aspect-square w-full overflow-hidden rounded-lg border border-border bg-surface-2">
+      <div className="mt-3 grid gap-4 rounded-2xl border border-border bg-surface p-5 sm:grid-cols-[220px_1fr]">
+        <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-border bg-surface-2">
           {imageUrl && (
             <RemovableImage
               articleId={articleId}
