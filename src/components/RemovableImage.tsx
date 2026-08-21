@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
-export type ImageTarget = "cover" | "instagram" | { section: number };
+export type ImageTarget =
+  | "cover"
+  | "instagram"
+  | { section: number }
+  | { instagramImage: number };
 
 export function RemovableImage({
   articleId,
@@ -44,7 +48,12 @@ export function RemovableImage({
 
     setRemoving(true);
     try {
-      const removeImage = typeof target === "string" ? target : target.section;
+      const removeImage =
+        typeof target === "string"
+          ? target
+          : "section" in target
+            ? target.section
+            : { instagramImage: target.instagramImage };
       const res = await fetch(`/api/articles/${articleId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },

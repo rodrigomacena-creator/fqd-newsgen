@@ -54,17 +54,21 @@ export async function POST(
     );
 
     let coverImage = article.coverImage;
-    let instagramImage = article.instagramImage;
+    const instagramImages: (string | undefined)[] = article.instagramImages
+      ? JSON.parse(article.instagramImages)
+      : article.instagramImage
+        ? [article.instagramImage]
+        : [];
     const sectionImages = currentSections.map((s) => s.image);
 
     for (const change of revision.imageChanges) {
       if (change.target === "cover") {
         coverImage = await generateAndSaveImage(change.imagePrompt, id, "cover", imageModel);
       } else if (change.target === "instagram") {
-        instagramImage = await generateAndSaveImage(
+        instagramImages[0] = await generateAndSaveImage(
           change.imagePrompt,
           id,
-          "instagram",
+          "instagram-0",
           imageModel,
           "1:1"
         );
@@ -95,8 +99,8 @@ export async function POST(
         subtitle: revision.subtitle,
         coverImage,
         sections: JSON.stringify(sections),
-        instagramCaption: revision.instagramCaption,
-        instagramImage,
+        instagramCaption: revision.instagramCaption || null,
+        instagramImages: instagramImages.length > 0 ? JSON.stringify(instagramImages) : null,
         textModel,
         imageModel,
       },

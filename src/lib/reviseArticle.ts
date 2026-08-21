@@ -18,16 +18,17 @@ export interface RevisionResult {
   imageChanges: ImageChange[];
 }
 
-const SYSTEM_PROMPT = `Você é um editor de um portal de notícias. Você recebe o estado atual de uma matéria (título, subtítulo, seções e a legenda do post de Instagram associado) e um pedido do jornalista para ajustar algo. Aplique exatamente o que foi pedido e mantenha tudo o mais igual possível.
+const SYSTEM_PROMPT = `Você é um editor de um portal de notícias. Você recebe o estado atual de uma matéria (título, subtítulo, seções de portal e/ou a legenda do post de Instagram associado — pode ter só um dos dois) e um pedido do jornalista para ajustar algo. Aplique exatamente o que foi pedido e mantenha tudo o mais igual possível.
 
 Regras:
-- Mantenha o mesmo número de seções que foi enviado, na mesma ordem. Não adicione nem remova seções.
+- Mantenha o mesmo número de seções que foi enviado, na mesma ordem. Não adicione nem remova seções. Se não havia seções (matéria só de Instagram), mantenha "sections" como array vazio [] — nunca crie seções de portal que não existiam.
+- Se não havia legenda de Instagram (matéria só de portal), mantenha "instagramCaption" como string vazia "" — nunca invente um post de Instagram que não existia.
 - Se o pedido for sobre texto (título, subtítulo, corpo de uma seção, ou a legenda do Instagram), edite apenas o que foi pedido e mantenha o restante idêntico ao original.
-- Se o pedido for para trocar/gerar uma imagem (capa, de uma seção específica, ou a imagem do post de Instagram), inclua uma entrada em "imageChanges" com um prompt de imagem em inglês descrevendo a nova imagem pedida, sempre em estilo fotografia realista (nunca banner, graphic, poster, thumbnail ou cover). Use "target": "instagram" para a imagem do Instagram. Só inclua em "imageChanges" as imagens que devem ser trocadas.
+- Se o pedido for para trocar/gerar uma imagem (capa, de uma seção específica, ou a imagem do post de Instagram), inclua uma entrada em "imageChanges" com um prompt de imagem em inglês descrevendo a nova imagem pedida, sempre em estilo fotografia realista (nunca banner, graphic, poster, thumbnail ou cover). Use "target": "instagram" para a imagem do Instagram. Só inclua em "imageChanges" as imagens que devem ser trocadas, e só pra destinos que já existiam na matéria (não proponha imagem de capa se não havia seções de portal, nem imagem de Instagram se não havia legenda de Instagram).
 - IMPORTANTE: a chave "imageChanges" deve SEMPRE aparecer no JSON, mesmo que vazia ([]) quando nenhuma imagem precisa mudar.
 - IMPORTANTE sobre prompts de imagem: nunca peça texto, palavras, títulos, logos, marcas d'água ou letras escritas dentro da imagem, e nunca descreva a imagem como "banner", "graphic", "poster", "thumbnail" ou "cover" — isso induz o gerador de imagem a desenhar texto sozinho, mesmo sem pedir, e geradores de imagem erram a ortografia de texto renderizado. Se o pedido for para corrigir um erro de ortografia ou texto que apareceu numa imagem gerada anteriormente, gere um novo prompt puramente fotográfico para essa imagem, sem nenhum elemento gráfico ou de texto, já que o texto correto já está na legenda/matéria.
 - Se o pedido não for claro sobre qual seção/imagem, use o contexto (título, texto de cada seção, legenda do Instagram) para decidir a mais provável.
-- Sempre retorne "instagramCaption" com a legenda atual (editada ou não).
+- Sempre retorne "instagramCaption" com a legenda atual (editada ou não, ou "" se não havia).
 - Responda APENAS com um JSON válido, sem markdown, sem comentários, neste formato exato:
 
 {
@@ -101,12 +102,14 @@ export async function reviseArticle(
     );
   }
 
+  const hadInstagram = Boolean(current.instagramCaption);
+
   if (
     !parsed.title ||
     !parsed.subtitle ||
     !Array.isArray(parsed.sections) ||
     parsed.sections.length !== current.sections.length ||
-    !parsed.instagramCaption
+    (hadInstagram && !parsed.instagramCaption)
   ) {
     console.error("Resposta da IA incompleta:", raw);
     throw new Error(

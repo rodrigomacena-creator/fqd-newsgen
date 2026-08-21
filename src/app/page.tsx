@@ -18,6 +18,7 @@ const STAGES = [
 const MAX_SOURCES = 5;
 const SUBTITLE_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1); // 1–10
 const PARAGRAPH_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1); // 1–15
+const INSTAGRAM_PHOTO_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1); // 1–10
 
 function isYoutubeUrl(value: string): boolean {
   return /youtube\.com|youtu\.be/i.test(value);
@@ -29,6 +30,9 @@ export default function Home() {
   const { profiles } = useInstructionProfiles();
 
   const [urls, setUrls] = useState<string[]>([""]);
+  const [wantInstagram, setWantInstagram] = useState(true);
+  const [wantPortal, setWantPortal] = useState(true);
+  const [instagramPhotoCount, setInstagramPhotoCount] = useState(1);
   const [profileId, setProfileId] = useState("");
   const [subtitleCount, setSubtitleCount] = useState(2);
   const [paragraphCount, setParagraphCount] = useState(5);
@@ -73,7 +77,7 @@ export default function Home() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const cleanUrls = urls.map((u) => u.trim()).filter(Boolean);
-    if (cleanUrls.length === 0 || loading) return;
+    if (cleanUrls.length === 0 || loading || (!wantInstagram && !wantPortal)) return;
 
     setLoading(true);
     setError(null);
@@ -84,6 +88,11 @@ export default function Home() {
     }, 4000);
 
     try {
+      const destinations = [
+        ...(wantInstagram ? ["instagram"] : []),
+        ...(wantPortal ? ["portal"] : []),
+      ];
+
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,9 +101,11 @@ export default function Home() {
           textModel,
           imageModel,
           profileId: profileId || undefined,
+          destinations,
           subtitleCount,
           paragraphCount,
           photoCount,
+          instagramPhotoCount,
           extraInstructions: extraInstructions.trim() || undefined,
         }),
       });
@@ -180,6 +191,99 @@ export default function Home() {
 
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              Destinos
+            </h2>
+            <p className="mt-1 text-xs text-text-secondary">
+              Escolha onde essa notícia vai ser publicada — pode marcar os dois.
+            </p>
+
+            <div className="mt-4 space-y-2">
+              <label
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 transition ${
+                  wantInstagram ? "border-accent-yellow/60 bg-accent-yellow/5" : "border-border"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={wantInstagram}
+                  onChange={(e) => setWantInstagram(e.target.checked)}
+                  disabled={loading}
+                  className="h-4 w-4 accent-accent-yellow"
+                />
+                <span className="text-sm font-medium">
+                  Instagram <span className="font-normal text-text-secondary">(reels e shorts)</span>
+                </span>
+              </label>
+
+              <label
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 transition ${
+                  wantPortal ? "border-accent-yellow/60 bg-accent-yellow/5" : "border-border"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={wantPortal}
+                  onChange={(e) => setWantPortal(e.target.checked)}
+                  disabled={loading}
+                  className="h-4 w-4 accent-accent-yellow"
+                />
+                <span className="text-sm font-medium">Portal</span>
+              </label>
+            </div>
+
+            {!wantInstagram && !wantPortal && (
+              <p className="mt-2 text-xs text-accent-red">Escolha ao menos um destino.</p>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              Instruções adicionais <span className="font-normal text-text-secondary">(opcional)</span>
+            </h2>
+            <textarea
+              id="extra-instructions"
+              value={extraInstructions}
+              onChange={(e) => setExtraInstructions(e.target.value)}
+              disabled={loading}
+              rows={2}
+              placeholder='Ex.: "foque na parte financeira", "evite spoilers", "cite o nome do canal"…'
+              className="mt-3 w-full resize-y rounded-lg border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-accent-yellow disabled:opacity-50"
+            />
+          </section>
+
+          {wantInstagram && (
+            <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                Instagram
+              </h2>
+
+              <div className="mt-4">
+                <label htmlFor="instagram-photo-count" className="text-sm font-medium">
+                  Fotos do carrossel
+                </label>
+                <select
+                  id="instagram-photo-count"
+                  value={instagramPhotoCount}
+                  onChange={(e) => setInstagramPhotoCount(Number(e.target.value))}
+                  disabled={loading}
+                  className="mt-2 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:border-accent-yellow disabled:opacity-50 sm:w-40"
+                >
+                  {INSTAGRAM_PHOTO_OPTIONS.map((n) => (
+                    <option key={n} value={n} className="bg-background text-foreground">
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-text-secondary">
+                  1 foto = post normal; mais de uma vira um carrossel.
+                </p>
+              </div>
+            </section>
+          )}
+
+          {wantPortal && (
+          <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
               Estrutura da matéria
             </h2>
 
@@ -241,23 +345,8 @@ export default function Home() {
                 </select>
               </div>
             </div>
-
-            <div className="mt-4">
-              <label htmlFor="extra-instructions" className="text-sm font-medium">
-                Instruções adicionais{" "}
-                <span className="font-normal text-text-secondary">(opcional)</span>
-              </label>
-              <textarea
-                id="extra-instructions"
-                value={extraInstructions}
-                onChange={(e) => setExtraInstructions(e.target.value)}
-                disabled={loading}
-                rows={2}
-                placeholder='Ex.: "foque na parte financeira", "evite spoilers", "cite o nome do canal"…'
-                className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-accent-yellow disabled:opacity-50"
-              />
-            </div>
           </section>
+          )}
 
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
@@ -325,7 +414,7 @@ export default function Home() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (!wantInstagram && !wantPortal)}
             className="w-full rounded-lg bg-accent-yellow px-6 py-3.5 text-sm font-semibold text-accent-yellow-ink transition hover:bg-accent-yellow/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "Gerando…" : "Gerar notícia"}

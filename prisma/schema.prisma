@@ -13,25 +13,27 @@ datasource db {
 }
 
 model Article {
-  id          String   @id @default(cuid())
-  sources     String // JSON string: { type: "youtube"|"webpage"; url: string; title: string; content: string; videoId?: string }[]
-  title       String
-  subtitle    String
-  coverImage  String?
-  sections    String // JSON string: { heading: string; text: string; image?: string }[]
-  status      String   @default("done") // pending | done | failed
-  textModel         String
-  imageModel        String
-  profileId         String? // id do perfil usado (para releituras futuras, ex.: revisão); pode não existir mais
-  profileName       String? // nome do perfil de instrução usado (snapshot; null = padrão neutro)
-  subtitleCount     Int? // parâmetros de entrada escolhidos na geração; null = notícia anterior a esse campo
-  paragraphCount    Int?
-  photoCount        Int?
-  extraInstructions String?
-  instagramCaption  String?
-  instagramImage    String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  sources             String // JSON string: { type: "youtube"|"webpage"; url: string; title: string; content: string; videoId?: string }[]
+  title               String
+  subtitle            String
+  coverImage          String?
+  sections            String // JSON string: { heading: string; text: string; image?: string }[]
+  status              String   @default("done") // pending | done | failed
+  textModel           String
+  imageModel          String
+  profileId           String? // id do perfil usado (para releituras futuras, ex.: revisão); pode não existir mais
+  profileName         String? // nome do perfil de instrução usado (snapshot; null = padrão neutro)
+  subtitleCount       Int? // parâmetros de entrada escolhidos na geração; null = notícia anterior a esse campo
+  paragraphCount      Int?
+  photoCount          Int?
+  extraInstructions   String?
+  instagramCaption    String?
+  instagramImage      String? // DEPRECATED: só lido pra notícias antigas (1 imagem só); gerações novas usam instagramImages
+  instagramImages     String? // JSON string: string[] de URLs — carrossel do Instagram (1 ou mais)
+  instagramPhotoCount Int? // quantidade de fotos pedida pro carrossel; null = notícia anterior a esse campo
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model Settings {
@@ -42,13 +44,13 @@ model Settings {
 }
 
 model InstructionProfile {
-  id                  String   @id @default(cuid())
-  name                String
-  prompt              String
-  styleguideFileName  String? // nome original do arquivo enviado pelo usuário
-  styleguidePath      String? // caminho público do arquivo salvo (/styleguides/{id}/...)
-  styleguideColors    String? // JSON: string[] de cores hex extraídas do arquivo
-  styleguideSummary   String? // texto/contexto extraído do arquivo (ex.: trecho de PDF)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  name               String
+  prompt             String
+  styleguideFileName String? // nome original do arquivo enviado pelo usuário
+  styleguidePath     String? // caminho público do arquivo salvo (/styleguides/{id}/...)
+  styleguideColors   String? // JSON: string[] de cores hex extraídas do arquivo
+  styleguideSummary  String? // texto/contexto extraído do arquivo (ex.: trecho de PDF)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }

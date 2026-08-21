@@ -20,6 +20,17 @@ interface ArticleSourceRef {
   title: string;
 }
 
+function DestinationLabel({ children }: { children: string }) {
+  return (
+    <div className="mt-12 flex items-center gap-3">
+      <span className="shrink-0 rounded-full bg-accent-yellow/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent-yellow">
+        {children}
+      </span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
 export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
   const { id } = await props.params;
 
@@ -30,6 +41,16 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
   const sources: ArticleSourceRef[] = JSON.parse(article.sources);
   const version = article.updatedAt.getTime();
   const withVersion = (url: string) => `${url}?v=${version}`;
+
+  const hasPortal = sections.length > 0 || Boolean(article.coverImage);
+  const hasInstagram = Boolean(article.instagramCaption);
+  const instagramImageUrls: string[] = (
+    article.instagramImages
+      ? (JSON.parse(article.instagramImages) as string[])
+      : article.instagramImage
+        ? [article.instagramImage]
+        : []
+  ).map(withVersion);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -94,56 +115,68 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
           </span>
         </div>
 
-        {article.coverImage && (
-          <RemovableImage
-            articleId={article.id}
-            target="cover"
-            src={withVersion(article.coverImage)}
-            alt={article.title}
-            sizes="(min-width: 768px) 768px, 100vw"
-            className="relative mt-8 aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface"
-          />
+        {hasPortal && (
+          <>
+            <DestinationLabel>Portal</DestinationLabel>
+
+            {article.coverImage && (
+              <RemovableImage
+                articleId={article.id}
+                target="cover"
+                src={withVersion(article.coverImage)}
+                alt={article.title}
+                sizes="(min-width: 768px) 768px, 100vw"
+                className="relative mt-6 aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface"
+              />
+            )}
+
+            <article className="mt-8 space-y-10">
+              {sections.map((section, index) => (
+                <section key={index}>
+                  <EditableText
+                    as="h2"
+                    articleId={article.id}
+                    target={{ type: "section", index, part: "heading" }}
+                    initialValue={section.heading}
+                    className="text-xl font-bold"
+                  />
+                  {section.image && (
+                    <RemovableImage
+                      articleId={article.id}
+                      target={{ section: index }}
+                      src={withVersion(section.image)}
+                      alt={section.heading}
+                      sizes="(min-width: 768px) 768px, 100vw"
+                      className="relative my-4 aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface"
+                    />
+                  )}
+                  <EditableText
+                    as="p"
+                    articleId={article.id}
+                    target={{ type: "section", index, part: "text" }}
+                    initialValue={section.text}
+                    multiline
+                    className="mt-3 leading-relaxed text-foreground/80"
+                  />
+                </section>
+              ))}
+            </article>
+          </>
         )}
 
-        <article className="mt-10 space-y-10">
-          {sections.map((section, index) => (
-            <section key={index}>
-              <EditableText
-                as="h2"
-                articleId={article.id}
-                target={{ type: "section", index, part: "heading" }}
-                initialValue={section.heading}
-                className="text-xl font-bold"
-              />
-              {section.image && (
-                <RemovableImage
-                  articleId={article.id}
-                  target={{ section: index }}
-                  src={withVersion(section.image)}
-                  alt={section.heading}
-                  sizes="(min-width: 768px) 768px, 100vw"
-                  className="relative my-4 aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface"
-                />
-              )}
-              <EditableText
-                as="p"
-                articleId={article.id}
-                target={{ type: "section", index, part: "text" }}
-                initialValue={section.text}
-                multiline
-                className="mt-3 leading-relaxed text-foreground/80"
-              />
-            </section>
-          ))}
-        </article>
+        {hasInstagram && (
+          <>
+            <DestinationLabel>Instagram</DestinationLabel>
 
-        {article.instagramCaption && (
-          <InstagramPostCard
-            articleId={article.id}
-            caption={article.instagramCaption}
-            imageUrl={article.instagramImage ? withVersion(article.instagramImage) : undefined}
-            alt={`Post de Instagram sobre ${article.title}`}
-          />
+            <div className="mt-6">
+              <InstagramPostCard
+                articleId={article.id}
+                caption={article.instagramCaption!}
+                imageUrls={instagramImageUrls}
+                alt={`Post de Instagram sobre ${article.title}`}
+              />
+            </div>
+          </>
         )}
 
         <ReviseForm

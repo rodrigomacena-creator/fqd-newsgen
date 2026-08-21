@@ -10,30 +10,60 @@ Regras:
 // silenciosamente as demais fontes quando o usuário combina várias.
 export const MULTI_SOURCE_INSTRUCTION = `Se houver mais de uma fonte, todas precisam aparecer no resultado final — nunca ignore uma fonte, mesmo que o assunto dela seja completamente diferente das demais. Sintetize um único texto coerente que combine as informações de todas elas; não trate cada fonte como uma seção separada nem apenas concatene os conteúdos, mas se os assuntos forem muito diferentes entre si, é aceitável estruturar a matéria com seções que abordem cada assunto claramente. Se as fontes trouxerem informações conflitantes sobre o mesmo fato, mencione a divergência em vez de escolher uma versão arbitrariamente.`;
 
-// Estrutura (quantidade de seções/parágrafos/fotos e instruções extras) é escolhida pelo
-// usuário a cada geração, não fixada no perfil — por isso é sempre injetada à parte,
-// depois do prompt do perfil, e tem prioridade sobre qualquer contagem que porventura
-// esteja escrita no texto do perfil (perfis antigos podem ter ficado com texto assim).
+// Quais destinos (Portal / Instagram) o usuário escolheu pra essa geração — sempre
+// injetada, controla quais campos do JSON de resposta são preenchidos de verdade e
+// quais ficam vazios. "title"/"subtitle" sempre existem (identificam a notícia no
+// histórico mesmo quando Portal não foi escolhido).
+export function buildDestinationsInstruction(params: {
+  wantPortal: boolean;
+  wantInstagram: boolean;
+  instagramPhotoCount: number;
+  extraInstructions?: string;
+}): string {
+  const { wantPortal, wantInstagram, instagramPhotoCount, extraInstructions } = params;
+
+  const parts = [
+    `Esta geração tem destinos específicos escolhidos pelo usuário — siga exatamente o que está descrito abaixo pra cada campo do JSON de resposta:`,
+    `- "title" e "subtitle": escreva sempre, mesmo quando a matéria de portal não foi pedida — servem pra identificar esta notícia no histórico do sistema.`,
+    wantPortal
+      ? `- Portal: SIM foi selecionado. Gere a matéria completa — "coverImagePrompt" e o array "sections", seguindo a estrutura obrigatória detalhada mais abaixo.`
+      : `- Portal: NÃO foi selecionado. Deixe "coverImagePrompt" como string vazia "" e "sections" como array vazio [].`,
+    wantInstagram
+      ? `- Instagram (reels/shorts): SIM foi selecionado. Gere "instagram.caption" (legenda) e "instagram.imagePrompts", um array com EXATAMENTE ${instagramPhotoCount} prompt${instagramPhotoCount === 1 ? "" : "s"} de imagem em inglês.${
+          instagramPhotoCount > 1
+            ? ` Como são ${instagramPhotoCount} imagens formando um carrossel, cada prompt deve ilustrar um ângulo, momento ou aspecto diferente do assunto — nunca repita a mesma cena em prompts diferentes.`
+            : ""
+        }`
+      : `- Instagram: NÃO foi selecionado. Deixe "instagram.caption" como string vazia "" e "instagram.imagePrompts" como array vazio [].`,
+  ];
+
+  if (extraInstructions?.trim()) {
+    parts.push(`\nInstrução adicional do usuário para esta notícia (vale pra todos os destinos selecionados): "${extraInstructions.trim()}"`);
+  }
+
+  return parts.join("\n");
+}
+
+// Estrutura (quantidade de seções/parágrafos/fotos) é escolhida pelo usuário a cada
+// geração, não fixada no perfil — por isso é sempre injetada à parte, depois do prompt
+// do perfil, e tem prioridade sobre qualquer contagem que porventura esteja escrita no
+// texto do perfil (perfis antigos podem ter ficado com texto assim). Só se aplica quando
+// o destino Portal foi selecionado (ver buildDestinationsInstruction).
 export function buildStructureInstruction(params: {
   subtitleCount: number;
   paragraphCount: number;
   photoCount: number;
-  extraInstructions?: string;
 }): string {
-  const { subtitleCount, paragraphCount, photoCount, extraInstructions } = params;
+  const { subtitleCount, paragraphCount, photoCount } = params;
 
   const parts = [
-    `Estrutura obrigatória desta matéria (tem prioridade sobre qualquer contagem de seções/parágrafos/imagens mencionada acima):`,
+    `Estrutura obrigatória da matéria de portal (tem prioridade sobre qualquer contagem de seções/parágrafos/imagens mencionada acima):`,
     `- Exatamente ${subtitleCount} ${subtitleCount === 1 ? "seção" : "seções"}, cada uma com um subtítulo interno.`,
     `- Um total de ${paragraphCount} ${paragraphCount === 1 ? "parágrafo" : "parágrafos"} de corpo de texto, distribuídos entre as seções (as mais relevantes podem ficar com mais parágrafos que as outras).`,
     photoCount > 0
       ? `- Escreva um prompt de imagem (coverImagePrompt/imagePrompt) apenas para as ${photoCount} primeiras ${photoCount === 1 ? "seção" : "seções"} listadas — as demais seções não devem ter "imagePrompt" (omita o campo ou deixe como string vazia).`
       : `- Não escreva "imagePrompt" para nenhuma seção (deixe vazio) — esta matéria não deve ter imagens de seção, apenas a capa.`,
   ];
-
-  if (extraInstructions?.trim()) {
-    parts.push(`\nInstrução adicional do usuário para esta matéria: "${extraInstructions.trim()}"`);
-  }
 
   return parts.join("\n");
 }

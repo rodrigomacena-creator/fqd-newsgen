@@ -153,19 +153,33 @@ reais encontradas ao construir o projeto, não só a estrutura.
 - `src/lib/generateArticle.ts` + `src/lib/prompts.ts` — geração da matéria + post de Instagram
   (uma chamada de IA só). O prompt do sistema é montado em camadas SEMPRE nesta ordem:
   `instructionPrompt` (perfil escolhido, ou `DEFAULT_ARTICLE_PROMPT` se nenhum) → sempre
-  `MULTI_SOURCE_INSTRUCTION` → sempre `buildStructureInstruction(...)` → `styleguideContext` →
-  `JSON_FORMAT_INSTRUCTIONS`. As camadas "sempre" existem porque perfis customizados SUBSTITUEM
-  `instructionPrompt` por completo — sem injetar essas regras à parte, um perfil escrito sem
-  pensar em múltiplas fontes (ou um perfil antigo com contagem de seção hardcoded) faz a IA
-  ignorar regras importantes silenciosamente. **Quantidade de subtítulos/parágrafos/fotos e
-  instruções extras são escolhidas pelo usuário a cada notícia** (campos em `src/app/page.tsx`,
-  vão pro corpo do POST `/api/generate` como `subtitleCount`/`paragraphCount`/`photoCount`/
-  `extraInstructions`) — **não** ficam mais salvas no perfil (isso existiu brevemente como
-  `InstructionProfile.maxSectionImages` e foi removido; se vir menção a isso em versões antigas
-  do código/migrations, é histórico, não use como referência). Esses 4 valores também ficam
-  gravados no próprio `Article` (colunas nullable — notícias geradas antes dessa migração têm
-  `null`) e aparecem pro usuário no botão "Exibir parâmetros de entrada" no fim de
+  `MULTI_SOURCE_INSTRUCTION` → sempre `buildDestinationsInstruction(...)` → `buildStructureInstruction(...)`
+  (só se `wantPortal`) → `styleguideContext` → `JSON_FORMAT_INSTRUCTIONS`. As camadas "sempre"
+  existem porque perfis customizados SUBSTITUEM `instructionPrompt` por completo — sem injetar
+  essas regras à parte, um perfil escrito sem pensar em múltiplas fontes (ou um perfil antigo com
+  contagem de seção hardcoded) faz a IA ignorar regras importantes silenciosamente. **Quantidade
+  de subtítulos/parágrafos/fotos e instruções extras são escolhidas pelo usuário a cada
+  notícia** (campos em `src/app/page.tsx`, vão pro corpo do POST `/api/generate` como
+  `subtitleCount`/`paragraphCount`/`photoCount`/`extraInstructions`) — **não** ficam mais salvas
+  no perfil (isso existiu brevemente como `InstructionProfile.maxSectionImages` e foi removido;
+  se vir menção a isso em versões antigas do código/migrations, é histórico, não use como
+  referência). Esses 4 valores também ficam gravados no próprio `Article` (colunas nullable —
+  notícias geradas antes dessa migração têm `null`) e aparecem pro usuário no botão "Exibir
+  parâmetros de entrada" no fim de
   `/noticia/[id]` (`GenerationParamsModal.tsx`), que trata `null` com fallback ("—"/"Nenhuma").
+- **Destinos (Portal / Instagram)**: escolhidos por checkbox na home (`wantPortal`/`wantInstagram`,
+  pelo menos um obrigatório), enviados como `destinations: string[]` (`"portal"`/`"instagram"`)
+  pro POST `/api/generate`. **Não existe coluna `destinations` no `Article`** — de propósito, pra
+  não duplicar estado: se um destino foi gerado é derivado dos próprios dados (`hasPortal =
+  sections.length > 0 || coverImage`, `hasInstagram = Boolean(instagramCaption)`), tanto em
+  `/noticia/[id]/page.tsx` quanto (implicitamente) no `reviseArticle.ts`, que também nunca deve
+  "ressuscitar" um destino que não existia originalmente (ver `SYSTEM_PROMPT` de
+  `reviseArticle.ts`). `title`/`subtitle` são gerados sempre, mesmo sem Portal, só pra
+  identificar a notícia no histórico. Instagram suporta carrossel: `instagramPhotoCount`
+  (1-10) controla quantas imagens, salvas em `instagramImages` (JSON de URLs, arquivos
+  `instagram-0.png`, `instagram-1.png`...). O campo antigo `instagramImage` (uma imagem só,
+  arquivo `instagram.png`) é lido só como fallback pra notícias anteriores a essa mudança —
+  gerações novas nunca escrevem nele.
 - `src/lib/reviseArticle.ts` — fluxo "Pedir ajuste à IA": edita a MESMA notícia em vigor, nunca
   cria uma nova
 - `src/lib/generateImages.ts` — wrapper da Images API da OpenRouter

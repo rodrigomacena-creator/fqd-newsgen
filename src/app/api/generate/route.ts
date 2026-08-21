@@ -19,6 +19,8 @@ const MIN_PARAGRAPHS = 1;
 const MAX_PARAGRAPHS = 15;
 const MIN_SUBTITLES = 1;
 const MAX_SUBTITLES = 10;
+const MIN_INSTAGRAM_PHOTOS = 1;
+const MAX_INSTAGRAM_PHOTOS = 10;
 
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
   const n = Math.round(Number(value));
@@ -32,9 +34,11 @@ export async function POST(request: Request) {
     textModel?: string;
     imageModel?: string;
     profileId?: string;
+    destinations?: string[];
     subtitleCount?: number;
     paragraphCount?: number;
     photoCount?: number;
+    instagramPhotoCount?: number;
     extraInstructions?: string;
   };
   try {
@@ -54,6 +58,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const destinations = body.destinations ?? ["instagram", "portal"];
+  const wantPortal = destinations.includes("portal");
+  const wantInstagram = destinations.includes("instagram");
+  if (!wantPortal && !wantInstagram) {
+    return NextResponse.json(
+      { error: "Escolha ao menos um destino (Instagram ou Portal)." },
+      { status: 400 }
+    );
+  }
+
   const subtitleCount = clampInt(body.subtitleCount, 2, MIN_SUBTITLES, MAX_SUBTITLES);
   const paragraphCount = clampInt(
     body.paragraphCount,
@@ -62,6 +76,12 @@ export async function POST(request: Request) {
     MAX_PARAGRAPHS
   );
   const photoCount = clampInt(body.photoCount, Math.min(2, subtitleCount), 0, subtitleCount);
+  const instagramPhotoCount = clampInt(
+    body.instagramPhotoCount,
+    1,
+    MIN_INSTAGRAM_PHOTOS,
+    MAX_INSTAGRAM_PHOTOS
+  );
   const extraInstructions = body.extraInstructions?.trim() || undefined;
 
   try {
@@ -78,50 +98,64 @@ export async function POST(request: Request) {
     const sourcesText = buildSourcesText(sources);
     const draft = await generateArticleDraft(
       sourcesText,
-      { subtitleCount, paragraphCount, photoCount, extraInstructions },
+      {
+        wantPortal,
+        wantInstagram,
+        subtitleCount,
+        paragraphCount,
+        photoCount,
+        instagramPhotoCount,
+        extraInstructions,
+      },
       textModel,
       instructionPrompt,
       styleguideContext
     );
 
     const articleId = randomUUID();
-    const coverFallback = firstYoutubeThumbnail(sources);
 
-    const coverImage = await generateAndSaveImage(
-      draft.coverImagePrompt,
-      articleId,
-      "cover",
-      imageModel
-    ).catch(() => coverFallback);
+    let coverImage: string | undefined;
+    let sections: { heading: string; text: string; image?: string }[] = [];
 
-    const sections = await Promise.all(
-      draft.sections.map(async (section, index) => {
-        if (index >= photoCount || !section.imagePrompt?.trim()) {
-          return { heading: section.heading, text: section.text };
-        }
+    if (wantPortal) {
+      const coverFallback = firstYoutubeThumbnail(sources);
+      coverImage = await generateAndSaveImage(
+        draft.coverImagePrompt,
+        articleId,
+        "cover",
+        imageModel
+      ).catch(() => coverFallback);
 
-        const image = await generateAndSaveImage(
-          section.imagePrompt,
-          articleId,
-          `section-${index}`,
-          imageModel
-        ).catch(() => undefined);
+      sections = await Promise.all(
+        draft.sections.map(async (section, index) => {
+          if (index >= photoCount || !section.imagePrompt?.trim()) {
+            return { heading: section.heading, text: section.text };
+          }
 
-        return {
-          heading: section.heading,
-          text: section.text,
-          image,
-        };
-      })
-    );
+          const image = await generateAndSaveImage(
+            section.imagePrompt,
+            articleId,
+            `section-${index}`,
+            imageModel
+          ).catch(() => undefined);
 
-    const instagramImage = await generateAndSaveImage(
-      draft.instagram.imagePrompt,
-      articleId,
-      "instagram",
-      imageModel,
-      "1:1"
-    ).catch(() => coverImage);
+          return { heading: section.heading, text: section.text, image };
+        })
+      );
+    }
+
+    let instagramImages: string[] = [];
+    if (wantInstagram) {
+      const prompts = draft.instagram.imagePrompts.slice(0, instagramPhotoCount);
+      const generated = await Promise.all(
+        prompts.map((prompt, index) =>
+          generateAndSaveImage(prompt, articleId, `instagram-${index}`, imageModel, "1:1").catch(
+            () => undefined
+          )
+        )
+      );
+      instagramImages = generated.filter((url): url is string => Boolean(url));
+    }
 
     const article = await prisma.article.create({
       data: {
@@ -129,18 +163,19 @@ export async function POST(request: Request) {
         sources: JSON.stringify(sources),
         title: draft.title,
         subtitle: draft.subtitle,
-        coverImage,
+        coverImage: coverImage ?? null,
         sections: JSON.stringify(sections),
         textModel,
         imageModel,
         profileId: profile?.id ?? null,
         profileName,
-        subtitleCount,
-        paragraphCount,
-        photoCount,
+        subtitleCount: wantPortal ? subtitleCount : null,
+        paragraphCount: wantPortal ? paragraphCount : null,
+        photoCount: wantPortal ? photoCount : null,
         extraInstructions: extraInstructions ?? null,
-        instagramCaption: draft.instagram.caption,
-        instagramImage,
+        instagramCaption: wantInstagram ? draft.instagram.caption : null,
+        instagramImages: wantInstagram ? JSON.stringify(instagramImages) : null,
+        instagramPhotoCount: wantInstagram ? instagramPhotoCount : null,
       },
     });
 

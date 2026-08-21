@@ -13,7 +13,7 @@ interface PatchBody {
   subtitle?: string;
   instagramCaption?: string;
   section?: { index: number; heading?: string; text?: string };
-  removeImage?: "cover" | "instagram" | number;
+  removeImage?: "cover" | "instagram" | number | { instagramImage: number };
 }
 
 export async function PATCH(
@@ -41,6 +41,7 @@ export async function PATCH(
     sections?: string;
     coverImage?: string | null;
     instagramImage?: string | null;
+    instagramImages?: string | null;
   } = {};
 
   if (typeof body.title === "string") {
@@ -99,6 +100,25 @@ export async function PATCH(
       }
       await deleteBlobIfOwned(section.image);
       section.image = undefined;
+    } else if (
+      typeof body.removeImage === "object" &&
+      body.removeImage !== null &&
+      "instagramImage" in body.removeImage
+    ) {
+      const images: string[] = article.instagramImages
+        ? JSON.parse(article.instagramImages)
+        : article.instagramImage
+          ? [article.instagramImage]
+          : [];
+      const index = body.removeImage.instagramImage;
+      const removedUrl = images[index];
+      if (removedUrl === undefined) {
+        return NextResponse.json({ error: "Imagem não encontrada." }, { status: 400 });
+      }
+      await deleteBlobIfOwned(removedUrl);
+      images.splice(index, 1);
+      data.instagramImages = JSON.stringify(images);
+      data.instagramImage = null;
     }
   }
 

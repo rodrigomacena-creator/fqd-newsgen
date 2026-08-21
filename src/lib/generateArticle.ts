@@ -1,10 +1,18 @@
 import { getOpenRouterClient, OPENROUTER_TEXT_MODEL, extractCompletionText } from "./openrouter";
-import { DEFAULT_ARTICLE_PROMPT, MULTI_SOURCE_INSTRUCTION, buildStructureInstruction } from "./prompts";
+import {
+  DEFAULT_ARTICLE_PROMPT,
+  MULTI_SOURCE_INSTRUCTION,
+  buildDestinationsInstruction,
+  buildStructureInstruction,
+} from "./prompts";
 
 export interface ArticleStructure {
+  wantPortal: boolean;
+  wantInstagram: boolean;
   subtitleCount: number;
   paragraphCount: number;
   photoCount: number;
+  instagramPhotoCount: number;
   extraInstructions?: string;
 }
 
@@ -16,7 +24,7 @@ export interface ArticleSectionDraft {
 
 export interface InstagramPostDraft {
   caption: string;
-  imagePrompt: string;
+  imagePrompts: string[];
 }
 
 export interface ArticleDraft {
@@ -27,9 +35,9 @@ export interface ArticleDraft {
   instagram: InstagramPostDraft;
 }
 
-const JSON_FORMAT_INSTRUCTIONS = `Além da matéria, escreva também um post para o Instagram resumindo a notícia:
+const JSON_FORMAT_INSTRUCTIONS = `Formato de resposta:
 - "instagram.caption": legenda envolvente em português do Brasil, linguagem direta e atraente para redes sociais (pode usar emojis com moderação), resumindo o essencial da notícia, terminando com 3 a 5 hashtags relevantes ao tema.
-- "instagram.imagePrompt": prompt em inglês para uma imagem quadrada que resuma visualmente a notícia, em estilo fotografia realista (igual às imagens da matéria) — NÃO é uma peça de design gráfico, banner ou capa de rede social, é uma foto.
+- "instagram.imagePrompts": array de prompts em inglês, cada um para uma imagem quadrada em estilo fotografia realista (igual às imagens da matéria) — NÃO é uma peça de design gráfico, banner ou capa de rede social, é uma foto.
 
 IMPORTANTE sobre todos os prompts de imagem (capa, seções e Instagram): nunca peça texto, palavras, títulos, legendas, logos, marcas d'água ou letras escritas dentro da imagem, e nunca descreva a imagem como "banner", "graphic", "poster", "thumbnail" ou "cover" — isso induz o gerador de imagem a desenhar texto sozinho, mesmo sem pedir. Descreva sempre como uma fotografia realista de uma cena, sem nenhum elemento gráfico ou de texto. O texto da notícia já aparece separadamente na página.
 
@@ -42,7 +50,7 @@ Responda APENAS com um JSON válido, sem markdown, sem comentários, seguindo ex
   "sections": [
     { "heading": "string", "text": "string", "imagePrompt": "string" }
   ],
-  "instagram": { "caption": "string", "imagePrompt": "string" }
+  "instagram": { "caption": "string", "imagePrompts": ["string"] }
 }`;
 
 function extractJson(raw: string): string {
@@ -70,7 +78,8 @@ export async function generateArticleDraft(
   const systemPrompt = [
     instructionPrompt,
     MULTI_SOURCE_INSTRUCTION,
-    buildStructureInstruction(structure),
+    buildDestinationsInstruction(structure),
+    structure.wantPortal ? buildStructureInstruction(structure) : null,
     styleguideContext,
     JSON_FORMAT_INSTRUCTIONS,
   ]
@@ -101,13 +110,15 @@ export async function generateArticleDraft(
     );
   }
 
+  if (!Array.isArray(parsed.sections)) parsed.sections = [];
+  if (!parsed.instagram) parsed.instagram = { caption: "", imagePrompts: [] };
+  if (!Array.isArray(parsed.instagram.imagePrompts)) parsed.instagram.imagePrompts = [];
+
   if (
     !parsed.title ||
     !parsed.subtitle ||
-    !Array.isArray(parsed.sections) ||
-    parsed.sections.length === 0 ||
-    !parsed.instagram?.caption ||
-    !parsed.instagram?.imagePrompt
+    (structure.wantPortal && parsed.sections.length === 0) ||
+    (structure.wantInstagram && (!parsed.instagram.caption || parsed.instagram.imagePrompts.length === 0))
   ) {
     console.error("Resposta da IA incompleta:", raw);
     throw new Error("A resposta da IA está incompleta.");
