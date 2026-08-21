@@ -30,9 +30,9 @@ export default function Home() {
 
   const [urls, setUrls] = useState<string[]>([""]);
   const [profileId, setProfileId] = useState("");
-  const [subtitleCount, setSubtitleCount] = useState(4);
-  const [paragraphCount, setParagraphCount] = useState(8);
-  const [photoCount, setPhotoCount] = useState(4);
+  const [subtitleCount, setSubtitleCount] = useState(2);
+  const [paragraphCount, setParagraphCount] = useState(5);
+  const [photoCount, setPhotoCount] = useState(2);
   const [extraInstructions, setExtraInstructions] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [textModel, setTextModel] = useState("");
@@ -266,7 +266,7 @@ export default function Home() {
 
             <div className="mt-4">
               <label htmlFor="profile" className="text-sm font-medium">
-                Destino
+                Perfil de comunicação
               </label>
               <select
                 id="profile"

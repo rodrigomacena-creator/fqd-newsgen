@@ -54,14 +54,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const subtitleCount = clampInt(body.subtitleCount, 4, MIN_SUBTITLES, MAX_SUBTITLES);
+  const subtitleCount = clampInt(body.subtitleCount, 2, MIN_SUBTITLES, MAX_SUBTITLES);
   const paragraphCount = clampInt(
     body.paragraphCount,
-    Math.max(8, subtitleCount),
+    Math.max(5, subtitleCount),
     MIN_PARAGRAPHS,
     MAX_PARAGRAPHS
   );
-  const photoCount = clampInt(body.photoCount, Math.min(4, subtitleCount), 0, subtitleCount);
+  const photoCount = clampInt(body.photoCount, Math.min(2, subtitleCount), 0, subtitleCount);
   const extraInstructions = body.extraInstructions?.trim() || undefined;
 
   try {

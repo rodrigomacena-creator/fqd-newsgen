@@ -83,10 +83,19 @@ reais encontradas ao construir o projeto, não só a estrutura.
     esperado, não é bug. Pra validar a lógica em si, chame a API diretamente (fetch/curl) e
     confira o resultado no banco/disco.
 
-11. **Identidade visual**: tema escuro único (sem light mode), tokens de cor como CSS vars em
-    `globals.css` (`--background #121214`, `--accent-yellow #FFD02A`, etc.), fonte Poppins —
-    replicado do site real da FQD Studios (não confundir com a paleta roxa antiga do repo local
-    `fqd-studios`, que está desatualizada).
+11. **Identidade visual**: claro é o tema padrão, escuro é opcional via alternador no header
+    (`ThemeToggle.tsx`) — tokens de cor como CSS vars em `globals.css`, com `:root` definindo os
+    valores claros e `[data-theme="dark"]` sobrescrevendo pros valores escuros originais
+    (`--background #121214`, `--accent-yellow #FFD02A`, etc. — accent colors são os mesmos nos
+    dois temas, só background/foreground/surface/border mudam). Fonte Poppins, replicado do site
+    real da FQD Studios (não confundir com a paleta roxa antiga do repo local `fqd-studios`, que
+    está desatualizada). Preferência salva em `localStorage("theme")`; `layout.tsx` tem um
+    `<script>` inline no `<head>` que aplica `data-theme="dark"` ANTES da primeira pintura (evita
+    flash do tema errado) — só precisa agir no caso escuro, já que claro é o padrão do `:root`
+    sem atributo nenhum. **Importante**: o `<body>` precisa receber as cores via classes Tailwind
+    (`bg-background text-foreground` no `className`), não via uma regra CSS solta tipo
+    `body { background: var(--background); }` em `globals.css` — essa segunda forma se mostrou
+    instável pra refletir mudanças de `data-theme` em runtime nos testes feitos aqui.
 
 12. **Storage é 100% remoto (Postgres + Vercel Blob), nunca filesystem local.** O projeto rodava
     originalmente com SQLite (`dev.db`) e imagens em `public/generated`/`public/styleguides` —
