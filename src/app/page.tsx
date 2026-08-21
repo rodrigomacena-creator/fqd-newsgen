@@ -236,21 +236,6 @@ export default function Home() {
             )}
           </section>
 
-          <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Instruções adicionais <span className="font-normal text-text-secondary">(opcional)</span>
-            </h2>
-            <textarea
-              id="extra-instructions"
-              value={extraInstructions}
-              onChange={(e) => setExtraInstructions(e.target.value)}
-              disabled={loading}
-              rows={2}
-              placeholder='Ex.: "foque na parte financeira", "evite spoilers", "cite o nome do canal"…'
-              className="mt-3 w-full resize-y rounded-lg border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-accent-yellow disabled:opacity-50"
-            />
-          </section>
-
           {wantInstagram && (
             <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
@@ -284,7 +269,7 @@ export default function Home() {
           {wantPortal && (
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Estrutura da matéria
+              Portal - Estrutura da matéria
             </h2>
 
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -347,6 +332,21 @@ export default function Home() {
             </div>
           </section>
           )}
+
+          <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              Instruções adicionais <span className="font-normal text-text-secondary">(opcional)</span>
+            </h2>
+            <textarea
+              id="extra-instructions"
+              value={extraInstructions}
+              onChange={(e) => setExtraInstructions(e.target.value)}
+              disabled={loading}
+              rows={2}
+              placeholder='Ex.: "foque na parte financeira", "evite spoilers", "cite o nome do canal"…'
+              className="mt-3 w-full resize-y rounded-lg border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-accent-yellow disabled:opacity-50"
+            />
+          </section>
 
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
