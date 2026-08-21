@@ -135,8 +135,8 @@ export function HistoryList({
               className="h-4 w-4 shrink-0 accent-accent-yellow"
             />
 
-            <div className="relative h-16 w-28 shrink-0 overflow-hidden rounded-lg border border-border bg-surface-2">
-              {article.coverImage && (
+            <div className="relative flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-2">
+              {article.coverImage ? (
                 <Image
                   src={article.coverImage}
                   alt={article.title}
@@ -145,6 +145,23 @@ export function HistoryList({
                   className="object-cover"
                   unoptimized
                 />
+              ) : (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  className="h-6 w-6 text-text-secondary/40"
+                  aria-hidden
+                >
+                  <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                  <circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" strokeWidth="1.5" />
+                  <path
+                    d="M4 16.5l5-5 3.5 3.5L16 11l4 4.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               )}
             </div>
 

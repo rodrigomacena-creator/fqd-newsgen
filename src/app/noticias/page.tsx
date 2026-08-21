@@ -12,6 +12,43 @@ function parseIntParam(value: string | string[] | undefined, fallback: number): 
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
+interface StoredSection {
+  heading: string;
+  text: string;
+  image?: string;
+}
+
+// Prioriza a capa do portal; se a notícia não teve Portal (ex.: só Instagram) ou a
+// capa falhou na geração, usa qualquer outra imagem que exista — primeiro de uma
+// seção, depois do carrossel/legado do Instagram — pra sempre ter algo no histórico.
+function pickDisplayImage(article: {
+  coverImage: string | null;
+  sections: string;
+  instagramImages: string | null;
+  instagramImage: string | null;
+}): string | null {
+  if (article.coverImage) return article.coverImage;
+
+  try {
+    const sections: StoredSection[] = JSON.parse(article.sections);
+    const sectionImage = sections.find((s) => s.image)?.image;
+    if (sectionImage) return sectionImage;
+  } catch {
+    // sections inválido — ignora e segue tentando outras fontes de imagem
+  }
+
+  if (article.instagramImages) {
+    try {
+      const images: string[] = JSON.parse(article.instagramImages);
+      if (images[0]) return images[0];
+    } catch {
+      // instagramImages inválido — ignora
+    }
+  }
+
+  return article.instagramImage ?? null;
+}
+
 export default async function HistoryPage(props: PageProps<"/noticias">) {
   const searchParams = await props.searchParams;
 
@@ -37,7 +74,7 @@ export default async function HistoryPage(props: PageProps<"/noticias">) {
     id: article.id,
     title: article.title,
     subtitle: article.subtitle,
-    coverImage: article.coverImage,
+    coverImage: pickDisplayImage(article),
     dateLabel: new Intl.DateTimeFormat("pt-BR", {
       dateStyle: "short",
       timeStyle: "short",
