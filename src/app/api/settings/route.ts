@@ -7,7 +7,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  let body: { defaultTextModel?: string; defaultImageModel?: string };
+  let body: {
+    defaultTextModel?: string;
+    defaultImageModel?: string;
+    defaultInstagramImageModel?: string;
+  };
   try {
     body = await request.json();
   } catch {
@@ -16,14 +20,19 @@ export async function POST(request: Request) {
 
   const defaultTextModel = body.defaultTextModel?.trim();
   const defaultImageModel = body.defaultImageModel?.trim();
+  const defaultInstagramImageModel = body.defaultInstagramImageModel?.trim();
 
-  if (!defaultTextModel || !defaultImageModel) {
+  if (!defaultTextModel || !defaultImageModel || !defaultInstagramImageModel) {
     return NextResponse.json(
-      { error: "Informe o modelo de texto e o modelo de imagem." },
+      { error: "Informe o modelo de texto, o de imagem e o de imagem do Instagram." },
       { status: 400 }
     );
   }
 
-  const settings = await updateSettings({ defaultTextModel, defaultImageModel });
+  const settings = await updateSettings({
+    defaultTextModel,
+    defaultImageModel,
+    defaultInstagramImageModel,
+  });
   return NextResponse.json(settings);
 }

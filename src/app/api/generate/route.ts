@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     urls?: string[];
     textModel?: string;
     imageModel?: string;
+    instagramImageModel?: string;
     profileId?: string;
     destinations?: string[];
     subtitleCount?: number;
@@ -88,6 +89,8 @@ export async function POST(request: Request) {
     const settings = await getSettings();
     const textModel = body.textModel?.trim() || settings.defaultTextModel;
     const imageModel = body.imageModel?.trim() || settings.defaultImageModel;
+    const instagramImageModel =
+      body.instagramImageModel?.trim() || settings.defaultInstagramImageModel;
 
     const profile = body.profileId ? await getInstructionProfile(body.profileId) : null;
     const instructionPrompt = profile?.prompt || DEFAULT_ARTICLE_PROMPT;
@@ -149,9 +152,13 @@ export async function POST(request: Request) {
       const prompts = draft.instagram.imagePrompts.slice(0, instagramPhotoCount);
       const generated = await Promise.all(
         prompts.map((prompt, index) =>
-          generateAndSaveImage(prompt, articleId, `instagram-${index}`, imageModel, "1:1").catch(
-            () => undefined
-          )
+          generateAndSaveImage(
+            prompt,
+            articleId,
+            `instagram-${index}`,
+            instagramImageModel,
+            "1:1"
+          ).catch(() => undefined)
         )
       );
       instagramImages = generated.filter((url): url is string => Boolean(url));
@@ -167,6 +174,7 @@ export async function POST(request: Request) {
         sections: JSON.stringify(sections),
         textModel,
         imageModel,
+        instagramImageModel: wantInstagram ? instagramImageModel : null,
         profileId: profile?.id ?? null,
         profileName,
         subtitleCount: wantPortal ? subtitleCount : null,

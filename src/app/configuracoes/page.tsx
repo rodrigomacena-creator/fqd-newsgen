@@ -11,6 +11,7 @@ export default function SettingsPage() {
 
   const [textModel, setTextModel] = useState("");
   const [imageModel, setImageModel] = useState("");
+  const [instagramImageModel, setInstagramImageModel] = useState("");
   const [loadingSettings, setLoadingSettings] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +23,7 @@ export default function SettingsPage() {
       .then((data) => {
         setTextModel(data.defaultTextModel ?? "");
         setImageModel(data.defaultImageModel ?? "");
+        setInstagramImageModel(data.defaultInstagramImageModel ?? "");
       })
       .catch(() => setError("Não foi possível carregar as configurações atuais."))
       .finally(() => setLoadingSettings(false));
@@ -37,7 +39,11 @@ export default function SettingsPage() {
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ defaultTextModel: textModel, defaultImageModel: imageModel }),
+        body: JSON.stringify({
+          defaultTextModel: textModel,
+          defaultImageModel: imageModel,
+          defaultInstagramImageModel: instagramImageModel,
+        }),
       });
 
       const data = await res.json();
@@ -87,9 +93,19 @@ export default function SettingsPage() {
             <ModelPicker
               id="default-image-model"
               label="Modelo de imagem"
-              hint="Usado para gerar a capa e as imagens de cada seção."
+              hint="Usado para gerar a capa e as imagens de cada seção do Portal — fotografia, sem texto."
               value={imageModel}
               onChange={setImageModel}
+              options={imageOptions}
+              disabled={loadingSettings || loadingModels}
+            />
+
+            <ModelPicker
+              id="default-instagram-image-model"
+              label="Modelo de imagem do Instagram"
+              hint="Usado nos cards do Instagram, que levam texto embutido — precisa de um modelo bom em renderizar texto."
+              value={instagramImageModel}
+              onChange={setInstagramImageModel}
               options={imageOptions}
               disabled={loadingSettings || loadingModels}
             />

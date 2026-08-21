@@ -29,9 +29,9 @@ export function buildDestinationsInstruction(params: {
       ? `- Portal: SIM foi selecionado. Gere a matéria completa — "coverImagePrompt" e o array "sections", seguindo a estrutura obrigatória detalhada mais abaixo.`
       : `- Portal: NÃO foi selecionado. Deixe "coverImagePrompt" como string vazia "" e "sections" como array vazio [].`,
     wantInstagram
-      ? `- Instagram (reels/shorts): SIM foi selecionado. Gere "instagram.caption" (legenda) e "instagram.imagePrompts", um array com EXATAMENTE ${instagramPhotoCount} prompt${instagramPhotoCount === 1 ? "" : "s"} de imagem em inglês.${
+      ? `- Instagram (reels/shorts): SIM foi selecionado. Gere "instagram.caption" (legenda) e "instagram.imagePrompts", um array com EXATAMENTE ${instagramPhotoCount} prompt${instagramPhotoCount === 1 ? "" : "s"} de imagem em inglês — cada um um card gráfico de notícia COM texto embutido (headline curta), ver regra detalhada mais abaixo.${
           instagramPhotoCount > 1
-            ? ` Como são ${instagramPhotoCount} imagens formando um carrossel, cada prompt deve ilustrar um ângulo, momento ou aspecto diferente do assunto — nunca repita a mesma cena em prompts diferentes.`
+            ? ` Como são ${instagramPhotoCount} imagens formando um carrossel, cada prompt deve ilustrar um ângulo, momento ou aspecto diferente do assunto — nunca repita a mesma cena/texto em prompts diferentes.`
             : ""
         }`
       : `- Instagram: NÃO foi selecionado. Deixe "instagram.caption" como string vazia "" e "instagram.imagePrompts" como array vazio [].`,

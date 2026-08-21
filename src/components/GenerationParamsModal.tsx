@@ -17,6 +17,7 @@ export function GenerationParamsModal({
   profileName,
   textModel,
   imageModel,
+  instagramImageModel,
 }: {
   sources: SourceRef[];
   subtitleCount: number | null;
@@ -26,6 +27,7 @@ export function GenerationParamsModal({
   profileName: string | null;
   textModel: string;
   imageModel: string;
+  instagramImageModel: string | null;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -131,7 +133,13 @@ export function GenerationParamsModal({
                 <dd className="mt-1">
                   Texto: {textModel}
                   <br />
-                  Imagem: {imageModel}
+                  Imagem (Portal): {imageModel}
+                  {instagramImageModel && (
+                    <>
+                      <br />
+                      Imagem (Instagram): {instagramImageModel}
+                    </>
+                  )}
                 </dd>
               </div>
             </dl>

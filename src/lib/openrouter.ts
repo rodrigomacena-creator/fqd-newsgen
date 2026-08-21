@@ -6,6 +6,11 @@ export const OPENROUTER_TEXT_MODEL =
 export const OPENROUTER_IMAGE_MODEL =
   process.env.OPENROUTER_IMAGE_MODEL || "google/gemini-2.5-flash-image";
 
+// Imagens do Instagram levam texto embutido (headline/card de notícia) — Krea 2 lida
+// melhor com texto renderizado do que os modelos de fotografia usados no Portal.
+export const OPENROUTER_INSTAGRAM_IMAGE_MODEL =
+  process.env.OPENROUTER_INSTAGRAM_IMAGE_MODEL || "krea/krea-2-medium-turbo";
+
 export function getOpenRouterClient() {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {

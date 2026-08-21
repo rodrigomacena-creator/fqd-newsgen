@@ -21,7 +21,8 @@ model Article {
   sections            String // JSON string: { heading: string; text: string; image?: string }[]
   status              String   @default("done") // pending | done | failed
   textModel           String
-  imageModel          String
+  imageModel          String // usado pra capa e imagens de seção (Portal) — sempre fotografia, sem texto
+  instagramImageModel String? // modelo usado pras imagens do Instagram (card com texto); null = notícia anterior a esse campo, usou imageModel
   profileId           String? // id do perfil usado (para releituras futuras, ex.: revisão); pode não existir mais
   profileName         String? // nome do perfil de instrução usado (snapshot; null = padrão neutro)
   subtitleCount       Int? // parâmetros de entrada escolhidos na geração; null = notícia anterior a esse campo
@@ -37,10 +38,11 @@ model Article {
 }
 
 model Settings {
-  id                String   @id @default("default")
-  defaultTextModel  String
-  defaultImageModel String
-  updatedAt         DateTime @updatedAt
+  id                         String   @id @default("default")
+  defaultTextModel           String
+  defaultImageModel          String
+  defaultInstagramImageModel String   @default("krea/krea-2-medium-turbo")
+  updatedAt                  DateTime @updatedAt
 }
 
 model InstructionProfile {

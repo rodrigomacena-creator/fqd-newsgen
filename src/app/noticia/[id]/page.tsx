@@ -194,6 +194,7 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
           profileName={article.profileName}
           textModel={article.textModel}
           imageModel={article.imageModel}
+          instagramImageModel={article.instagramImageModel}
         />
       </main>
     </div>

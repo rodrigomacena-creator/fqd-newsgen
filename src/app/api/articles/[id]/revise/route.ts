@@ -69,7 +69,7 @@ export async function POST(
           change.imagePrompt,
           id,
           "instagram-0",
-          imageModel,
+          article.instagramImageModel ?? imageModel,
           "1:1"
         );
       } else if (

@@ -58,11 +58,19 @@ reais encontradas ao construir o projeto, não só a estrutura.
    `completion.choices[0]` direto — use `extractCompletionText()` de `src/lib/openrouter.ts`,
    que já trata isso e propaga a mensagem de erro real em vez de um TypeError genérico.
 
-6. **Geração de imagem por IA não sabe escrever texto/logo direito.** Nunca inclua "banner",
-   "graphic", "poster", "thumbnail" nos prompts de imagem nem peça texto/logo dentro da imagem —
-   isso induz o modelo a tentar desenhar texto e sair com erro de ortografia. Sempre enquadrar
-   como fotografia realista pura. Isso já é reforçado nas instruções fixas em
-   `src/lib/generateArticle.ts` e `src/lib/reviseArticle.ts` — não remover essa regra.
+6. **Geração de imagem por IA geralmente não sabe escrever texto/logo direito — mas alguns
+   modelos sabem, e o Instagram conta com isso de propósito.** Regra vale só pras imagens do
+   **Portal** (`coverImagePrompt`/`imagePrompt` de seção): nunca inclua "banner", "graphic",
+   "poster", "thumbnail" nem peça texto/logo dentro da imagem — a maioria dos modelos tenta
+   desenhar o texto e erra a ortografia, então essas imagens continuam fotografia realista pura,
+   geradas com `imageModel` (padrão Gemini). As imagens do **Instagram** são o oposto de
+   propósito: o card É um design gráfico com uma manchete curta renderizada de verdade dentro da
+   imagem, gerado com `instagramImageModel` (padrão `krea/krea-2-medium-turbo` — testado e
+   confirmado que renderiza texto em português corretamente, ao contrário do modelo padrão de
+   imagem). Essa distinção (texto proibido no Portal, texto pedido no Instagram) está reforçada
+   nas instruções fixas em `src/lib/generateArticle.ts` (`JSON_FORMAT_INSTRUCTIONS`) e
+   `src/lib/reviseArticle.ts` (`SYSTEM_PROMPT`, que diferencia por `target: "cover"/número` vs
+   `target: "instagram"`) — não remover nem unificar essa regra.
 
 7. **Edição inline (`EditableText`, contentEditable)**: usar `el.innerText` (não `textContent`)
    pra ler o valor editado, e aplicar `white-space: pre-wrap` (prop `multiline`) em campos que
@@ -179,7 +187,14 @@ reais encontradas ao construir o projeto, não só a estrutura.
   (1-10) controla quantas imagens, salvas em `instagramImages` (JSON de URLs, arquivos
   `instagram-0.png`, `instagram-1.png`...). O campo antigo `instagramImage` (uma imagem só,
   arquivo `instagram.png`) é lido só como fallback pra notícias anteriores a essa mudança —
-  gerações novas nunca escrevem nele.
+  gerações novas nunca escrevem nele. Portal e Instagram usam **modelos de imagem separados**
+  (`Article.imageModel` vs `Article.instagramImageModel`, ambos com equivalente em
+  `Settings.defaultImageModel`/`defaultInstagramImageModel` e seletor próprio no formulário de
+  geração) — ver armadilha #6 pro motivo (Portal = foto sem texto, Instagram = card com texto).
+- **Histórico sem miniatura** (`/noticias`, `pickDisplayImage()` em `src/app/noticias/page.tsx`):
+  prioriza `coverImage`; se não tiver (ex.: notícia só de Instagram), cai pra qualquer imagem de
+  seção e depois pra primeira imagem do Instagram; se não achar nenhuma, `HistoryList.tsx` mostra
+  um ícone placeholder em vez de caixa vazia.
 - `src/lib/reviseArticle.ts` — fluxo "Pedir ajuste à IA": edita a MESMA notícia em vigor, nunca
   cria uma nova
 - `src/lib/generateImages.ts` — wrapper da Images API da OpenRouter

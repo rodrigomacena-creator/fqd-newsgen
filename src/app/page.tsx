@@ -41,6 +41,7 @@ export default function Home() {
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [textModel, setTextModel] = useState("");
   const [imageModel, setImageModel] = useState("");
+  const [instagramImageModel, setInstagramImageModel] = useState("");
   const [loading, setLoading] = useState(false);
   const [stageIndex, setStageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export default function Home() {
       .then((data) => {
         setTextModel(data.defaultTextModel ?? "");
         setImageModel(data.defaultImageModel ?? "");
+        setInstagramImageModel(data.defaultInstagramImageModel ?? "");
       })
       .catch(() => {});
   }, []);
@@ -100,6 +102,7 @@ export default function Home() {
           urls: cleanUrls,
           textModel,
           imageModel,
+          instagramImageModel,
           profileId: profileId || undefined,
           destinations,
           subtitleCount,
@@ -400,14 +403,27 @@ export default function Home() {
                   options={textOptions}
                   disabled={loading}
                 />
-                <ModelPicker
-                  id="gen-image-model"
-                  label="Modelo de imagem"
-                  value={imageModel}
-                  onChange={setImageModel}
-                  options={imageOptions}
-                  disabled={loading}
-                />
+                {wantPortal && (
+                  <ModelPicker
+                    id="gen-image-model"
+                    label="Modelo de imagem (Portal)"
+                    value={imageModel}
+                    onChange={setImageModel}
+                    options={imageOptions}
+                    disabled={loading}
+                  />
+                )}
+                {wantInstagram && (
+                  <ModelPicker
+                    id="gen-instagram-image-model"
+                    label="Modelo de imagem (Instagram)"
+                    hint="Card com texto embutido — precisa de um modelo bom em renderizar texto."
+                    value={instagramImageModel}
+                    onChange={setInstagramImageModel}
+                    options={imageOptions}
+                    disabled={loading}
+                  />
+                )}
               </div>
             )}
           </section>
