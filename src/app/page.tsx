@@ -243,7 +243,7 @@ export default function Home() {
               </h2>
 
               <div className="mt-4">
-                <label htmlFor="instagram-photo-count" className="text-sm font-medium">
+                <label htmlFor="instagram-photo-count" className="block text-sm font-medium">
                   Fotos do carrossel
                 </label>
                 <select
@@ -354,7 +354,7 @@ export default function Home() {
             </h2>
 
             <div className="mt-4">
-              <label htmlFor="profile" className="text-sm font-medium">
+              <label htmlFor="profile" className="block text-sm font-medium">
                 Perfil de comunicação
               </label>
               <select
