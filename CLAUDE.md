@@ -162,7 +162,10 @@ reais encontradas ao construir o projeto, não só a estrutura.
   vão pro corpo do POST `/api/generate` como `subtitleCount`/`paragraphCount`/`photoCount`/
   `extraInstructions`) — **não** ficam mais salvas no perfil (isso existiu brevemente como
   `InstructionProfile.maxSectionImages` e foi removido; se vir menção a isso em versões antigas
-  do código/migrations, é histórico, não use como referência).
+  do código/migrations, é histórico, não use como referência). Esses 4 valores também ficam
+  gravados no próprio `Article` (colunas nullable — notícias geradas antes dessa migração têm
+  `null`) e aparecem pro usuário no botão "Exibir parâmetros de entrada" no fim de
+  `/noticia/[id]` (`GenerationParamsModal.tsx`), que trata `null` com fallback ("—"/"Nenhuma").
 - `src/lib/reviseArticle.ts` — fluxo "Pedir ajuste à IA": edita a MESMA notícia em vigor, nunca
   cria uma nova
 - `src/lib/generateImages.ts` — wrapper da Images API da OpenRouter

@@ -6,6 +6,7 @@ import { DeleteArticleButton } from "@/components/DeleteArticleButton";
 import { InstagramPostCard } from "@/components/InstagramPostCard";
 import { EditableText } from "@/components/EditableText";
 import { RemovableImage } from "@/components/RemovableImage";
+import { GenerationParamsModal } from "@/components/GenerationParamsModal";
 
 interface ArticleSection {
   heading: string;
@@ -149,6 +150,17 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
           articleId={article.id}
           currentTextModel={article.textModel}
           currentImageModel={article.imageModel}
+        />
+
+        <GenerationParamsModal
+          sources={sources}
+          subtitleCount={article.subtitleCount}
+          paragraphCount={article.paragraphCount}
+          photoCount={article.photoCount}
+          extraInstructions={article.extraInstructions}
+          profileName={article.profileName}
+          textModel={article.textModel}
+          imageModel={article.imageModel}
         />
       </main>
     </div>

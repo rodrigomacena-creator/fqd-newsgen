@@ -24,6 +24,10 @@ model Article {
   imageModel        String
   profileId         String? // id do perfil usado (para releituras futuras, ex.: revisão); pode não existir mais
   profileName       String? // nome do perfil de instrução usado (snapshot; null = padrão neutro)
+  subtitleCount     Int? // parâmetros de entrada escolhidos na geração; null = notícia anterior a esse campo
+  paragraphCount    Int?
+  photoCount        Int?
+  extraInstructions String?
   instagramCaption  String?
   instagramImage    String?
   createdAt         DateTime @default(now())
