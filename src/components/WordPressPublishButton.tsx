@@ -91,9 +91,9 @@ export function WordPressPublishButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-10 rounded-lg border border-border px-4 py-2.5 text-xs font-semibold text-foreground transition hover:border-accent-yellow hover:text-accent-yellow"
+        className="mt-10 rounded-lg bg-accent-red px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-accent-red-deep"
       >
-        Enviar para o Portal (WordPress)
+        Enviar para o portal FQDTV
       </button>
 
       {open && (
