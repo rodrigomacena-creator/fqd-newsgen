@@ -7,6 +7,7 @@ import { InstagramPostCard } from "@/components/InstagramPostCard";
 import { EditableText } from "@/components/EditableText";
 import { RemovableImage } from "@/components/RemovableImage";
 import { GenerationParamsModal } from "@/components/GenerationParamsModal";
+import { WordPressPublishButton } from "@/components/WordPressPublishButton";
 
 interface ArticleSection {
   heading: string;
@@ -161,6 +162,11 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
                 </section>
               ))}
             </article>
+
+            <WordPressPublishButton
+              articleId={article.id}
+              initialWordpressUrl={article.wordpressUrl}
+            />
           </>
         )}
 

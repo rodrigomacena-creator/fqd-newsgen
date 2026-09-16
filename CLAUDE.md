@@ -195,6 +195,23 @@ reais encontradas ao construir o projeto, não só a estrutura.
   prioriza `coverImage`; se não tiver (ex.: notícia só de Instagram), cai pra qualquer imagem de
   seção e depois pra primeira imagem do Instagram; se não achar nenhuma, `HistoryList.tsx` mostra
   um ícone placeholder em vez de caixa vazia.
+- **Publicar no Portal WordPress** (`src/lib/wordpress.ts`, `/api/wordpress/categories`,
+  `/api/articles/[id]/publish-wordpress`, botão `WordPressPublishButton.tsx` — só aparece se
+  `hasPortal`, já que precisa de matéria pra enviar). Site real em fqdtv.site, autenticação via
+  **Senha de Aplicativo** do WordPress (Básic Auth com `WORDPRESS_USERNAME` +
+  `WORDPRESS_APP_PASSWORD`), **nunca** a senha de login normal. Cria o post sempre como
+  **rascunho** (`status: "draft"`) — nunca publica direto, pra dar chance de revisão humana antes
+  de ir ao ar; se quiser mudar isso, é só o campo `status` em `createWordPressPost()`. O site NÃO
+  tem uma taxonomia própria pra "programa" — as categorias do WordPress já misturam tópicos
+  genéricos (Humor, Esporte) com nomes de programa específicos (Jornal do Absurdo, Bora Pescar)
+  na mesma lista flat; por isso "Categoria" e "Programa" no nosso formulário são só duas seleções
+  independentes da MESMA lista de categorias do WP, enviadas juntas em `categories: [id1, id2]`.
+  Imagem destacada = thumbnail oficial do YouTube (`i.ytimg.com/vi/{id}/maxresdefault.jpg`) da
+  primeira fonte YouTube da notícia, baixada e reenviada pra media library do WP (REST API não
+  aceita URL externa direto em `featured_media`, precisa ser um ID de anexo já hospedado lá). Só
+  suporta CRIAR um post por notícia — se `article.wordpressUrl` já existe, o botão vira link "Ver
+  rascunho" em vez de reenviar (evita duplicar); ainda não tem um fluxo de "atualizar" o post já
+  criado.
 - `src/lib/reviseArticle.ts` — fluxo "Pedir ajuste à IA": edita a MESMA notícia em vigor, nunca
   cria uma nova
 - `src/lib/generateImages.ts` — wrapper da Images API da OpenRouter
@@ -235,4 +252,7 @@ Copiar `.env.example` para `.env` e preencher: `DATABASE_URL` (Postgres), `BLOB_
 (Vercel Blob) e `OPENROUTER_API_KEY` são obrigatórias. `OPENROUTER_TEXT_MODEL`/
 `OPENROUTER_IMAGE_MODEL` são opcionais. `RESIDENTIAL_PROXY_HOST`/`_PORT`/`_USER`/`_PASSWORD` são
 opcionais em dev local (cai pra fetch direto sem elas) mas **obrigatórias em produção** pra
-extração de transcrição do YouTube funcionar (ver armadilha #14).
+extração de transcrição do YouTube funcionar (ver armadilha #14). `WORDPRESS_URL`/
+`WORDPRESS_USERNAME`/`WORDPRESS_APP_PASSWORD` são opcionais — sem elas, o botão "Enviar para o
+Portal" aparece mas dá erro ao tentar enviar. `WORDPRESS_APP_PASSWORD` é a Senha de Aplicativo
+(Usuários → Perfil → Senhas de Aplicativo no wp-admin), nunca a senha de login normal.

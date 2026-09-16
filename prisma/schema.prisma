@@ -33,6 +33,8 @@ model Article {
   instagramImage      String? // DEPRECATED: só lido pra notícias antigas (1 imagem só); gerações novas usam instagramImages
   instagramImages     String? // JSON string: string[] de URLs — carrossel do Instagram (1 ou mais)
   instagramPhotoCount Int? // quantidade de fotos pedida pro carrossel; null = notícia anterior a esse campo
+  wordpressPostId     Int? // id do post criado no WordPress (fqdtv.site), se já foi enviado
+  wordpressUrl        String? // link de edição do post no wp-admin
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
