@@ -10,8 +10,8 @@
   --border-hover: #d2cdc0;
   --text-secondary: #6b6b70;
 
-  --accent-yellow: #ffd02a;
-  --accent-yellow-ink: #241c02;
+  --accent-yellow: #f10000; /* cor de destaque (nome histórico): vermelho do logo FQD tv */
+  --accent-yellow-ink: #ffffff;
   --accent-red: #e13b3b;
   --accent-red-deep: #ac2129;
   --cream: #f6eee2;
@@ -27,8 +27,8 @@
   --border-hover: #3a3c44;
   --text-secondary: #9c9fa6;
 
-  --accent-yellow: #ffd02a;
-  --accent-yellow-ink: #241c02;
+  --accent-yellow: #f10000; /* cor de destaque (nome histórico): vermelho do logo FQD tv */
+  --accent-yellow-ink: #ffffff;
   --accent-red: #e13b3b;
   --accent-red-deep: #ac2129;
   --cream: #f6eee2;
@@ -48,6 +48,13 @@
   --color-accent-red-deep: var(--accent-red-deep);
   --color-cream: var(--cream);
   --font-sans: var(--font-poppins);
+}
+
+/* O logo tem texto escuro; no tema escuro precisa de fundo claro pra aparecer. */
+[data-theme="dark"] .logo-img {
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 2px 6px;
 }
 
 body {

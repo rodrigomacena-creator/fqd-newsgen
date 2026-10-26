@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
@@ -16,9 +17,16 @@ export function Header() {
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur">
       <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-        <Link href="/" className="inline-flex items-baseline gap-2">
-          <span className="text-xl font-bold tracking-tight">FQD</span>
-          <span className="text-xl font-bold tracking-tight text-accent-yellow">
+        <Link href="/" className="inline-flex shrink-0 items-center gap-2">
+          <Image
+            src="/logo-fqdtv.png"
+            alt="FQD tv"
+            width={72}
+            height={36}
+            priority
+            className="logo-img h-9 w-[72px] shrink-0"
+          />
+          <span className="hidden whitespace-nowrap text-xl font-bold tracking-tight text-accent-yellow md:inline">
             News GEN
           </span>
         </Link>

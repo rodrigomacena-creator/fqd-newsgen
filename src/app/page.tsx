@@ -170,7 +170,7 @@ export default function Home() {
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-5">
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
               Fontes
             </h2>
 
@@ -219,7 +219,7 @@ export default function Home() {
           </section>
 
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
               Vídeos de um canal
             </h2>
             <p className="mt-1 text-xs text-text-secondary">
@@ -279,7 +279,7 @@ export default function Home() {
           </section>
 
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
               Destinos
             </h2>
             <p className="mt-1 text-xs text-text-secondary">
@@ -327,7 +327,7 @@ export default function Home() {
 
           {wantInstagram && (
             <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
                 Instagram
               </h2>
 
@@ -357,7 +357,7 @@ export default function Home() {
 
           {wantPortal && (
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
               Portal - Estrutura da matéria
             </h2>
 
@@ -423,7 +423,7 @@ export default function Home() {
           )}
 
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
               Instruções adicionais <span className="font-normal text-text-secondary">(opcional)</span>
             </h2>
             <textarea
@@ -438,7 +438,7 @@ export default function Home() {
           </section>
 
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
               Estilo
             </h2>
 

@@ -48,7 +48,7 @@ export function ProfileManager() {
     <div>
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+          <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
             Perfis de instrução
           </h2>
           <p className="mt-1 text-sm text-text-secondary">

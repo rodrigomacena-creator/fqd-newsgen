@@ -75,7 +75,7 @@ export default function SettingsPage() {
         )}
 
         <section className="mt-8 rounded-2xl border border-border bg-surface p-5 sm:p-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+          <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
             Modelos padrão
           </h2>
 
