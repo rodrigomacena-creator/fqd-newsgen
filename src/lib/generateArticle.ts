@@ -5,6 +5,7 @@ import {
   buildDestinationsInstruction,
   buildStructureInstruction,
 } from "./prompts";
+import { buildRichBlocksInstruction, sanitizeBlocks, type RichBlock, type RichBlockType } from "./richBlocks";
 
 export interface ArticleStructure {
   wantPortal: boolean;
@@ -13,6 +14,7 @@ export interface ArticleStructure {
   paragraphCount: number;
   photoCount: number;
   instagramPhotoCount: number;
+  richBlocks: RichBlockType[];
   extraInstructions?: string;
 }
 
@@ -20,6 +22,7 @@ export interface ArticleSectionDraft {
   heading: string;
   text: string;
   imagePrompt: string;
+  blocks?: RichBlock[];
 }
 
 export interface InstagramPostDraft {
@@ -50,10 +53,12 @@ Responda APENAS com um JSON válido, sem markdown, sem comentários, seguindo ex
   "subtitle": "string",
   "coverImagePrompt": "string",
   "sections": [
-    { "heading": "string", "text": "string", "imagePrompt": "string" }
+    { "heading": "string", "text": "string", "imagePrompt": "string", "blocks": [] }
   ],
   "instagram": { "caption": "string", "imagePrompts": ["string"] }
-}`;
+}
+
+"blocks" de cada seção só leva elementos quando houver instrução de elementos visuais acima; caso contrário, sempre [].`;
 
 function extractJson(raw: string): string {
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -82,6 +87,9 @@ export async function generateArticleDraft(
     MULTI_SOURCE_INSTRUCTION,
     buildDestinationsInstruction(structure),
     structure.wantPortal ? buildStructureInstruction(structure) : null,
+    structure.wantPortal && structure.richBlocks.length > 0
+      ? buildRichBlocksInstruction(structure.richBlocks)
+      : null,
     styleguideContext,
     JSON_FORMAT_INSTRUCTIONS,
   ]
@@ -113,6 +121,11 @@ export async function generateArticleDraft(
   }
 
   if (!Array.isArray(parsed.sections)) parsed.sections = [];
+  const richBlocks = structure.wantPortal ? structure.richBlocks : [];
+  parsed.sections = parsed.sections.map((section) => ({
+    ...section,
+    blocks: sanitizeBlocks(section.blocks, richBlocks),
+  }));
   if (!parsed.instagram) parsed.instagram = { caption: "", imagePrompts: [] };
   if (!Array.isArray(parsed.instagram.imagePrompts)) parsed.instagram.imagePrompts = [];
 

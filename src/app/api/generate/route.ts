@@ -7,6 +7,7 @@ import { generateAndSaveImage } from "@/lib/generateImages";
 import { getSettings } from "@/lib/settings";
 import { getInstructionProfile } from "@/lib/instructionProfiles";
 import { buildStyleguidePromptContext } from "@/lib/styleguide";
+import { parseRichBlockTypes, type RichBlock } from "@/lib/richBlocks";
 import {
   fetchAllSources,
   firstYoutubeThumbnail,
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
     paragraphCount?: number;
     photoCount?: number;
     instagramPhotoCount?: number;
+    richBlocks?: string[];
     extraInstructions?: string;
   };
   try {
@@ -84,6 +86,7 @@ export async function POST(request: Request) {
     MAX_INSTAGRAM_PHOTOS
   );
   const extraInstructions = body.extraInstructions?.trim() || undefined;
+  const richBlocks = parseRichBlockTypes(body.richBlocks);
 
   try {
     const settings = await getSettings();
@@ -108,6 +111,7 @@ export async function POST(request: Request) {
         paragraphCount,
         photoCount,
         instagramPhotoCount,
+        richBlocks,
         extraInstructions,
       },
       textModel,
@@ -118,7 +122,7 @@ export async function POST(request: Request) {
     const articleId = randomUUID();
 
     let coverImage: string | undefined;
-    let sections: { heading: string; text: string; image?: string }[] = [];
+    let sections: { heading: string; text: string; image?: string; blocks?: RichBlock[] }[] = [];
 
     if (wantPortal) {
       const coverFallback = firstYoutubeThumbnail(sources);
@@ -131,8 +135,10 @@ export async function POST(request: Request) {
 
       sections = await Promise.all(
         draft.sections.map(async (section, index) => {
+          const blocks = section.blocks?.length ? section.blocks : undefined;
+
           if (index >= photoCount || !section.imagePrompt?.trim()) {
-            return { heading: section.heading, text: section.text };
+            return { heading: section.heading, text: section.text, blocks };
           }
 
           const image = await generateAndSaveImage(
@@ -142,7 +148,7 @@ export async function POST(request: Request) {
             imageModel
           ).catch(() => undefined);
 
-          return { heading: section.heading, text: section.text, image };
+          return { heading: section.heading, text: section.text, image, blocks };
         })
       );
     }

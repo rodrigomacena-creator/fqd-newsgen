@@ -8,8 +8,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Informe a URL do canal." }, { status: 400 });
     }
 
-    const { channelTitle, urls } = await listChannelVideoUrls(channelUrl);
-    return NextResponse.json({ channelTitle, urls });
+    const { channelTitle, videos, urls } = await listChannelVideoUrls(channelUrl);
+    return NextResponse.json({ channelTitle, videos, urls });
   } catch (error) {
     if (error instanceof YoutubeChannelError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { ModelPicker } from "@/components/ModelPicker";
 import { useModelOptions } from "@/lib/useModelOptions";
 import { useInstructionProfiles } from "@/lib/useInstructionProfiles";
+import { RICH_BLOCK_OPTIONS, type RichBlockType } from "@/lib/richBlocks";
 
 const STAGES = [
   "Lendo as fontes…",
@@ -16,6 +18,26 @@ const STAGES = [
 ];
 
 const MAX_SOURCES = 5;
+// Estimativa inicial (ms por notícia) até termos medições reais da própria geração em lote.
+const DEFAULT_ARTICLE_MS = 40_000;
+
+type ChannelVideo = { id: string; url: string; title: string };
+type BatchState = {
+  total: number;
+  done: number;
+  currentStartedAt: number;
+  durations: number[];
+  failures: { label: string; message: string }[];
+  finished: boolean;
+};
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(1, Math.round(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes} min ${String(seconds).padStart(2, "0")}s`;
+}
 const SUBTITLE_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1); // 1–10
 const PARAGRAPH_OPTIONS = Array.from({ length: 15 }, (_, i) => i + 1); // 1–15
 const INSTAGRAM_PHOTO_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1); // 1–10
@@ -33,7 +55,10 @@ export default function Home() {
   const [channelUrl, setChannelUrl] = useState("");
   const [channelLoading, setChannelLoading] = useState(false);
   const [channelError, setChannelError] = useState<string | null>(null);
-  const [channelResult, setChannelResult] = useState<{ title: string; urls: string[] } | null>(null);
+  const [channelResult, setChannelResult] = useState<{ title: string; videos: ChannelVideo[] } | null>(null);
+  const [selectedVideos, setSelectedVideos] = useState<Set<string>>(new Set());
+  const [batch, setBatch] = useState<BatchState | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [wantInstagram, setWantInstagram] = useState(true);
   const [wantPortal, setWantPortal] = useState(true);
   const [instagramPhotoCount, setInstagramPhotoCount] = useState(1);
@@ -41,6 +66,7 @@ export default function Home() {
   const [subtitleCount, setSubtitleCount] = useState(2);
   const [paragraphCount, setParagraphCount] = useState(5);
   const [photoCount, setPhotoCount] = useState(2);
+  const [richBlocks, setRichBlocks] = useState<RichBlockType[]>([]);
   const [extraInstructions, setExtraInstructions] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [textModel, setTextModel] = useState("");
@@ -60,6 +86,13 @@ export default function Home() {
       })
       .catch(() => {});
   }, []);
+
+  // Atualiza o relógio da barra de progresso enquanto o lote está rodando.
+  useEffect(() => {
+    if (!batch || batch.finished) return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [batch]);
 
   // Não faz sentido ter mais fotos ou menos parágrafos do que seções.
   function handleSubtitleCountChange(next: number) {
@@ -85,6 +118,7 @@ export default function Home() {
     setChannelLoading(true);
     setChannelError(null);
     setChannelResult(null);
+    setSelectedVideos(new Set());
 
     try {
       const res = await fetch("/api/youtube/channel-videos", {
@@ -94,7 +128,7 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Não foi possível listar os vídeos do canal.");
-      setChannelResult({ title: data.channelTitle, urls: data.urls });
+      setChannelResult({ title: data.channelTitle, videos: data.videos });
     } catch (err) {
       setChannelError(err instanceof Error ? err.message : "Erro inesperado.");
     } finally {
@@ -102,10 +136,113 @@ export default function Home() {
     }
   }
 
+  function toggleRichBlock(type: RichBlockType) {
+    setRichBlocks((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
+  }
+
+  function toggleVideo(url: string) {
+    setSelectedVideos((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      return next;
+    });
+  }
+
+  function toggleAllVideos() {
+    if (!channelResult) return;
+    setSelectedVideos((prev) =>
+      prev.size === channelResult.videos.length
+        ? new Set()
+        : new Set(channelResult.videos.map((v) => v.url))
+    );
+  }
+
+  async function generateOne(sourceUrls: string[]): Promise<string> {
+    const destinations = [
+      ...(wantInstagram ? ["instagram"] : []),
+      ...(wantPortal ? ["portal"] : []),
+    ];
+
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        urls: sourceUrls,
+        textModel,
+        imageModel,
+        instagramImageModel,
+        profileId: profileId || undefined,
+        destinations,
+        subtitleCount,
+        paragraphCount,
+        photoCount,
+        instagramPhotoCount,
+        richBlocks: wantPortal ? richBlocks : [],
+        extraInstructions: extraInstructions.trim() || undefined,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Não foi possível gerar a notícia.");
+    }
+    return data.id as string;
+  }
+
+  // Uma notícia por vídeo selecionado (mais uma com o conteúdo do campo Fontes, se preenchido),
+  // geradas em sequência pra não estourar limites/custo da IA de uma vez.
+  async function runBatch(sourceUrls: string[], videoUrls: string[]) {
+    const jobs: { label: string; urls: string[] }[] = [
+      ...(sourceUrls.length > 0 ? [{ label: "Fontes", urls: sourceUrls }] : []),
+      ...videoUrls.map((url) => ({
+        label: channelResult?.videos.find((v) => v.url === url)?.title ?? url,
+        urls: [url],
+      })),
+    ];
+
+    setLoading(true);
+    setError(null);
+
+    const durations: number[] = [];
+    const failures: BatchState["failures"] = [];
+    const failedVideoUrls: string[] = [];
+    setBatch({ total: jobs.length, done: 0, currentStartedAt: Date.now(), durations, failures, finished: false });
+
+    for (let i = 0; i < jobs.length; i++) {
+      const startedAt = Date.now();
+      setBatch({ total: jobs.length, done: i, currentStartedAt: startedAt, durations: [...durations], failures: [...failures], finished: false });
+      try {
+        await generateOne(jobs[i].urls);
+      } catch (err) {
+        failures.push({ label: jobs[i].label, message: err instanceof Error ? err.message : "Erro inesperado." });
+        if (jobs[i].label !== "Fontes") failedVideoUrls.push(jobs[i].urls[0]);
+      }
+      durations.push(Date.now() - startedAt);
+    }
+
+    setBatch({ total: jobs.length, done: jobs.length, currentStartedAt: Date.now(), durations, failures, finished: true });
+    // Mantém marcados só os que falharam, pra tentar de novo sem refazer os que deram certo.
+    setSelectedVideos(new Set(failedVideoUrls));
+    setLoading(false);
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     const cleanUrls = urls.map((u) => u.trim()).filter(Boolean);
-    if (cleanUrls.length === 0 || loading || (!wantInstagram && !wantPortal)) return;
+    const videoUrls = channelResult
+      ? channelResult.videos.map((v) => v.url).filter((u) => selectedVideos.has(u))
+      : [];
+    if ((cleanUrls.length === 0 && videoUrls.length === 0) || loading || (!wantInstagram && !wantPortal)) {
+      return;
+    }
+
+    setBatch(null);
+
+    if (videoUrls.length > 0) {
+      await runBatch(cleanUrls, videoUrls);
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -116,36 +253,8 @@ export default function Home() {
     }, 4000);
 
     try {
-      const destinations = [
-        ...(wantInstagram ? ["instagram"] : []),
-        ...(wantPortal ? ["portal"] : []),
-      ];
-
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          urls: cleanUrls,
-          textModel,
-          imageModel,
-          instagramImageModel,
-          profileId: profileId || undefined,
-          destinations,
-          subtitleCount,
-          paragraphCount,
-          photoCount,
-          instagramPhotoCount,
-          extraInstructions: extraInstructions.trim() || undefined,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Não foi possível gerar a notícia.");
-      }
-
-      router.push(`/noticia/${data.id}`);
+      const id = await generateOne(cleanUrls);
+      router.push(`/noticia/${id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
       setLoading(false);
@@ -153,6 +262,10 @@ export default function Home() {
       clearInterval(interval);
     }
   }
+
+  const selectedCount = selectedVideos.size;
+  const hasSourceUrls = urls.some((u) => u.trim());
+  const batchTotal = selectedCount + (selectedCount > 0 && hasSourceUrls ? 1 : 0);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -180,7 +293,7 @@ export default function Home() {
                   <div className="relative flex-1">
                     <input
                       type="url"
-                      required={index === 0}
+                      required={index === 0 && selectedCount === 0}
                       placeholder="Link do YouTube ou de uma página com notícia…"
                       value={value}
                       onChange={(e) => updateUrl(index, e.target.value)}
@@ -255,25 +368,52 @@ export default function Home() {
 
             {channelResult && (
               <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between gap-3 text-xs text-text-secondary">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-text-secondary">
+                  <label className="flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap font-medium text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={selectedCount === channelResult.videos.length && selectedCount > 0}
+                      onChange={toggleAllVideos}
+                      disabled={loading || channelResult.videos.length === 0}
+                      className="h-4 w-4 accent-accent-yellow"
+                    />
+                    Selecionar todos
+                  </label>
                   <span>
-                    {channelResult.urls.length} vídeo(s)
-                    {channelResult.title && ` em ${channelResult.title}`}
+                    {selectedCount} de {channelResult.videos.length} selecionado(s)
+                    {channelResult.title && ` · ${channelResult.title}`}
                   </span>
                   <button
                     type="button"
-                    onClick={() => navigator.clipboard.writeText(channelResult.urls.join("\n"))}
-                    className="font-medium hover:text-accent-yellow hover:underline"
+                    onClick={() =>
+                      navigator.clipboard.writeText(channelResult.videos.map((v) => v.url).join("\n"))
+                    }
+                    className="shrink-0 font-medium hover:text-accent-yellow hover:underline"
                   >
-                    Copiar todas
+                    Copiar links
                   </button>
                 </div>
-                <textarea
-                  readOnly
-                  rows={8}
-                  value={channelResult.urls.join("\n")}
-                  className="w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-xs outline-none"
-                />
+                <ul className="max-h-80 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-background">
+                  {channelResult.videos.map((video) => (
+                    <li key={video.id}>
+                      <label className="flex cursor-pointer items-start gap-3 px-4 py-2.5 text-sm hover:bg-surface-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedVideos.has(video.url)}
+                          onChange={() => toggleVideo(video.url)}
+                          disabled={loading}
+                          className="mt-0.5 h-4 w-4 shrink-0 accent-accent-yellow"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate">{video.title}</span>
+                          <span className="block truncate font-mono text-[11px] text-text-secondary">
+                            {video.url}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </section>
@@ -419,6 +559,38 @@ export default function Home() {
                 </select>
               </div>
             </div>
+
+            <div className="mt-6">
+              <p className="text-sm font-medium">Elementos para enriquecer a matéria</p>
+              <p className="mt-1 text-xs text-text-secondary">
+                Só são criados quando as fontes trazem dados reais para isso — a IA não inventa números.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {RICH_BLOCK_OPTIONS.map((option) => {
+                  const checked = richBlocks.includes(option.id);
+                  return (
+                    <label
+                      key={option.id}
+                      className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition ${
+                        checked ? "border-accent-yellow/60 bg-accent-yellow/5" : "border-border"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleRichBlock(option.id)}
+                        disabled={loading}
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-accent-yellow"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium">{option.label}</span>
+                        <span className="block text-xs text-text-secondary">{option.description}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           </section>
           )}
 
@@ -519,11 +691,17 @@ export default function Home() {
             disabled={loading || (!wantInstagram && !wantPortal)}
             className="w-full rounded-lg bg-accent-yellow px-6 py-3.5 text-sm font-semibold text-accent-yellow-ink transition hover:bg-accent-yellow/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? "Gerando…" : "Gerar notícia"}
+            {loading
+              ? "Gerando…"
+              : batchTotal > 1
+                ? `Gerar ${batchTotal} notícias`
+                : "Gerar notícia"}
           </button>
         </form>
 
-        {loading && (
+        {batch && <BatchProgress batch={batch} now={now} />}
+
+        {loading && !batch && (
           <div className="mt-6 flex items-center gap-3 text-sm text-text-secondary">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent-yellow border-t-transparent" />
             {STAGES[stageIndex]}
@@ -536,6 +714,77 @@ export default function Home() {
           </p>
         )}
       </main>
+    </div>
+  );
+}
+
+function BatchProgress({ batch, now }: { batch: BatchState; now: number }) {
+  const { total, done, durations, failures, finished } = batch;
+  const avgMs = durations.length
+    ? durations.reduce((sum, d) => sum + d, 0) / durations.length
+    : DEFAULT_ARTICLE_MS;
+
+  if (finished) {
+    const succeeded = total - failures.length;
+    return (
+      <div className="mt-6 space-y-3">
+        {succeeded > 0 && (
+          <div className="rounded-lg bg-green-500/10 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+            <p className="font-semibold">Notícias geradas com sucesso!</p>
+            <p className="mt-1">
+              {succeeded} de {total} notícia(s) gerada(s) em {formatDuration(durations.reduce((sum, d) => sum + d, 0))}.{" "}
+              <Link href="/noticias" className="font-medium underline">
+                Ver no histórico
+              </Link>
+            </p>
+          </div>
+        )}
+        {failures.length > 0 && (
+          <div className="rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
+            <p className="font-semibold">{failures.length} notícia(s) não puderam ser geradas:</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {failures.map((f, i) => (
+                <li key={i}>
+                  <span className="font-medium">{f.label}</span> — {f.message}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs">Os vídeos que falharam continuam marcados para você tentar de novo.</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const elapsedCurrent = now - batch.currentStartedAt;
+  const currentFraction = Math.min(elapsedCurrent / avgMs, 0.95);
+  const percent = Math.round(((done + currentFraction) / total) * 100);
+  const remainingMs = Math.max(avgMs - elapsedCurrent, 0) + avgMs * (total - done - 1);
+
+  return (
+    <div className="mt-6 rounded-2xl border border-border bg-surface p-5">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="font-medium">
+          Gerando notícia {Math.min(done + 1, total)} de {total}…
+        </span>
+        <span className="text-text-secondary">{percent}%</span>
+      </div>
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-surface-2"
+      >
+        <div
+          className="h-full rounded-full bg-accent-yellow transition-[width] duration-500"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <p className="mt-3 text-xs text-text-secondary">
+        Tempo estimado restante: ~{formatDuration(remainingMs)}
+        {durations.length === 0 && " (estimativa inicial, ajustada conforme as notícias forem geradas)"}
+      </p>
     </div>
   );
 }

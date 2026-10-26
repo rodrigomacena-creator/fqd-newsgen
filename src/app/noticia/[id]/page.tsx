@@ -8,11 +8,14 @@ import { EditableText } from "@/components/EditableText";
 import { RemovableImage } from "@/components/RemovableImage";
 import { GenerationParamsModal } from "@/components/GenerationParamsModal";
 import { WordPressPublishButton } from "@/components/WordPressPublishButton";
+import { RichBlocks } from "@/components/RichBlocks";
+import type { RichBlock } from "@/lib/richBlocks";
 
 interface ArticleSection {
   heading: string;
   text: string;
   image?: string;
+  blocks?: RichBlock[];
 }
 
 interface ArticleSourceRef {
@@ -159,6 +162,7 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
                     multiline
                     className="mt-3 leading-relaxed text-foreground/80"
                   />
+                  {section.blocks && section.blocks.length > 0 && <RichBlocks blocks={section.blocks} />}
                 </section>
               ))}
             </article>

@@ -97,8 +97,10 @@ async function resolveChannel(ref: ChannelRef) {
 
 type PlaylistResponse = {
   nextPageToken?: string;
-  items?: { contentDetails?: { videoId?: string } }[];
+  items?: { snippet?: { title?: string }; contentDetails?: { videoId?: string } }[];
 };
+
+export type ChannelVideo = { id: string; url: string; title: string };
 
 /**
  * Lista a URL dos vídeos públicos do canal, sem os Shorts. O YouTube mantém playlists
@@ -110,38 +112,42 @@ export async function listChannelVideoUrls(channelUrl: string) {
   const { title, uploadsPlaylistId } = await resolveChannel(parseChannelUrl(channelUrl));
   const suffix = uploadsPlaylistId.slice(2);
 
-  const ids: string[] = [];
+  const byId = new Map<string, ChannelVideo>();
   for (const playlistId of [`UULF${suffix}`, `UULV${suffix}`]) {
-    ids.push(...(await listPlaylistVideoIds(playlistId)));
+    for (const video of await listPlaylistVideos(playlistId)) byId.set(video.id, video);
   }
 
-  return {
-    channelTitle: title,
-    urls: [...new Set(ids)].map((id) => `https://www.youtube.com/watch?v=${id}`),
-  };
+  const videos = [...byId.values()];
+  return { channelTitle: title, videos, urls: videos.map((v) => v.url) };
 }
 
-async function listPlaylistVideoIds(playlistId: string): Promise<string[]> {
-  const ids: string[] = [];
+async function listPlaylistVideos(playlistId: string): Promise<ChannelVideo[]> {
+  const videos: ChannelVideo[] = [];
   let pageToken: string | undefined;
   do {
     let page: PlaylistResponse;
     try {
       page = await youtubeApi("playlistItems", {
-        part: "contentDetails",
+        part: "snippet,contentDetails",
         playlistId,
         maxResults: "50",
         ...(pageToken ? { pageToken } : {}),
       });
     } catch (error) {
-      if (error instanceof YoutubeChannelError && error.reason === "playlistNotFound") return ids;
+      if (error instanceof YoutubeChannelError && error.reason === "playlistNotFound") return videos;
       throw error;
     }
     for (const item of page.items ?? []) {
       const id = item.contentDetails?.videoId;
-      if (id) ids.push(id);
+      if (id) {
+        videos.push({
+          id,
+          url: `https://www.youtube.com/watch?v=${id}`,
+          title: item.snippet?.title ?? id,
+        });
+      }
     }
     pageToken = page.nextPageToken;
   } while (pageToken);
-  return ids;
+  return videos;
 }

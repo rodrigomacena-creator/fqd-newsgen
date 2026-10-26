@@ -1,3 +1,4 @@
+import type { RichBlock } from "@/lib/richBlocks";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { reviseArticle, type CurrentArticleSection } from "@/lib/reviseArticle";
@@ -7,6 +8,7 @@ import { buildStyleguidePromptContext } from "@/lib/styleguide";
 
 interface StoredSection extends CurrentArticleSection {
   image?: string;
+  blocks?: RichBlock[];
 }
 
 export async function POST(
@@ -90,6 +92,8 @@ export async function POST(
       heading: section.heading,
       text: section.text,
       image: sectionImages[index],
+      // A IA de ajuste só enxerga título/texto: tabelas, gráficos etc. são preservados como estavam.
+      blocks: currentSections[index]?.blocks,
     }));
 
     const updated = await prisma.article.update({

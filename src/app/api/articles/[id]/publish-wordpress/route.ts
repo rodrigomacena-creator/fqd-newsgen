@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createWordPressPost } from "@/lib/wordpress";
+import { blocksToHtml, type RichBlock } from "@/lib/richBlocks";
 
 interface ArticleSection {
   heading: string;
   text: string;
   image?: string;
+  blocks?: RichBlock[];
 }
 
 interface ArticleSourceRef {
@@ -26,7 +28,8 @@ function buildContentHtml(sections: ArticleSection[]): string {
   return sections
     .map(
       (section) =>
-        `<h2>${escapeHtml(section.heading)}</h2>\n<p>${escapeHtml(section.text).replace(/\n+/g, "</p>\n<p>")}</p>`
+        `<h2>${escapeHtml(section.heading)}</h2>\n<p>${escapeHtml(section.text).replace(/\n+/g, "</p>\n<p>")}</p>` +
+        (section.blocks?.length ? `\n${blocksToHtml(section.blocks)}` : "")
     )
     .join("\n\n");
 }
