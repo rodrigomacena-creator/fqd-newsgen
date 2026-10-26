@@ -30,6 +30,10 @@ export default function Home() {
   const { profiles } = useInstructionProfiles();
 
   const [urls, setUrls] = useState<string[]>([""]);
+  const [channelUrl, setChannelUrl] = useState("");
+  const [channelLoading, setChannelLoading] = useState(false);
+  const [channelError, setChannelError] = useState<string | null>(null);
+  const [channelResult, setChannelResult] = useState<{ title: string; urls: string[] } | null>(null);
   const [wantInstagram, setWantInstagram] = useState(true);
   const [wantPortal, setWantPortal] = useState(true);
   const [instagramPhotoCount, setInstagramPhotoCount] = useState(1);
@@ -74,6 +78,28 @@ export default function Home() {
 
   function removeUrlField(index: number) {
     setUrls((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  }
+
+  async function fetchChannelVideos() {
+    if (!channelUrl.trim() || channelLoading) return;
+    setChannelLoading(true);
+    setChannelError(null);
+    setChannelResult(null);
+
+    try {
+      const res = await fetch("/api/youtube/channel-videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Não foi possível listar os vídeos do canal.");
+      setChannelResult({ title: data.channelTitle, urls: data.urls });
+    } catch (err) {
+      setChannelError(err instanceof Error ? err.message : "Erro inesperado.");
+    } finally {
+      setChannelLoading(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -190,6 +216,66 @@ export default function Home() {
             >
               + Adicionar fonte {urls.length >= MAX_SOURCES && `(máx. ${MAX_SOURCES})`}
             </button>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              Vídeos de um canal
+            </h2>
+            <p className="mt-1 text-xs text-text-secondary">
+              Cole a URL de um canal do YouTube para listar os links dos vídeos principais publicados (sem Shorts).
+            </p>
+
+            <div className="mt-4 flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="youtube.com/@canal"
+                value={channelUrl}
+                onChange={(e) => setChannelUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    fetchChannelVideos();
+                  }
+                }}
+                disabled={channelLoading}
+                className="w-full flex-1 rounded-lg border border-border bg-background px-4 py-3 text-sm outline-none focus:border-accent-yellow disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={fetchChannelVideos}
+                disabled={channelLoading || !channelUrl.trim()}
+                className="shrink-0 rounded-lg border border-border px-4 py-3 text-sm font-medium transition hover:border-accent-yellow hover:text-accent-yellow disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {channelLoading ? "Buscando…" : "Buscar vídeos"}
+              </button>
+            </div>
+
+            {channelError && <p className="mt-3 text-xs text-accent-red">{channelError}</p>}
+
+            {channelResult && (
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs text-text-secondary">
+                  <span>
+                    {channelResult.urls.length} vídeo(s)
+                    {channelResult.title && ` em ${channelResult.title}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(channelResult.urls.join("\n"))}
+                    className="font-medium hover:text-accent-yellow hover:underline"
+                  >
+                    Copiar todas
+                  </button>
+                </div>
+                <textarea
+                  readOnly
+                  rows={8}
+                  value={channelResult.urls.join("\n")}
+                  className="w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-xs outline-none"
+                />
+              </div>
+            )}
           </section>
 
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
