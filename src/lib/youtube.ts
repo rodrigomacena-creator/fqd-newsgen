@@ -1,4 +1,11 @@
-import { YoutubeTranscript } from "youtube-transcript";
+import {
+  YoutubeTranscript,
+  YoutubeTranscriptDisabledError,
+  YoutubeTranscriptNotAvailableError,
+  YoutubeTranscriptNotAvailableLanguageError,
+  YoutubeTranscriptTooManyRequestError,
+  YoutubeTranscriptVideoUnavailableError,
+} from "youtube-transcript";
 import { getYoutubeFetch } from "./proxyFetch";
 
 export class YoutubeUrlError extends Error {}
@@ -33,7 +40,29 @@ export function thumbnailUrl(videoId: string): string {
 }
 
 export async function fetchVideoTranscript(videoId: string): Promise<string> {
-  const parts = await YoutubeTranscript.fetchTranscript(videoId, { fetch: getYoutubeFetch() });
+  let parts;
+  try {
+    parts = await YoutubeTranscript.fetchTranscript(videoId, { fetch: getYoutubeFetch() });
+  } catch (err) {
+    if (
+      err instanceof YoutubeTranscriptDisabledError ||
+      err instanceof YoutubeTranscriptNotAvailableError ||
+      err instanceof YoutubeTranscriptNotAvailableLanguageError
+    ) {
+      throw new YoutubeUrlError(
+        "Este vídeo não tem legenda/transcrição disponível no YouTube, então não dá para gerar a notícia a partir dele. Ative as legendas automáticas no YouTube Studio ou use outra fonte."
+      );
+    }
+    if (err instanceof YoutubeTranscriptVideoUnavailableError) {
+      throw new YoutubeUrlError("Este vídeo está indisponível (privado, removido ou restrito).");
+    }
+    if (err instanceof YoutubeTranscriptTooManyRequestError) {
+      throw new YoutubeUrlError(
+        "O YouTube limitou as requisições (bloqueio de IP/proxy). Tente novamente em alguns minutos."
+      );
+    }
+    throw err;
+  }
   const text = parts
     .map((p) => p.text)
     .join(" ")
