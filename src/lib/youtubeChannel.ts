@@ -10,10 +10,12 @@ type ChannelRef =
   | { kind: "id"; value: string }
   | { kind: "handle"; value: string }
   | { kind: "username"; value: string }
-  | { kind: "custom"; value: string };
+  | { kind: "custom"; value: string }
+  | { kind: "playlist"; value: string };
 
 function parseChannelUrl(input: string): ChannelRef {
   const raw = input.trim();
+  if (/^(PL|UU|FL|OL|LL)[\w-]{10,}$/.test(raw)) return { kind: "playlist", value: raw };
   if (/^UC[\w-]{22}$/.test(raw)) return { kind: "id", value: raw };
   if (/^@[\w.-]+$/.test(raw)) return { kind: "handle", value: raw };
 
@@ -27,6 +29,10 @@ function parseChannelUrl(input: string): ChannelRef {
     throw new YoutubeChannelError("Informe a URL de um canal do YouTube.");
   }
 
+  // Qualquer URL com ?list= (playlist, ou vídeo dentro de uma playlist) vale como playlist.
+  const listId = url.searchParams.get("list");
+  if (listId) return { kind: "playlist", value: listId };
+
   const [first, second] = url.pathname.split("/").filter(Boolean);
   if (first?.startsWith("@")) return { kind: "handle", value: decodeURIComponent(first) };
   if (first === "channel" && second) return { kind: "id", value: second };
@@ -34,7 +40,7 @@ function parseChannelUrl(input: string): ChannelRef {
   if (first === "c" && second) return { kind: "custom", value: decodeURIComponent(second) };
 
   throw new YoutubeChannelError(
-    "Não reconheci essa URL como canal. Use o formato youtube.com/@canal ou youtube.com/channel/UC…",
+    "Não reconheci essa URL. Use youtube.com/@canal, youtube.com/channel/UC… ou youtube.com/playlist?list=…",
   );
 }
 
@@ -109,7 +115,10 @@ export type ChannelVideo = { id: string; url: string; title: string };
  * um tipo não tem a playlist (404), o que é tratado como lista vazia.
  */
 export async function listChannelVideoUrls(channelUrl: string) {
-  const { title, uploadsPlaylistId } = await resolveChannel(parseChannelUrl(channelUrl));
+  const ref = parseChannelUrl(channelUrl);
+  if (ref.kind === "playlist") return listPlaylist(ref.value);
+
+  const { title, uploadsPlaylistId } = await resolveChannel(ref);
   const suffix = uploadsPlaylistId.slice(2);
 
   const byId = new Map<string, ChannelVideo>();
@@ -118,6 +127,27 @@ export async function listChannelVideoUrls(channelUrl: string) {
   }
 
   const videos = [...byId.values()];
+  return { channelTitle: title, videos, urls: videos.map((v) => v.url) };
+}
+
+/** Lista todos os vídeos de uma playlist (inclui Shorts, se a playlist tiver). */
+async function listPlaylist(playlistId: string) {
+  let title = "";
+  try {
+    const info = await youtubeApi<{ items?: { snippet?: { title?: string } }[] }>("playlists", {
+      part: "snippet",
+      id: playlistId,
+    });
+    if (!info.items?.length) throw new YoutubeChannelError("Playlist não encontrada.");
+    title = info.items[0].snippet?.title ?? "";
+  } catch (error) {
+    if (error instanceof YoutubeChannelError && error.reason === "playlistNotFound") {
+      throw new YoutubeChannelError("Playlist não encontrada ou privada.");
+    }
+    throw error;
+  }
+
+  const videos = await listPlaylistVideos(playlistId);
   return { channelTitle: title, videos, urls: videos.map((v) => v.url) };
 }
 
@@ -139,7 +169,8 @@ async function listPlaylistVideos(playlistId: string): Promise<ChannelVideo[]> {
     }
     for (const item of page.items ?? []) {
       const id = item.contentDetails?.videoId;
-      if (id) {
+      const itemTitle = item.snippet?.title;
+      if (id && itemTitle !== "Private video" && itemTitle !== "Deleted video") {
         videos.push({
           id,
           url: `https://www.youtube.com/watch?v=${id}`,

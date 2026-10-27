@@ -127,7 +127,7 @@ export default function Home() {
         body: JSON.stringify({ channelUrl }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Não foi possível listar os vídeos do canal.");
+      if (!res.ok) throw new Error(data.error || "Não foi possível listar os vídeos.");
       setChannelResult({ title: data.channelTitle, videos: data.videos });
     } catch (err) {
       setChannelError(err instanceof Error ? err.message : "Erro inesperado.");
@@ -333,16 +333,16 @@ export default function Home() {
 
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
             <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
-              Vídeos de um canal
+              Vídeos de um canal ou playlist
             </h2>
             <p className="mt-1 text-xs text-text-secondary">
-              Cole a URL de um canal do YouTube para listar os links dos vídeos principais publicados (sem Shorts).
+              Cole a URL de um canal (lista os vídeos principais, sem Shorts) ou de uma playlist do YouTube (lista todos os vídeos dela).
             </p>
 
             <div className="mt-4 flex items-center gap-2">
               <input
                 type="text"
-                placeholder="youtube.com/@canal"
+                placeholder="youtube.com/@canal ou youtube.com/playlist?list=…"
                 value={channelUrl}
                 onChange={(e) => setChannelUrl(e.target.value)}
                 onKeyDown={(e) => {
