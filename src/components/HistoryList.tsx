@@ -11,6 +11,7 @@ export interface HistoryItem {
   title: string;
   subtitle: string;
   coverImage: string | null;
+  sentToPortal: boolean;
   dateLabel: string;
 }
 
@@ -121,12 +122,19 @@ export function HistoryList({
         {items.map((article) => (
           <li
             key={article.id}
-            className={`flex items-center gap-4 rounded-2xl border p-3 transition ${
+            className={`relative flex items-center gap-4 overflow-hidden rounded-2xl border p-3 transition ${
               selected.has(article.id)
                 ? "border-accent-yellow/50 bg-accent-yellow/5"
                 : "border-border bg-surface"
             }`}
           >
+            {article.sentToPortal && (
+              <span
+                title="Já enviada ao Portal"
+                aria-label="Já enviada ao Portal"
+                className="absolute inset-y-0 left-0 w-1.5 bg-green-500"
+              />
+            )}
             <input
               type="checkbox"
               checked={selected.has(article.id)}
@@ -173,7 +181,12 @@ export function HistoryList({
                 {article.title}
               </Link>
               <p className="mt-1 line-clamp-1 text-sm text-text-secondary">{article.subtitle}</p>
-              <p className="mt-1 text-xs text-text-secondary/70">{article.dateLabel}</p>
+              <p className="mt-1 text-xs text-text-secondary/70">
+                {article.dateLabel}
+                {article.sentToPortal && (
+                  <span className="ml-2 font-semibold text-green-600">· Enviada ao Portal</span>
+                )}
+              </p>
             </div>
 
             <div className="flex shrink-0 items-center gap-4">
