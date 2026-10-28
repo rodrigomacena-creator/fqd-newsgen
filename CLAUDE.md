@@ -212,6 +212,26 @@ reais encontradas ao construir o projeto, não só a estrutura.
   suporta CRIAR um post por notícia — se `article.wordpressUrl` já existe, o botão vira link "Ver
   rascunho" em vez de reenviar (evita duplicar); ainda não tem um fluxo de "atualizar" o post já
   criado.
+- **Listagem de vídeos de canal/playlist + geração em lote** (`src/lib/youtubeChannel.ts`,
+  `POST /api/youtube/channel-videos`, UI em `src/app/page.tsx`): o usuário cola a URL de um canal
+  (`youtube.com/@canal`, `/channel/UC…`) ou playlist, escolhe vídeos da lista (sem Shorts) e gera
+  uma notícia por vídeo. Usa a **YouTube Data API** (`YOUTUBE_API_KEY`, cota diária — o erro
+  `quotaExceeded` vira mensagem amigável). Sem a chave, a rota responde 400 com mensagem clara.
+- **Elementos ricos na matéria** (`src/lib/richBlocks.ts`, `src/components/RichBlocks.tsx`):
+  tabela, gráfico, infográficos (números/linha do tempo), citação e box "Você sabia?" opcionais,
+  escolhidos no formulário. Ficam dentro do JSON de cada seção (`section.blocks`), sem coluna
+  nova; o arquivo é "puro" (sem imports de servidor) pra servir client, geração, render e
+  publicação no WordPress (`blocksToHtml`). `reviseArticle.ts` preserva `blocks`.
+- **Fonte do tipo "prompt"** (`promptSource()` em `src/lib/sources.ts`, até `MAX_PROMPT_LENGTH`
+  = 4000 caracteres): a notícia pode ser gerada só de um texto livre, sozinho ou junto de links.
+  Com só prompt, o sistema proíbe inventar fatos e uma checagem em código descarta citações e
+  números que não estejam literalmente no texto do usuário (e o box "Você sabia?").
+- **Vídeo de referência embutido** (`src/lib/videoEmbed.ts`, flag `embedVideo` no POST de geração):
+  incorpora o player do YouTube na notícia e no rascunho do WordPress (iframe 16:9, máx. 770px).
+- **Deploy**: o projeto Vercel `fqd-newsgen` está conectado ao GitHub — todo push na `main` gera
+  deploy de produção automático (pushes em outros branches geram preview, que hoje só tem
+  `BLOB_READ_WRITE_TOKEN` configurado). Migrations de banco NÃO rodam sozinhas no deploy: se o
+  commit traz migration nova, rode `npx prisma migrate deploy` contra o banco de produção.
 - `src/lib/reviseArticle.ts` — fluxo "Pedir ajuste à IA": edita a MESMA notícia em vigor, nunca
   cria uma nova
 - `src/lib/generateImages.ts` — wrapper da Images API da OpenRouter
@@ -256,3 +276,5 @@ extração de transcrição do YouTube funcionar (ver armadilha #14). `WORDPRESS
 `WORDPRESS_USERNAME`/`WORDPRESS_APP_PASSWORD` são opcionais — sem elas, o botão "Enviar para o
 Portal" aparece mas dá erro ao tentar enviar. `WORDPRESS_APP_PASSWORD` é a Senha de Aplicativo
 (Usuários → Perfil → Senhas de Aplicativo no wp-admin), nunca a senha de login normal.
+`YOUTUBE_API_KEY` (YouTube Data API v3) é necessária só pra listar vídeos de canal/playlist;
+sem ela o resto do app funciona normalmente.
