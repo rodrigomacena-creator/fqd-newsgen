@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     photoCount?: number;
     instagramPhotoCount?: number;
     richBlocks?: string[];
+    embedVideo?: boolean;
     extraInstructions?: string;
   };
   try {
@@ -101,6 +102,10 @@ export async function POST(request: Request) {
     const styleguideContext = buildStyleguidePromptContext(profile);
 
     const sources = await fetchAllSources(urls);
+    if (wantPortal && body.embedVideo !== false) {
+      const reference = sources.find((s) => s.type === "youtube" && s.videoId);
+      if (reference) reference.embed = true;
+    }
     const sourcesText = buildSourcesText(sources);
     const draft = await generateArticleDraft(
       sourcesText,

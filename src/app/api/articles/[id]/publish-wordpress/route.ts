@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createWordPressPost } from "@/lib/wordpress";
+import { videoEmbedHtml } from "@/lib/videoEmbed";
 import { blocksToHtml, type RichBlock } from "@/lib/richBlocks";
 
 interface ArticleSection {
@@ -15,6 +16,7 @@ interface ArticleSourceRef {
   url: string;
   title: string;
   videoId?: string;
+  embed?: boolean;
 }
 
 function escapeHtml(text: string): string {
@@ -24,14 +26,15 @@ function escapeHtml(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
-function buildContentHtml(sections: ArticleSection[]): string {
-  return sections
+function buildContentHtml(sections: ArticleSection[], embedVideoId?: string): string {
+  const body = sections
     .map(
       (section) =>
         `<h2>${escapeHtml(section.heading)}</h2>\n<p>${escapeHtml(section.text).replace(/\n+/g, "</p>\n<p>")}</p>` +
         (section.blocks?.length ? `\n${blocksToHtml(section.blocks)}` : "")
     )
     .join("\n\n");
+  return embedVideoId ? `${videoEmbedHtml(embedVideoId)}\n\n${body}` : body;
 }
 
 export async function POST(
@@ -80,7 +83,7 @@ export async function POST(
 
     const { id: wordpressPostId, editUrl } = await createWordPressPost({
       title: article.title,
-      contentHtml: buildContentHtml(sections),
+      contentHtml: buildContentHtml(sections, sources.find((s) => s.embed && s.videoId)?.videoId),
       excerpt: article.subtitle,
       categoryIds,
       featuredImageUrl,

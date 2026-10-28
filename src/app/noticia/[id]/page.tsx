@@ -8,6 +8,7 @@ import { EditableText } from "@/components/EditableText";
 import { RemovableImage } from "@/components/RemovableImage";
 import { GenerationParamsModal } from "@/components/GenerationParamsModal";
 import { WordPressPublishButton } from "@/components/WordPressPublishButton";
+import { EMBED_MAX_WIDTH, youtubeEmbedUrl } from "@/lib/videoEmbed";
 import { RichBlocks } from "@/components/RichBlocks";
 import type { RichBlock } from "@/lib/richBlocks";
 
@@ -22,6 +23,8 @@ interface ArticleSourceRef {
   type: "youtube" | "webpage";
   url: string;
   title: string;
+  videoId?: string;
+  embed?: boolean;
 }
 
 function DestinationLabel({ children }: { children: string }) {
@@ -46,6 +49,7 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
   const version = article.updatedAt.getTime();
   const withVersion = (url: string) => `${url}?v=${version}`;
 
+  const embedVideoId = sources.find((s) => s.embed && s.videoId)?.videoId;
   const hasPortal = sections.length > 0 || Boolean(article.coverImage);
   const hasInstagram = Boolean(article.instagramCaption);
   const instagramImageUrls: string[] = (
@@ -132,6 +136,21 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
                 sizes="(min-width: 768px) 768px, 100vw"
                 className="relative mt-6 aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface"
               />
+            )}
+
+            {embedVideoId && (
+              <div className="mt-6 w-full" style={{ maxWidth: EMBED_MAX_WIDTH }}>
+                <div className="aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface">
+                  <iframe
+                    src={youtubeEmbedUrl(embedVideoId)}
+                    title="Vídeo de referência"
+                    className="h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    loading="lazy"
+                  />
+                </div>
+              </div>
             )}
 
             <article className="mt-8 space-y-10">

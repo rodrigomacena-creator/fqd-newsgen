@@ -15,6 +15,7 @@ export interface ArticleSource {
   title: string;
   content: string;
   videoId?: string; // apenas para youtube, usado no fallback de thumbnail
+  embed?: boolean; // fonte cujo player é incorporado na notícia (só a 1ª fonte YouTube)
 }
 
 export class SourceFetchError extends Error {

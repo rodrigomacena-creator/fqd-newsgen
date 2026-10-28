@@ -66,6 +66,7 @@ export default function Home() {
   const [subtitleCount, setSubtitleCount] = useState(2);
   const [paragraphCount, setParagraphCount] = useState(5);
   const [photoCount, setPhotoCount] = useState(2);
+  const [embedVideo, setEmbedVideo] = useState(true);
   const [richBlocks, setRichBlocks] = useState<RichBlockType[]>([]);
   const [extraInstructions, setExtraInstructions] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
@@ -179,6 +180,7 @@ export default function Home() {
         photoCount,
         instagramPhotoCount,
         richBlocks: wantPortal ? richBlocks : [],
+        embedVideo,
         extraInstructions: extraInstructions.trim() || undefined,
       }),
     });
@@ -559,6 +561,26 @@ export default function Home() {
                 </select>
               </div>
             </div>
+
+            <label
+              className={`mt-6 flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition ${
+                embedVideo ? "border-accent-yellow/60 bg-accent-yellow/5" : "border-border"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={embedVideo}
+                onChange={(e) => setEmbedVideo(e.target.checked)}
+                disabled={loading}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-accent-yellow"
+              />
+              <span>
+                <span className="block text-sm font-medium">Incorporar o vídeo de referência na matéria</span>
+                <span className="block text-xs text-text-secondary">
+                  Insere o player do YouTube (até 770px, responsivo) no topo da matéria, usando o primeiro vídeo das fontes.
+                </span>
+              </span>
+            </label>
 
             <div className="mt-6">
               <p className="text-sm font-medium">Elementos para enriquecer a matéria</p>
