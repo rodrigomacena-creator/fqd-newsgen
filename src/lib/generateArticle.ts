@@ -2,10 +2,17 @@ import { getOpenRouterClient, OPENROUTER_TEXT_MODEL, extractCompletionText } fro
 import {
   DEFAULT_ARTICLE_PROMPT,
   MULTI_SOURCE_INSTRUCTION,
+  PROMPT_SOURCE_INSTRUCTION,
   buildDestinationsInstruction,
   buildStructureInstruction,
 } from "./prompts";
-import { buildRichBlocksInstruction, sanitizeBlocks, type RichBlock, type RichBlockType } from "./richBlocks";
+import {
+  buildRichBlocksInstruction,
+  groundBlocksInText,
+  sanitizeBlocks,
+  type RichBlock,
+  type RichBlockType,
+} from "./richBlocks";
 
 export interface ArticleStructure {
   wantPortal: boolean;
@@ -16,6 +23,9 @@ export interface ArticleStructure {
   instagramPhotoCount: number;
   richBlocks: RichBlockType[];
   extraInstructions?: string;
+  hasPromptSource?: boolean;
+  // Só prompt, sem links: elementos ricos precisam estar literalmente no texto do prompt.
+  promptOnly?: boolean;
 }
 
 export interface ArticleSectionDraft {
@@ -85,6 +95,7 @@ export async function generateArticleDraft(
   const systemPrompt = [
     instructionPrompt,
     MULTI_SOURCE_INSTRUCTION,
+    structure.hasPromptSource ? PROMPT_SOURCE_INSTRUCTION : null,
     buildDestinationsInstruction(structure),
     structure.wantPortal ? buildStructureInstruction(structure) : null,
     structure.wantPortal && structure.richBlocks.length > 0
@@ -124,7 +135,9 @@ export async function generateArticleDraft(
   const richBlocks = structure.wantPortal ? structure.richBlocks : [];
   parsed.sections = parsed.sections.map((section) => ({
     ...section,
-    blocks: sanitizeBlocks(section.blocks, richBlocks),
+    blocks: structure.promptOnly
+      ? groundBlocksInText(sanitizeBlocks(section.blocks, richBlocks), sourcesText)
+      : sanitizeBlocks(section.blocks, richBlocks),
   }));
   if (!parsed.instagram) parsed.instagram = { caption: "", imagePrompts: [] };
   if (!Array.isArray(parsed.instagram.imagePrompts)) parsed.instagram.imagePrompts = [];

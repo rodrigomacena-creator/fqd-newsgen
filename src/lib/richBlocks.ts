@@ -224,3 +224,30 @@ export function blocksToHtml(blocks: RichBlock[]): string {
     })
     .join("\n");
 }
+
+const normalizeText = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[“”«»"']/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const numbersIn = (s: string) => s.match(/\d+(?:[.,]\d+)*/g) ?? [];
+
+/**
+ * Rede de segurança pra geração só a partir de um prompt (sem vídeos/páginas): o modelo
+ * costuma inventar falas e números mesmo sendo proibido. Mantém apenas citações cuja fala
+ * aparece literalmente no texto-base e blocos de dados cujos números todos aparecem nele;
+ * descarta o box "Você sabia?" (conteúdo livre, sem como verificar).
+ */
+export function groundBlocksInText(blocks: RichBlock[], baseText: string): RichBlock[] {
+  const base = normalizeText(baseText);
+  const baseNumbers = new Set(numbersIn(baseText));
+
+  return blocks.filter((block) => {
+    if (block.type === "quote") return base.includes(normalizeText(block.text));
+    if (block.type === "callout") return false;
+    const nums = numbersIn(JSON.stringify(block));
+    return nums.length > 0 && nums.every((n) => baseNumbers.has(n));
+  });
+}

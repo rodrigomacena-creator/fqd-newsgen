@@ -7,7 +7,7 @@ import {
 } from "./youtube";
 import { fetchWebpageContent, WebpageFetchError } from "./webpage";
 
-export type SourceType = "youtube" | "webpage";
+export type SourceType = "youtube" | "webpage" | "prompt";
 
 export interface ArticleSource {
   type: SourceType;
@@ -74,13 +74,23 @@ export function firstYoutubeThumbnail(sources: ArticleSource[]): string | undefi
   return yt?.videoId ? thumbnailUrl(yt.videoId) : undefined;
 }
 
+export const MAX_PROMPT_LENGTH = 4000;
+
+/** O prompt digitado pelo usuário entra como uma fonte a mais (sem URL). */
+export function promptSource(prompt: string): ArticleSource {
+  return { type: "prompt", url: "", title: "Prompt", content: prompt };
+}
+
 export function buildSourcesText(sources: ArticleSource[]): string {
   const perSourceBudget = Math.floor(TOTAL_CONTENT_BUDGET / sources.length);
 
   return sources
     .map((source, index) => {
-      const label = source.type === "youtube" ? "Vídeo do YouTube" : "Página da web";
       const truncated = source.content.slice(0, perSourceBudget);
+      if (source.type === "prompt") {
+        return `--- Fonte ${index + 1}: Prompt do usuário (pauta/briefing) ---\n${truncated}`;
+      }
+      const label = source.type === "youtube" ? "Vídeo do YouTube" : "Página da web";
       return `--- Fonte ${index + 1}: ${label} — ${source.title} (${source.url}) ---\n${truncated}`;
     })
     .join("\n\n");

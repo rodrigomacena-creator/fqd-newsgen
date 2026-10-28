@@ -52,6 +52,7 @@ export default function Home() {
   const { profiles } = useInstructionProfiles();
 
   const [urls, setUrls] = useState<string[]>([""]);
+  const [promptText, setPromptText] = useState("");
   const [channelUrl, setChannelUrl] = useState("");
   const [channelLoading, setChannelLoading] = useState(false);
   const [channelError, setChannelError] = useState<string | null>(null);
@@ -159,7 +160,7 @@ export default function Home() {
     );
   }
 
-  async function generateOne(sourceUrls: string[]): Promise<string> {
+  async function generateOne(sourceUrls: string[], prompt?: string): Promise<string> {
     const destinations = [
       ...(wantInstagram ? ["instagram"] : []),
       ...(wantPortal ? ["portal"] : []),
@@ -170,6 +171,7 @@ export default function Home() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         urls: sourceUrls,
+        prompt: prompt || undefined,
         textModel,
         imageModel,
         instagramImageModel,
@@ -194,9 +196,11 @@ export default function Home() {
 
   // Uma notícia por vídeo selecionado (mais uma com o conteúdo do campo Fontes, se preenchido),
   // geradas em sequência pra não estourar limites/custo da IA de uma vez.
-  async function runBatch(sourceUrls: string[], videoUrls: string[]) {
-    const jobs: { label: string; urls: string[] }[] = [
-      ...(sourceUrls.length > 0 ? [{ label: "Fontes", urls: sourceUrls }] : []),
+  async function runBatch(sourceUrls: string[], videoUrls: string[], prompt: string) {
+    const jobs: { label: string; urls: string[]; prompt?: string }[] = [
+      ...(sourceUrls.length > 0 || prompt
+        ? [{ label: "Fontes", urls: sourceUrls, prompt }]
+        : []),
       ...videoUrls.map((url) => ({
         label: channelResult?.videos.find((v) => v.url === url)?.title ?? url,
         urls: [url],
@@ -215,7 +219,7 @@ export default function Home() {
       const startedAt = Date.now();
       setBatch({ total: jobs.length, done: i, currentStartedAt: startedAt, durations: [...durations], failures: [...failures], finished: false });
       try {
-        await generateOne(jobs[i].urls);
+        await generateOne(jobs[i].urls, jobs[i].prompt);
       } catch (err) {
         failures.push({ label: jobs[i].label, message: err instanceof Error ? err.message : "Erro inesperado." });
         if (jobs[i].label !== "Fontes") failedVideoUrls.push(jobs[i].urls[0]);
@@ -235,14 +239,15 @@ export default function Home() {
     const videoUrls = channelResult
       ? channelResult.videos.map((v) => v.url).filter((u) => selectedVideos.has(u))
       : [];
-    if ((cleanUrls.length === 0 && videoUrls.length === 0) || loading || (!wantInstagram && !wantPortal)) {
+    const prompt = promptText.trim();
+    if ((cleanUrls.length === 0 && videoUrls.length === 0 && !prompt) || loading || (!wantInstagram && !wantPortal)) {
       return;
     }
 
     setBatch(null);
 
     if (videoUrls.length > 0) {
-      await runBatch(cleanUrls, videoUrls);
+      await runBatch(cleanUrls, videoUrls, prompt);
       return;
     }
 
@@ -255,7 +260,7 @@ export default function Home() {
     }, 4000);
 
     try {
-      const id = await generateOne(cleanUrls);
+      const id = await generateOne(cleanUrls, prompt);
       router.push(`/noticia/${id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
@@ -295,7 +300,7 @@ export default function Home() {
                   <div className="relative flex-1">
                     <input
                       type="url"
-                      required={index === 0 && selectedCount === 0}
+                      required={index === 0 && selectedCount === 0 && !promptText.trim()}
                       placeholder="Link do YouTube ou de uma página com notícia…"
                       value={value}
                       onChange={(e) => updateUrl(index, e.target.value)}
@@ -418,6 +423,26 @@ export default function Home() {
                 </ul>
               </div>
             )}
+          </section>
+
+          <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
+            <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
+              Gerar a partir de um prompt
+            </h2>
+            <p className="mt-2 text-xs text-text-secondary">
+              Descreva a pauta da notícia. Se preencher links também, o prompt orienta o enfoque e os links trazem os fatos.
+              Sem links, a IA escreve só com o que você informar aqui — não inventa números nem citações.
+            </p>
+            <textarea
+              rows={5}
+              maxLength={4000}
+              value={promptText}
+              onChange={(e) => setPromptText(e.target.value)}
+              disabled={loading}
+              placeholder="Ex.: Escreva uma notícia sobre a estreia do programa X no dia 10/11, com o apresentador Y, destacando…"
+              className="mt-3 w-full resize-y rounded-lg border border-border bg-background px-4 py-3 text-sm outline-none focus:border-accent-yellow disabled:opacity-50"
+            />
+            <p className="mt-1 text-right text-xs text-text-secondary">{promptText.length}/4000</p>
           </section>
 
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">

@@ -20,11 +20,12 @@ interface ArticleSection {
 }
 
 interface ArticleSourceRef {
-  type: "youtube" | "webpage";
+  type: "youtube" | "webpage" | "prompt";
   url: string;
   title: string;
   videoId?: string;
   embed?: boolean;
+  content?: string;
 }
 
 function DestinationLabel({ children }: { children: string }) {
@@ -102,16 +103,22 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
             {sources.map((source, index) => (
               <span key={index}>
                 {index > 0 && " · "}
-                <a
-                  href={source.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline hover:text-accent-yellow"
-                  title={source.title}
-                >
-                  {source.type === "youtube" ? "YouTube" : "Página"}
-                  {sources.length > 1 ? ` ${index + 1}` : ""}
-                </a>
+                {source.type === "prompt" ? (
+                  <span title={source.content}>
+                    Prompt{sources.length > 1 ? ` ${index + 1}` : ""}
+                  </span>
+                ) : (
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline hover:text-accent-yellow"
+                    title={source.title}
+                  >
+                    {source.type === "youtube" ? "YouTube" : "Página"}
+                    {sources.length > 1 ? ` ${index + 1}` : ""}
+                  </a>
+                )}
               </span>
             ))}
           </span>

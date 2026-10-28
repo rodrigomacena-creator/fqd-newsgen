@@ -14,6 +14,8 @@ import {
   buildSourcesText,
   SourceFetchError,
   MAX_SOURCES,
+  MAX_PROMPT_LENGTH,
+  promptSource,
 } from "@/lib/sources";
 
 const MIN_PARAGRAPHS = 1;
@@ -43,6 +45,7 @@ export async function POST(request: Request) {
     instagramPhotoCount?: number;
     richBlocks?: string[];
     embedVideo?: boolean;
+    prompt?: string;
     extraInstructions?: string;
   };
   try {
@@ -52,8 +55,15 @@ export async function POST(request: Request) {
   }
 
   const urls = (body.urls ?? []).map((u) => u.trim()).filter(Boolean);
-  if (urls.length === 0) {
-    return NextResponse.json({ error: "Informe ao menos um link." }, { status: 400 });
+  const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+  if (urls.length === 0 && !prompt) {
+    return NextResponse.json({ error: "Informe ao menos um link ou um prompt." }, { status: 400 });
+  }
+  if (prompt.length > MAX_PROMPT_LENGTH) {
+    return NextResponse.json(
+      { error: `O prompt pode ter no máximo ${MAX_PROMPT_LENGTH} caracteres.` },
+      { status: 400 }
+    );
   }
   if (urls.length > MAX_SOURCES) {
     return NextResponse.json(
@@ -101,7 +111,7 @@ export async function POST(request: Request) {
     const profileName = profile?.name ?? null;
     const styleguideContext = buildStyleguidePromptContext(profile);
 
-    const sources = await fetchAllSources(urls);
+    const sources = [...(await fetchAllSources(urls)), ...(prompt ? [promptSource(prompt)] : [])];
     if (wantPortal && body.embedVideo !== false) {
       const reference = sources.find((s) => s.type === "youtube" && s.videoId);
       if (reference) reference.embed = true;
@@ -118,6 +128,8 @@ export async function POST(request: Request) {
         instagramPhotoCount,
         richBlocks,
         extraInstructions,
+        hasPromptSource: Boolean(prompt),
+        promptOnly: Boolean(prompt) && urls.length === 0,
       },
       textModel,
       instructionPrompt,

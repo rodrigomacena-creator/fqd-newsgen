@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 
 interface SourceRef {
-  type: "youtube" | "webpage";
+  type: "youtube" | "webpage" | "prompt";
   url: string;
   title: string;
+  content?: string;
 }
 
 export function GenerationParamsModal({
@@ -82,7 +83,13 @@ export function GenerationParamsModal({
                   Fontes ({sources.length})
                 </dt>
                 <dd className="mt-1.5 space-y-1.5">
-                  {sources.map((source, index) => (
+                  {sources.map((source, index) =>
+                    source.type === "prompt" ? (
+                      <p key={index} className="whitespace-pre-wrap text-foreground">
+                        <span className="text-text-secondary">Prompt — </span>
+                        {source.content}
+                      </p>
+                    ) : (
                     <a
                       key={index}
                       href={source.url}
@@ -93,7 +100,8 @@ export function GenerationParamsModal({
                     >
                       {source.type === "youtube" ? "YouTube" : "Página"} — {source.title}
                     </a>
-                  ))}
+                    )
+                  )}
                 </dd>
               </div>
 
