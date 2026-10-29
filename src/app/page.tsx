@@ -602,7 +602,7 @@ export default function Home() {
               <span>
                 <span className="block text-sm font-medium">Incorporar o vídeo de referência na matéria</span>
                 <span className="block text-xs text-text-secondary">
-                  Insere o player do YouTube (até 770px, responsivo) no topo da matéria, usando o primeiro vídeo das fontes.
+                  Insere o player do YouTube (até 770px, responsivo) no final da matéria, usando o primeiro vídeo das fontes.
                 </span>
               </span>
             </label>

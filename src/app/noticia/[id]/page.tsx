@@ -145,21 +145,6 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
               />
             )}
 
-            {embedVideoId && (
-              <div className="mt-6 w-full" style={{ maxWidth: EMBED_MAX_WIDTH }}>
-                <div className="aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface">
-                  <iframe
-                    src={youtubeEmbedUrl(embedVideoId)}
-                    title="Vídeo de referência"
-                    className="h-full w-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                    loading="lazy"
-                  />
-                </div>
-              </div>
-            )}
-
             <article className="mt-8 space-y-10">
               {sections.map((section, index) => (
                 <section key={index}>
@@ -192,6 +177,22 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
                 </section>
               ))}
             </article>
+
+            {embedVideoId && (
+              <div className="mt-10 w-full" style={{ maxWidth: EMBED_MAX_WIDTH }}>
+                <div className="aspect-video w-full overflow-hidden rounded-2xl border border-border bg-surface">
+                  <iframe
+                    src={youtubeEmbedUrl(embedVideoId)}
+                    title="Vídeo de referência"
+                    className="h-full w-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                    loading="lazy"
+                  />
+                </div>
+              </div>
+            )}
+
 
             <WordPressPublishButton
               articleId={article.id}

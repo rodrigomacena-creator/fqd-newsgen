@@ -10,7 +10,7 @@ export function youtubeEmbedUrl(videoId: string): string {
  */
 export function videoEmbedHtml(videoId: string): string {
   return (
-    `<div style="max-width:${EMBED_MAX_WIDTH}px;width:100%;margin:0 auto 24px;">` +
+    `<div style="max-width:${EMBED_MAX_WIDTH}px;width:100%;margin:24px auto 0;">` +
     `<div style="position:relative;width:100%;height:0;padding-bottom:56.25%;overflow:hidden;border-radius:12px;">` +
     `<iframe src="${youtubeEmbedUrl(videoId)}" title="Vídeo de referência" ` +
     `style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" ` +

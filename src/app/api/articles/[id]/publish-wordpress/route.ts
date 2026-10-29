@@ -34,7 +34,7 @@ function buildContentHtml(sections: ArticleSection[], embedVideoId?: string): st
         (section.blocks?.length ? `\n${blocksToHtml(section.blocks)}` : "")
     )
     .join("\n\n");
-  return embedVideoId ? `${videoEmbedHtml(embedVideoId)}\n\n${body}` : body;
+  return embedVideoId ? `${body}\n\n${videoEmbedHtml(embedVideoId)}` : body;
 }
 
 export async function POST(
