@@ -75,6 +75,7 @@ export default async function HistoryPage(props: PageProps<"/noticias">) {
     title: article.title,
     subtitle: article.subtitle,
     sentToPortal: Boolean(article.wordpressUrl),
+    hasPortal: (JSON.parse(article.sections) as unknown[]).length > 0,
     coverImage: pickDisplayImage(article),
     dateLabel: new Intl.DateTimeFormat("pt-BR", {
       dateStyle: "short",

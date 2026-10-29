@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { DeleteArticleButton } from "./DeleteArticleButton";
+import { BulkPublishDialog, type BulkPublishItem } from "./BulkPublishDialog";
 
 export interface HistoryItem {
   id: string;
@@ -12,6 +13,7 @@ export interface HistoryItem {
   subtitle: string;
   coverImage: string | null;
   sentToPortal: boolean;
+  hasPortal: boolean;
   dateLabel: string;
 }
 
@@ -34,6 +36,13 @@ export function HistoryList({
   const pathname = usePathname();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  // Fila congelada ao abrir o diálogo: o router.refresh() ao final de cada rodada muda
+  // sentToPortal na lista e não pode alterar os itens que o diálogo está processando.
+  const [publishQueue, setPublishQueue] = useState<{ items: BulkPublishItem[]; skipped: number } | null>(null);
+
+  // Só entram na fila as que têm matéria de Portal e ainda não foram enviadas.
+  const selectedItems = items.filter((item) => selected.has(item.id));
+  const publishable = selectedItems.filter((item) => item.hasPortal && !item.sentToPortal);
 
   const allSelected = items.length > 0 && items.every((item) => selected.has(item.id));
   const someSelected = items.some((item) => selected.has(item.id));
@@ -107,6 +116,25 @@ export function HistoryList({
         </label>
 
         {someSelected && (
+          <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setPublishQueue({
+                items: publishable.map((item) => ({ id: item.id, title: item.title })),
+                skipped: selectedItems.length - publishable.length,
+              })
+            }
+            disabled={deleting || publishable.length === 0}
+            title={
+              publishable.length === 0
+                ? "Nenhuma das selecionadas está disponível para envio (já enviadas ou sem matéria de Portal)."
+                : undefined
+            }
+            className="rounded-lg bg-accent-red px-4 py-2 text-xs font-semibold text-white transition hover:bg-accent-red-deep disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Enviar para o portal FQDTV ({publishable.length})
+          </button>
           <button
             type="button"
             onClick={handleBulkDelete}
@@ -115,8 +143,21 @@ export function HistoryList({
           >
             {deleting ? "Excluindo…" : `Excluir selecionadas (${selected.size})`}
           </button>
+          </div>
         )}
       </div>
+
+      {publishQueue && (
+        <BulkPublishDialog
+          items={publishQueue.items}
+          skipped={publishQueue.skipped}
+          onClose={() => {
+            setPublishQueue(null);
+            setSelected(new Set());
+          }}
+          onFinished={() => router.refresh()}
+        />
+      )}
 
       <ul className="mt-3 space-y-2">
         {items.map((article) => (
