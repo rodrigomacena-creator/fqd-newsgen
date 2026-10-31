@@ -3,7 +3,7 @@ import os
 import subprocess
 
 import numpy as np
-from PIL import Image, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H, FPS = 1080, 1920, 30
 
@@ -132,3 +132,68 @@ def spread_words(text, t0, span=0.8):
         return []
     step = span / len(parts)
     return [[p, t0 + i * step, t0 + (i + 1) * step] for i, p in enumerate(parts)]
+
+
+def inter(weight="Regular"):
+    """Outro peso da família Inter, na mesma pasta da fonte sans configurada (fonts-inter)."""
+    d = os.path.dirname(FONT_SANS)
+    p = os.path.join(d, f"Inter-{weight}.otf")
+    return p if os.path.exists(p) else FONT_SANS
+
+
+def ease_io(x):
+    x = min(max(x, 0.0), 1.0)
+    return x * x * (3 - 2 * x)
+
+
+def back(x, s=1.7):
+    """Easing com leve 'passada' do ponto final (efeito pop)."""
+    x = min(max(x, 0.0), 1.0) - 1
+    return x * x * ((s + 1) * x + s) + 1
+
+
+def text_img(txt, f, fill, stroke=0, stroke_fill=None, pad=8):
+    bb = f.getbbox(txt)
+    im = Image.new("RGBA", (bb[2] - bb[0] + 2 * pad + 2 * stroke, bb[3] - bb[1] + 2 * pad + 2 * stroke), (0, 0, 0, 0))
+    ImageDraw.Draw(im).text((pad + stroke - bb[0], pad + stroke - bb[1]), txt, font=f, fill=fill,
+                            stroke_width=stroke, stroke_fill=stroke_fill)
+    return im
+
+
+def put(fr, im, cx, cy, alpha=1.0, scale=1.0, blur=0.0):
+    """Cola um RGBA no quadro com centro (cx, cy), opacidade, escala e blur."""
+    if alpha <= 0.003 or scale <= 0.01:
+        return
+    if scale != 1:
+        im = im.resize((max(1, int(im.width * scale)), max(1, int(im.height * scale))), Image.BILINEAR)
+    if blur > 0.4:
+        pad = int(blur * 3)
+        big = Image.new("RGBA", (im.width + 2 * pad, im.height + 2 * pad), (0, 0, 0, 0))
+        big.paste(im, (pad, pad))
+        im = big.filter(ImageFilter.GaussianBlur(blur))
+    if alpha < 1:
+        im = im.copy()
+        im.putalpha(im.getchannel("A").point(lambda a: int(a * alpha)))
+    x, y = int(cx - im.width / 2), int(cy - im.height / 2)
+    if x >= 0 and y >= 0 and x + im.width <= fr.width and y + im.height <= fr.height:
+        fr.alpha_composite(im, (x, y))
+    else:
+        lay = Image.new("RGBA", fr.size, (0, 0, 0, 0))
+        lay.paste(im, (x, y), im)
+        fr.alpha_composite(lay)
+
+
+def fit_font(path, size, txt, max_w, min_size=40):
+    f = font(path, size)
+    while f.getlength(txt) > max_w and size > min_size:
+        size -= 6
+        f = font(path, size)
+    return f
+
+
+def split_cta(text):
+    """Separa o texto do CTA em (marca/frase, site). O site é a palavra com ponto, se houver."""
+    parts = (text or "").replace("\n", " ").split()
+    url = next((p for p in parts if "." in p.strip(".") and len(p) > 4), None)
+    rest = " ".join(p for p in parts if p != url)
+    return rest, url
