@@ -1,0 +1,356 @@
+[
+  {
+    "id": "editorial-pb-vermelho",
+    "numero": 1,
+    "nome": "Editorial P&B + Vermelho",
+    "tom": "Urgente, polêmico, tech/IA, \"ninguém te conta\"",
+    "ritmo": "Cenas de 1–2s, punch zoom",
+    "duracaoReferenciaS": [
+      15,
+      30
+    ],
+    "cenaS": [
+      1,
+      2
+    ],
+    "semNarracao": false,
+    "cta": "comenta <PALAVRA> (estilo DM-keyword) ou URL"
+  },
+  {
+    "id": "estudio-serif-cinematico",
+    "numero": 2,
+    "nome": "Estúdio Serif + Cinemático",
+    "tom": "Calmo, premium, didático; negócios e branding com exemplos de marcas",
+    "ritmo": "Cenas de 2–3,5s, fade+blur contínuo",
+    "duracaoReferenciaS": [
+      25,
+      35
+    ],
+    "cenaS": [
+      2,
+      3.5
+    ],
+    "semNarracao": false,
+    "cta": "Siga <PERFIL> para mais dicas de <TEMA>, com logo da marca"
+  },
+  {
+    "id": "tipografia-rosto-3d",
+    "numero": 3,
+    "nome": "Tipografia Gigante + Rosto 3D",
+    "tom": "Dramático, manifesto de marca",
+    "ritmo": "Cenas de 1,5–3s, close lento",
+    "duracaoReferenciaS": [
+      18
+    ],
+    "cenaS": [
+      1.5,
+      3
+    ],
+    "semNarracao": false,
+    "cta": "Card preto com logo branco, 'Vamos conversar hoje', telefone e site em linhas que entram uma a uma"
+  },
+  {
+    "id": "papel-hera",
+    "numero": 4,
+    "nome": "Papel, Luz e Hera",
+    "tom": "Leve, orgânico, reflexivo",
+    "ritmo": "Frases de 2–3s, sem troca de fundo",
+    "duracaoReferenciaS": [
+      22
+    ],
+    "cenaS": [
+      2,
+      3
+    ],
+    "semNarracao": false,
+    "cta": "Logo da marca centralizado com o nome, sobre o mesmo papel"
+  },
+  {
+    "id": "lista-cinetica",
+    "numero": 5,
+    "nome": "Lista Cinética em Roleta",
+    "tom": "Direto, gráfico, sem narração",
+    "ritmo": "Uma palavra a cada 0,6s, marcada na batida",
+    "duracaoReferenciaS": [
+      8
+    ],
+    "cenaS": [
+      0.5,
+      0.7
+    ],
+    "semNarracao": true,
+    "cta": "Última palavra da lista é o nome da marca ou a oferta, com um segurar de 1s"
+  },
+  {
+    "id": "neumorfico-tela-real",
+    "numero": 6,
+    "nome": "Neumórfico + Tela Real",
+    "tom": "Didático, limpo, de produto",
+    "ritmo": "Trocas de 3–5s, sempre com movimento",
+    "duracaoReferenciaS": [
+      101
+    ],
+    "cenaS": [
+      3,
+      5
+    ],
+    "semNarracao": false,
+    "cta": "'Não esqueça de seguir', com logo 3D da marca e o site como marca d'água fixa"
+  },
+  {
+    "id": "interfaces-do-dia-a-dia",
+    "numero": 7,
+    "nome": "Interfaces do Dia a Dia",
+    "tom": "Autoral, narrativo, surpreendente",
+    "ritmo": "Interface nova a cada 2–3s",
+    "duracaoReferenciaS": [
+      37
+    ],
+    "cenaS": [
+      2,
+      3
+    ],
+    "semNarracao": false,
+    "cta": "Busca sendo digitada que retorna o site da marca como primeiro resultado"
+  },
+  {
+    "id": "hud-tutorial-escuro",
+    "numero": 8,
+    "nome": "HUD Técnico Escuro",
+    "tom": "Técnico, minimalista, de série",
+    "ritmo": "Um passo a cada 3s",
+    "duracaoReferenciaS": [
+      34
+    ],
+    "cenaS": [
+      2.5,
+      4
+    ],
+    "semNarracao": true,
+    "cta": "Card claro com 'Comente PROJETO' para receber o arquivo por DM"
+  },
+  {
+    "id": "metafora-escultura-3d",
+    "numero": 9,
+    "nome": "Metáfora em Escultura 3D",
+    "tom": "Poético, contemplativo, premium",
+    "ritmo": "Metáfora nova a cada 1,5s",
+    "duracaoReferenciaS": [
+      17
+    ],
+    "cenaS": [
+      1.2,
+      2
+    ],
+    "semNarracao": false,
+    "cta": "Sem CTA: fecha na frase-título, o que favorece replay. Em uso comercial, acrescentar assinatura curta"
+  },
+  {
+    "id": "silhueta-roxo-pop",
+    "numero": 10,
+    "nome": "Silhueta + Roxo Pop",
+    "tom": "Animado, didático, popular",
+    "ritmo": "Elemento novo a cada 1,5–3s",
+    "duracaoReferenciaS": [
+      36
+    ],
+    "cenaS": [
+      1.5,
+      3
+    ],
+    "semNarracao": false,
+    "cta": "'A partir de agora, valide' com check ciano animado por cima da palavra"
+  },
+  {
+    "id": "cinematico-fpv-ia",
+    "numero": 11,
+    "nome": "Cinemático FPV de IA",
+    "tom": "Cinematográfico, de impacto, aspiracional",
+    "ritmo": "Plano único de 10s, com velocidade variável",
+    "duracaoReferenciaS": [
+      10
+    ],
+    "cenaS": [
+      10,
+      10
+    ],
+    "semNarracao": false,
+    "cta": "Fixo no topo do início ao fim: 'Comente IA para receber o guia'"
+  },
+  {
+    "id": "antes-depois-apresentador",
+    "numero": 12,
+    "nome": "Antes e Depois com Apresentador",
+    "tom": "Humano, confiável, de prova",
+    "ritmo": "B-roll novo a cada 2–3s",
+    "duracaoReferenciaS": [
+      19
+    ],
+    "cenaS": [
+      2,
+      3
+    ],
+    "semNarracao": false,
+    "cta": "Texto fixo: 'vamos trabalhar no seu reel' + 'me chama na DM'"
+  },
+  {
+    "id": "vitrine-gradiente",
+    "numero": 13,
+    "nome": "Vitrine em Gradiente",
+    "tom": "Moderno, colorido, salvável",
+    "ritmo": "Um cartão a cada 1,3s",
+    "duracaoReferenciaS": [
+      12
+    ],
+    "cenaS": [
+      1,
+      1.5
+    ],
+    "semNarracao": true,
+    "cta": "'Thank you' com pílulas brilhantes: 'comente para tirar dúvidas' e 'salve para depois'"
+  },
+  {
+    "id": "tela-filmada",
+    "numero": 14,
+    "nome": "Tela Filmada na Mesa",
+    "tom": "Autêntico, prático, de bastidor",
+    "ritmo": "Passo novo a cada 2–3s",
+    "duracaoReferenciaS": [
+      28
+    ],
+    "cenaS": [
+      2,
+      3
+    ],
+    "semNarracao": false,
+    "cta": "Apresentador em imagem escurecida apontando para o @ do perfil, com o ícone do Instagram no centro"
+  },
+  {
+    "id": "fluxo-de-nos-ia",
+    "numero": 15,
+    "nome": "Fluxo de Nós de IA",
+    "tom": "Tecnológico, de bastidor, impressionante",
+    "ritmo": "Nó novo a cada 1,3s",
+    "duracaoReferenciaS": [
+      15
+    ],
+    "cenaS": [
+      1,
+      1.5
+    ],
+    "semNarracao": false,
+    "cta": "Título em faixa vermelha: 'copie este fluxo'. O fecho é a frase do produto no vídeo final"
+  },
+  {
+    "id": "icones-em-azul",
+    "numero": 16,
+    "nome": "Ícones Brilhantes em Azul",
+    "tom": "Corporativo, claro, explicativo",
+    "ritmo": "Palavra ou ícone a cada 1–2s",
+    "duracaoReferenciaS": [
+      30
+    ],
+    "cenaS": [
+      1,
+      2
+    ],
+    "semNarracao": false,
+    "cta": "Logo da marca desenhado com linha animada, sobre o mesmo azul, com o lema embaixo"
+  },
+  {
+    "id": "painel-de-dados-dourado",
+    "numero": 17,
+    "nome": "Painel de Dados Dourado",
+    "tom": "Investigativo, sério, analítico",
+    "ritmo": "Dado novo a cada 5–6s",
+    "duracaoReferenciaS": [
+      75
+    ],
+    "cenaS": [
+      4,
+      6
+    ],
+    "semNarracao": false,
+    "cta": "Retorno à abertura com os dois números: fecha o ciclo e provoca replay"
+  },
+  {
+    "id": "documentario-dupla-exposicao",
+    "numero": 18,
+    "nome": "Documentário em Dupla Exposição",
+    "tom": "Pessoal, sóbrio, de autoridade",
+    "ritmo": "B-roll a cada 4–6s",
+    "duracaoReferenciaS": [
+      50
+    ],
+    "cenaS": [
+      4,
+      6
+    ],
+    "semNarracao": false,
+    "cta": "Palavra-gatilho grande em amarelo, com ícone de comentário, sobre o apresentador em close"
+  },
+  {
+    "id": "teatro-surreal-colagem",
+    "numero": 19,
+    "nome": "Teatro Surreal em Colagem",
+    "tom": "Teatral, lúdico, misterioso",
+    "ritmo": "Mundo novo a cada 2,4s",
+    "duracaoReferenciaS": [
+      29
+    ],
+    "cenaS": [
+      2,
+      3
+    ],
+    "semNarracao": false,
+    "cta": "Cena com o material de trabalho sobre a mesa e nome da marca em fundo liso e chapado"
+  },
+  {
+    "id": "selos-maquina-de-escrever",
+    "numero": 20,
+    "nome": "Selos e Máquina de Escrever",
+    "tom": "Institucional, nostálgico, elegante",
+    "ritmo": "Um selo a cada 3,5s",
+    "duracaoReferenciaS": [
+      41
+    ],
+    "cenaS": [
+      3,
+      4
+    ],
+    "semNarracao": false,
+    "cta": "Fundo branco e limpo com o logo da marca e o site"
+  },
+  {
+    "id": "site-vivo-no-notebook",
+    "numero": 21,
+    "nome": "Site Vivo no Notebook",
+    "tom": "Premium, hipnótico, portfólio",
+    "ritmo": "Plano único de 7s em loop",
+    "duracaoReferenciaS": [
+      7
+    ],
+    "cenaS": [
+      7,
+      7
+    ],
+    "semNarracao": false,
+    "cta": "Nenhum na tela; o CTA fica na legenda do post"
+  },
+  {
+    "id": "troca-de-mundos",
+    "numero": 22,
+    "nome": "Troca de Mundos a Cada Frase",
+    "tom": "Provocador, surpreendente",
+    "ritmo": "Mundo novo a cada 2–3s",
+    "duracaoReferenciaS": [
+      27
+    ],
+    "cenaS": [
+      2,
+      3
+    ],
+    "semNarracao": false,
+    "cta": "Fundo claro com foguete 3D e seleção de texto: 'comente LINK'"
+  }
+]

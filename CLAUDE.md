@@ -248,6 +248,23 @@ reais encontradas ao construir o projeto, não só a estrutura.
 - `src/components/EditableText.tsx`, `RemovableImage.tsx`, `ModelPicker.tsx`,
   `ProfileCard.tsx`/`ProfileManager.tsx`, `HistoryList.tsx`, `InstagramPostCard.tsx`
 
+- **VideoGen** (`/videogen`, `/videogen/[id]`, `src/lib/videogen/`, `src/components/videogen/`,
+  `/api/videogen/*`): gera vídeos curtos verticais (Reels/Shorts) a partir de um dos padrões
+  visuais do catálogo em `videogen/padroes/*.md` (copiado do projeto "Video Generator"). Depois de
+  editar/adicionar um padrão, rode `node scripts/videogen-patterns.mjs` pra regenerar
+  `src/lib/videogen/patterns.json` (resumo, vai pro client) e `patternGuides.json` (markdown
+  completo, só no servidor, entra no prompt do roteiro). Fluxo: POST `/api/videogen/jobs` cria o
+  `VideoJob` e já gera o roteiro (Claude via OpenRouter, `VIDEOGEN_TEXT_MODEL`) → usuário edita →
+  POST `.../narration` gera a narração no ElevenLabs (`eleven_v4`, configuração aprovada em
+  `elevenlabs.ts`) e salva mp3 no Blob + `narrationWords` (`[palavra, início, fim][]`, mesmo
+  formato do `words.json` do pipeline Python) → POST `.../queue` muda o status pra `queued`.
+  **A renderização do mp4 não roda na Vercel**: um worker Python numa VPS pega jobs `queued`,
+  renderiza (PIL + ffmpeg), sobe o mp4 no Blob e grava `videoUrl`/`status: "done"`.
+  Pronúncia (`pronunciation.ts`): o texto enviado ao TTS troca siglas/marcas em inglês e o site
+  (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
+  caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.
+  O `eleven_v4` ignora `speed`; o ritmo medido é ~2,3 palavras/s (`WORDS_PER_SECOND`).
+
 `Article.sources` e `Article.sections` são JSON-em-string (não tabelas relacionais) — decisão
 deliberada de simplicidade, mantida assim de propósito.
 
@@ -277,4 +294,5 @@ extração de transcrição do YouTube funcionar (ver armadilha #14). `WORDPRESS
 Portal" aparece mas dá erro ao tentar enviar. `WORDPRESS_APP_PASSWORD` é a Senha de Aplicativo
 (Usuários → Perfil → Senhas de Aplicativo no wp-admin), nunca a senha de login normal.
 `YOUTUBE_API_KEY` (YouTube Data API v3) é necessária só pra listar vídeos de canal/playlist;
-sem ela o resto do app funciona normalmente.
+sem ela o resto do app funciona normalmente. `ELEVENLABS_API_KEY` é necessária só pro VideoGen
+(vozes e narração).
