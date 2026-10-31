@@ -261,8 +261,14 @@ reais encontradas ao construir o projeto, não só a estrutura.
   POST `.../narration` gera a narração no ElevenLabs (`eleven_v4`, configuração aprovada em
   `elevenlabs.ts`) e salva mp3 no Blob + `narrationWords` (`[palavra, início, fim][]`, mesmo
   formato do `words.json` do pipeline Python) → POST `.../queue` muda o status pra `queued`.
-  **A renderização do mp4 não roda na Vercel**: um worker Python numa VPS pega jobs `queued`,
-  renderiza (PIL + ffmpeg), sobe o mp4 no Blob e grava `videoUrl`/`status: "done"`.
+  **A renderização do mp4 não roda na Vercel**: o worker Python em `worker/` (roda numa VPS,
+  instalação em `worker/README.md`) chama `/api/videogen/worker/*` com
+  `Authorization: Bearer $VIDEOGEN_WORKER_TOKEN`: `claim` pega o job `queued` mais antigo de
+  forma atômica (e devolve pra fila jobs `rendering` parados há 20 min), `jobs/[id]` recebe
+  progresso/`done`/`failed`, e `jobs/[id]/upload-token` gera um client token do Blob limitado ao
+  mp4 daquele job (o mp4 passa do limite de corpo das funções, então o worker sobe direto pro
+  Blob via `worker/upload.mjs`; a VPS nunca recebe o `BLOB_READ_WRITE_TOKEN`). Só os padrões
+  em `RENDERABLE_PATTERNS` (`types.ts`) vão pra fila; cada um tem um `worker/render/<id>.py`.
   Pronúncia (`pronunciation.ts`): o texto enviado ao TTS troca siglas/marcas em inglês e o site
   (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
   caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.
@@ -298,4 +304,5 @@ Portal" aparece mas dá erro ao tentar enviar. `WORDPRESS_APP_PASSWORD` é a Sen
 (Usuários → Perfil → Senhas de Aplicativo no wp-admin), nunca a senha de login normal.
 `YOUTUBE_API_KEY` (YouTube Data API v3) é necessária só pra listar vídeos de canal/playlist;
 sem ela o resto do app funciona normalmente. `ELEVENLABS_API_KEY` é necessária só pro VideoGen
-(vozes e narração).
+(vozes e narração). `VIDEOGEN_WORKER_TOKEN` é o segredo compartilhado com o worker
+de render (sem ele as rotas `/api/videogen/worker/*` respondem 503).

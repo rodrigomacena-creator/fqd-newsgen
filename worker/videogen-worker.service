@@ -1,0 +1,17 @@
+# systemd: copie para /etc/systemd/system/videogen-worker.service e ajuste os caminhos/usuário.
+[Unit]
+Description=VideoGen render worker (FQD News GEN)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=videogen
+WorkingDirectory=/opt/fqd-newsgen/worker
+ExecStart=/opt/fqd-newsgen/worker/.venv/bin/python worker.py
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

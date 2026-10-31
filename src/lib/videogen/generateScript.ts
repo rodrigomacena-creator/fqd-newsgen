@@ -1,7 +1,7 @@
 import { getOpenRouterClient, extractCompletionText } from "@/lib/openrouter";
 import patternGuides from "./patternGuides.json";
 import type { VideoPattern } from "./patterns";
-import { WORDS_PER_SECOND, type VideoScript, type VideoScene, type Pronunciation } from "./types";
+import { WORDS_PER_SECOND, fullNarration, type VideoScript, type VideoScene, type Pronunciation } from "./types";
 import { DEFAULT_PRONUNCIATIONS } from "./pronunciation";
 
 // Claude via OpenRouter (Rodrigo quer um provedor só pra LLM).
@@ -110,24 +110,48 @@ export async function generateVideoScript(params: {
   const userParts = [`Tema do vídeo: ${params.topic}`];
   if (params.extraInstructions?.trim()) userParts.push(`Instruções extras: ${params.extraInstructions.trim()}`);
 
-  const completion = await client.chat.completions.create({
-    model: params.model || VIDEOGEN_TEXT_MODEL,
-    temperature: 0.7,
-    max_tokens: 6000,
-    messages: [
-      { role: "system", content: buildSystemPrompt(params.pattern, params.durationS) },
-      { role: "user", content: userParts.join("\n\n") },
-    ],
-  });
-  const raw = extractCompletionText(completion);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(extractJson(raw));
-  } catch {
-    console.error("Roteiro da IA não é JSON válido:", raw);
-    throw new Error("Não foi possível interpretar o roteiro da IA como JSON válido.");
+  const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+    { role: "system", content: buildSystemPrompt(params.pattern, params.durationS) },
+    { role: "user", content: userParts.join("\n\n") },
+  ];
+  const model = params.model || VIDEOGEN_TEXT_MODEL;
+
+  async function ask(): Promise<{ raw: string; script: VideoScript }> {
+    const completion = await client.chat.completions.create({ model, temperature: 0.7, max_tokens: 6000, messages });
+    const raw = extractCompletionText(completion);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(extractJson(raw));
+    } catch {
+      console.error("Roteiro da IA não é JSON válido:", raw);
+      throw new Error("Não foi possível interpretar o roteiro da IA como JSON válido.");
+    }
+    return { raw, script: normalizeScript(parsed) };
   }
-  const script = normalizeScript(parsed);
+
+  const first = await ask();
+  const raw = first.raw;
+  let script = first.script;
   if (script.scenes.length === 0) throw new Error("A IA não retornou nenhuma cena.");
+
+  // O modelo costuma passar do tamanho pedido; narração longa estoura a duração do vídeo.
+  // Uma segunda rodada pedindo para cortar resolve na maioria dos casos.
+  const target = Math.round(params.durationS * WORDS_PER_SECOND);
+  const count = fullNarration(script).split(/\s+/).filter(Boolean).length;
+  if (!params.pattern.semNarracao && count > target * 1.25) {
+    messages.push(
+      { role: "assistant", content: raw },
+      {
+        role: "user",
+        content: `A narração ficou com ${count} palavras, mas o máximo para ${params.durationS}s é ${target}. Reescreva o roteiro mais curto (no máximo ${target} palavras somando cenas e CTA), juntando ou removendo cenas se precisar. Mesmo formato JSON.`,
+      }
+    );
+    try {
+      const shorter = (await ask()).script;
+      if (shorter.scenes.length > 0) script = shorter;
+    } catch (err) {
+      console.error("Falha ao encurtar o roteiro, mantendo o original:", err);
+    }
+  }
   return script;
 }

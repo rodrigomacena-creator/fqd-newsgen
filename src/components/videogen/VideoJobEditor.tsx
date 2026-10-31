@@ -9,6 +9,7 @@ import { useVoices } from "@/lib/videogen/useVoices";
 import { getVideoPattern } from "@/lib/videogen/patterns";
 import { DEFAULT_PRONUNCIATIONS } from "@/lib/videogen/pronunciation";
 import {
+  RENDERABLE_PATTERNS,
   VIDEO_STATUS_LABEL,
   WORDS_PER_SECOND,
   fullNarration,
@@ -171,6 +172,7 @@ export function VideoJobEditor({ id }: { id: string }) {
   const pattern = getVideoPattern(job.patternId);
   const locked = job.status === "queued" || job.status === "rendering";
   const disabled = locked || busy !== null;
+  const renderable = RENDERABLE_PATTERNS.includes(job.patternId);
   const narration = script ? fullNarration(script) : "";
   const wordCount = narration ? narration.split(/\s+/).length : 0;
   const estimate = pattern?.semNarracao
@@ -452,6 +454,7 @@ export function VideoJobEditor({ id }: { id: string }) {
               </p>
             ) : (
               <p className="mt-3 text-sm text-text-secondary">
+                {job.status === "failed" && "O último render falhou (veja o erro acima). "}
                 O worker gera as imagens das cenas, a trilha, monta o vídeo no estilo do padrão e devolve o mp4 aqui.
               </p>
             )}
@@ -465,7 +468,7 @@ export function VideoJobEditor({ id }: { id: string }) {
                   <button
                     type="button"
                     onClick={() => queue()}
-                    disabled={disabled || (!pattern?.semNarracao && !job.narrationUrl)}
+                    disabled={disabled || !renderable || (!pattern?.semNarracao && !job.narrationUrl)}
                     className={primaryButton}
                   >
                     {busy === "queue" ? "Enviando…" : job.status === "done" ? "Renderizar de novo" : "Enviar para render"}
@@ -476,7 +479,13 @@ export function VideoJobEditor({ id }: { id: string }) {
                 Excluir vídeo
               </button>
             </div>
-            {!pattern?.semNarracao && !job.narrationUrl && !locked && (
+            {!renderable && !locked && (
+              <p className="mt-2 text-xs text-text-secondary">
+                O render automático deste padrão ainda está em desenvolvimento. Na página do VideoGen, os padrões
+                marcados com &quot;gera mp4&quot; já vão para a fila.
+              </p>
+            )}
+            {renderable && !pattern?.semNarracao && !job.narrationUrl && !locked && (
               <p className="mt-2 text-xs text-text-secondary">Gere a narração antes de mandar para o render.</p>
             )}
           </section>
