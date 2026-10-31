@@ -105,7 +105,7 @@ export async function generateVideoScript(params: {
   durationS: number;
   extraInstructions?: string | null;
   model?: string;
-}): Promise<VideoScript> {
+}): Promise<{ script: VideoScript; usd: number }> {
   const client = getOpenRouterClient();
   const userParts = [`Tema do vídeo: ${params.topic}`];
   if (params.extraInstructions?.trim()) userParts.push(`Instruções extras: ${params.extraInstructions.trim()}`);
@@ -116,8 +116,17 @@ export async function generateVideoScript(params: {
   ];
   const model = params.model || VIDEOGEN_TEXT_MODEL;
 
+  let usd = 0; // soma o custo das chamadas (usage.cost da OpenRouter), inclusive a de encurtar
   async function ask(): Promise<{ raw: string; script: VideoScript }> {
-    const completion = await client.chat.completions.create({ model, temperature: 0.7, max_tokens: 6000, messages });
+    const completion = await client.chat.completions.create({
+      model,
+      temperature: 0.7,
+      max_tokens: 6000,
+      messages,
+      // parâmetro da OpenRouter (fora do tipo do SDK): devolve usage.cost em dólar
+      ...({ usage: { include: true } } as object),
+    });
+    usd += Number((completion.usage as { cost?: number } | undefined)?.cost) || 0;
     const raw = extractCompletionText(completion);
     let parsed: unknown;
     try {
@@ -153,5 +162,5 @@ export async function generateVideoScript(params: {
       console.error("Falha ao encurtar o roteiro, mantendo o original:", err);
     }
   }
-  return script;
+  return { script, usd };
 }

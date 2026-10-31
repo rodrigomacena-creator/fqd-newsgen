@@ -60,6 +60,12 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/videogen
   const { id } = await ctx.params;
   const job = await prisma.videoJob.findUnique({ where: { id } });
   if (!job) return NextResponse.json({ error: "Vídeo não encontrado." }, { status: 404 });
+  if (job.status === "rendering") {
+    return NextResponse.json(
+      { error: "Este vídeo está sendo renderizado agora. Aguarde terminar para excluir." },
+      { status: 409 }
+    );
+  }
   await deleteBlobsByPrefix(`videogen/${id}/`);
   await prisma.videoJob.delete({ where: { id } });
   return NextResponse.json({ ok: true });

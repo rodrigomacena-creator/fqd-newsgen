@@ -65,3 +65,53 @@ export const WORDS_PER_SECOND = 2.3;
 
 /** Padrões que o worker de render (worker/) já sabe montar. Os outros ainda não vão pra fila. */
 export const RENDERABLE_PATTERNS = ["editorial-pb-vermelho", "estudio-serif-cinematico", "papel-hera"];
+
+// ---------- custos ----------
+
+export type CostStep = "script" | "narration" | "images" | "music";
+
+/** Um gasto registrado no job. A lista só cresce: gerar o roteiro de novo soma outro gasto. */
+export interface CostEntry {
+  step: CostStep;
+  provider: "openrouter" | "elevenlabs";
+  /** Custo em dólar informado pela OpenRouter (usage.cost). */
+  usd?: number;
+  /** Créditos do ElevenLabs (header character-cost da narração; trilha estimada por segundo). */
+  credits?: number;
+  /** Se o valor é estimado (trilha) e não medido. */
+  estimated?: boolean;
+  at: string;
+}
+
+export interface CostSummary {
+  openrouterUsd: number;
+  elevenCredits: number;
+  elevenUsd: number;
+  totalUsd: number;
+  /** Total por etapa, em dólar (créditos já convertidos). */
+  byStep: Partial<Record<CostStep, number>>;
+  hasEstimate: boolean;
+}
+
+export const COST_STEP_LABEL: Record<CostStep, string> = {
+  script: "Roteiro (OpenRouter)",
+  narration: "Narração (ElevenLabs)",
+  images: "Imagens das cenas (OpenRouter)",
+  music: "Trilha (ElevenLabs)",
+};
+
+export function summarizeCosts(entries: CostEntry[], usdPerCredit: number): CostSummary {
+  const s: CostSummary = { openrouterUsd: 0, elevenCredits: 0, elevenUsd: 0, totalUsd: 0, byStep: {}, hasEstimate: false };
+  for (const e of entries) {
+    const usd = (e.usd ?? 0) + (e.credits ?? 0) * usdPerCredit;
+    if (e.provider === "openrouter") s.openrouterUsd += e.usd ?? 0;
+    else {
+      s.elevenCredits += e.credits ?? 0;
+      s.elevenUsd += (e.credits ?? 0) * usdPerCredit;
+    }
+    s.byStep[e.step] = (s.byStep[e.step] ?? 0) + usd;
+    if (e.estimated) s.hasEstimate = true;
+  }
+  s.totalUsd = s.openrouterUsd + s.elevenUsd;
+  return s;
+}

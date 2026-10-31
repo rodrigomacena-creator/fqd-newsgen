@@ -17,6 +17,7 @@ import {
   type VideoScript,
 } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
+import { CostPanel } from "@/components/videogen/CostPanel";
 
 const input =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent-yellow disabled:opacity-50";
@@ -475,7 +476,13 @@ export function VideoJobEditor({ id }: { id: string }) {
                   </button>
                 )
               )}
-              <button type="button" onClick={remove} disabled={disabled} className={secondaryButton}>
+              <button
+                type="button"
+                onClick={remove}
+                disabled={busy !== null || job.status === "rendering"}
+                title={job.status === "rendering" ? "Aguarde o render terminar para excluir" : undefined}
+                className={secondaryButton}
+              >
                 Excluir vídeo
               </button>
             </div>
@@ -489,6 +496,8 @@ export function VideoJobEditor({ id }: { id: string }) {
               <p className="mt-2 text-xs text-text-secondary">Gere a narração antes de mandar para o render.</p>
             )}
           </section>
+
+          <CostPanel job={job} />
         </div>
       )}
     </Shell>

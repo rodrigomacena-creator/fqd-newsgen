@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getVideoPattern } from "@/lib/videogen/patterns";
 import { generateVideoScript } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
+import { appendCosts, costEntry } from "@/lib/videogen/costs";
 
 export const maxDuration = 300;
 
@@ -18,13 +19,14 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
   if (!pattern) return NextResponse.json({ error: "Padrão do vídeo não existe mais." }, { status: 400 });
 
   try {
-    const script = await generateVideoScript({
+    const { script, usd } = await generateVideoScript({
       pattern,
       topic: job.topic,
       durationS: job.durationS,
       extraInstructions: job.extraInstructions,
       model: job.textModel,
     });
+    await appendCosts(id, [costEntry("script", "openrouter", { usd })]);
     const updated = await prisma.videoJob.update({
       where: { id },
       data: {

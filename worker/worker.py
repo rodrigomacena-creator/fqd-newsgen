@@ -61,6 +61,20 @@ class JobGone(Exception):
     """O job foi excluído ou tirado do render no app enquanto o worker trabalhava."""
 
 
+def merge_costs(costs):
+    """Soma os gastos por etapa (uma linha para todas as imagens, outra para a trilha)."""
+    out = {}
+    for c in costs or []:
+        key = (c["step"], c["provider"])
+        m = out.setdefault(key, {"step": c["step"], "provider": c["provider"]})
+        for k in ("usd", "credits"):
+            if k in c:
+                m[k] = round(m.get(k, 0) + c[k], 6)
+        if c.get("estimated"):
+            m["estimated"] = True
+    return list(out.values())
+
+
 class App:
     def __init__(self):
         if not APP_URL or not WORKER_TOKEN:
@@ -87,12 +101,12 @@ class App:
         except Exception as e:  # progresso é só informativo
             log("aviso: progresso não enviado:", e)
 
-    def done(self, job_id, url):
-        self._post(f"/api/videogen/worker/jobs/{job_id}", {"status": "done", "videoUrl": url})
+    def done(self, job_id, url, costs=None):
+        self._post(f"/api/videogen/worker/jobs/{job_id}", {"status": "done", "videoUrl": url, "costs": merge_costs(costs)})
 
-    def failed(self, job_id, error):
+    def failed(self, job_id, error, costs=None):
         try:
-            self._post(f"/api/videogen/worker/jobs/{job_id}", {"status": "failed", "error": error})
+            self._post(f"/api/videogen/worker/jobs/{job_id}", {"status": "failed", "error": error, "costs": merge_costs(costs)})
         except Exception as e:
             log("aviso: não consegui marcar como falho:", e)
 
@@ -102,7 +116,12 @@ class App:
 
 # ---------- geração de assets ----------
 
-def generate_image(prompt, out_path, attempts=2):
+# Trilha: o ElevenLabs não informa o custo da música na resposta. Medido em 31/10/2026 pela
+# API de uso (plano Creator, music_v1): ~13,75 créditos por segundo pedido (10s = 138, 22s = 302).
+MUSIC_CREDITS_PER_SECOND = float(os.environ.get("VIDEOGEN_MUSIC_CREDITS_PER_SECOND") or 13.75)
+
+
+def generate_image(prompt, out_path, attempts=2, costs=None):
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         raise RuntimeError("OPENROUTER_API_KEY não configurada no worker.")
@@ -117,10 +136,14 @@ def generate_image(prompt, out_path, attempts=2):
                     "modalities": ["image", "text"],
                     "image_config": {"aspect_ratio": "9:16"},
                     "messages": [{"role": "user", "content": prompt}],
+                    "usage": {"include": True},
                 },
                 timeout=240,
             )
             data = r.json()
+            cost = (data.get("usage") or {}).get("cost")
+            if costs is not None and cost is not None:
+                costs.append({"step": "images", "provider": "openrouter", "usd": float(cost)})
             url = data["choices"][0]["message"]["images"][0]["image_url"]["url"]
             out_path.write_bytes(base64.b64decode(url.split(",", 1)[1]))
             return out_path
@@ -129,21 +152,25 @@ def generate_image(prompt, out_path, attempts=2):
     raise RuntimeError(f"imagem falhou: {last}")
 
 
-def generate_music(prompt, seconds, out_path):
+def generate_music(prompt, seconds, out_path, costs=None):
     key = os.environ.get("ELEVENLABS_API_KEY")
     if not key:
         raise RuntimeError("ELEVENLABS_API_KEY não configurada no worker.")
     prompt = (prompt or "Dark minimal electronic underscore, tense, subtle pulse").strip()
     if "no vocals" not in prompt.lower():
         prompt = "Instrumental only, no vocals. " + prompt
+    length = max(10, seconds + 2)
     r = requests.post(
         "https://api.elevenlabs.io/v1/music",
         headers={"xi-api-key": key, "Content-Type": "application/json"},
-        json={"prompt": prompt, "music_length_ms": int(max(10, seconds + 2) * 1000), "model_id": "music_v1"},
+        json={"prompt": prompt, "music_length_ms": int(length * 1000), "model_id": "music_v1"},
         timeout=300,
     )
     if r.status_code != 200:
         raise RuntimeError(f"trilha falhou: HTTP {r.status_code} {r.text[:200]}")
+    if costs is not None:
+        costs.append({"step": "music", "provider": "elevenlabs", "credits": round(length * MUSIC_CREDITS_PER_SECOND),
+                      "estimated": True})
     out_path.write_bytes(r.content)
     return out_path
 
@@ -166,7 +193,7 @@ def silent_audio(seconds, out_path):
 REUSE_ASSETS = False  # --reuse: em teste local, reaproveita imagens/trilha já geradas no workdir
 
 
-def produce(job, workdir, report=lambda p: None):
+def produce(job, workdir, report=lambda p: None, costs=None):
     """Gera assets, renderiza e mixa. Devolve o caminho do mp4 final."""
     module = RENDERERS.get(job["patternId"])
     if not module:
@@ -188,7 +215,7 @@ def produce(job, workdir, report=lambda p: None):
     images = {}
     used = {s.index for s in tl.scenes} if getattr(module, "USES_SCENE_IMAGES", True) else set()
     def cached(fn, path, *a):
-        return path if REUSE_ASSETS and path.exists() else fn(*a, path)
+        return path if REUSE_ASSETS and path.exists() else fn(*a, path, costs=costs)
 
     with ThreadPoolExecutor(5) as ex:
         music_f = ex.submit(cached, generate_music, workdir / "trilha.mp3", script.get("musicPrompt"), tl.duration)
@@ -243,17 +270,18 @@ def process(app, job):
             last["t"] = now
             app.progress(job_id, p)
 
+    costs = []  # imagens (custo da OpenRouter) e trilha (créditos estimados), enviados no fim
     try:
-        final = produce(job, workdir, report)
+        final = produce(job, workdir, report, costs)
         app.progress(job_id, 95)
         url = upload(app, job_id, final)
-        app.done(job_id, url)
+        app.done(job_id, url, costs)
         log(f"job {job_id}: pronto {url}")
     except JobGone as e:
         log(f"job {job_id}: descartado ({e})")
     except Exception as e:
         traceback.print_exc()
-        app.failed(job_id, str(e))
+        app.failed(job_id, str(e), costs)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
