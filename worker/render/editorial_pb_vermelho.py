@@ -14,6 +14,8 @@ from PIL import Image, ImageDraw, ImageFilter
 from .common import FONT_SANS, FONT_SERIF, FPS, H, W, FrameWriter, cover_resize, ease, font, grain_frames, norm, vignette
 from .timeline import build_timeline
 
+USES_SCENE_IMAGES = True
+
 RED = (225, 6, 0)
 INK = (14, 14, 14)
 PAPER = (245, 242, 234)

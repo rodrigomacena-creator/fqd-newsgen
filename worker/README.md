@@ -17,7 +17,7 @@ POST .../jobs/:id/upload-token   ◄── token de upload só para este mp4
 POST .../jobs/:id {status:done}  ◄── fim
 ```
 
-Padrões com render pronto: `editorial-pb-vermelho` (padrão 1). Os outros entram em
+Padrões com render pronto: `editorial-pb-vermelho` (1), `estudio-serif-cinematico` (2) e `papel-hera` (4, fundo fixo, não gera imagens por cena). Os outros entram em
 `render/<id>.py` + `render/__init__.py` e em `RENDERABLE_PATTERNS` (`src/lib/videogen/types.ts`).
 
 ## Instalação na VPS (Ubuntu/Debian)

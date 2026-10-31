@@ -481,8 +481,8 @@ export function VideoJobEditor({ id }: { id: string }) {
             </div>
             {!renderable && !locked && (
               <p className="mt-2 text-xs text-text-secondary">
-                O render deste padrão ainda está em desenvolvimento. Por enquanto só o padrão 1 (Editorial P&amp;B +
-                Vermelho) vai para a fila.
+                O render automático deste padrão ainda está em desenvolvimento. Na página do VideoGen, os padrões
+                marcados com &quot;gera mp4&quot; já vão para a fila.
               </p>
             )}
             {renderable && !pattern?.semNarracao && !job.narrationUrl && !locked && (

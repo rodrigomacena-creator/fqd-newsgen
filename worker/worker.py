@@ -163,10 +163,13 @@ def silent_audio(seconds, out_path):
 
 # ---------- pipeline ----------
 
+REUSE_ASSETS = False  # --reuse: em teste local, reaproveita imagens/trilha já geradas no workdir
+
+
 def produce(job, workdir, report=lambda p: None):
     """Gera assets, renderiza e mixa. Devolve o caminho do mp4 final."""
-    renderer = RENDERERS.get(job["patternId"])
-    if not renderer:
+    module = RENDERERS.get(job["patternId"])
+    if not module:
         raise RuntimeError(f'O worker ainda não sabe renderizar o padrão "{job["patternId"]}".')
     script = job.get("script") or {}
     scenes = script.get("scenes") or []
@@ -183,11 +186,14 @@ def produce(job, workdir, report=lambda p: None):
 
     # imagens das cenas em paralelo + trilha ao mesmo tempo
     images = {}
-    used = {s.index for s in tl.scenes}
+    used = {s.index for s in tl.scenes} if getattr(module, "USES_SCENE_IMAGES", True) else set()
+    def cached(fn, path, *a):
+        return path if REUSE_ASSETS and path.exists() else fn(*a, path)
+
     with ThreadPoolExecutor(5) as ex:
-        music_f = ex.submit(generate_music, script.get("musicPrompt"), tl.duration, workdir / "trilha.mp3")
+        music_f = ex.submit(cached, generate_music, workdir / "trilha.mp3", script.get("musicPrompt"), tl.duration)
         futs = {
-            i: ex.submit(generate_image, sc.get("imagePrompt") or sc.get("visual") or "", workdir / f"cena_{i:02d}.jpg")
+            i: ex.submit(cached, generate_image, workdir / f"cena_{i:02d}.jpg", sc.get("imagePrompt") or sc.get("visual") or "")
             for i, sc in enumerate(scenes) if i in used
         }
         done_count = 0
@@ -208,7 +214,7 @@ def produce(job, workdir, report=lambda p: None):
     report(50)
 
     video_only = workdir / "video_only.mp4"
-    duration = renderer(job, {"images": images}, str(video_only), on_progress=lambda p: report(50 + 40 * p))
+    duration = module.render(job, {"images": images}, str(video_only), on_progress=lambda p: report(50 + 40 * p))
     report(92)
 
     final = workdir / "video.mp4"
@@ -257,7 +263,10 @@ def main():
     ap.add_argument("--once", action="store_true", help="processa no máximo um job e sai")
     ap.add_argument("--job-file", help="render local de um job em JSON (formato da API), sem o app")
     ap.add_argument("--out", default="video.mp4", help="saída do --job-file")
+    ap.add_argument("--reuse", action="store_true", help="com --job-file: reaproveita imagens e trilha já geradas")
     args = ap.parse_args()
+    global REUSE_ASSETS
+    REUSE_ASSETS = args.reuse
 
     if args.job_file:
         job = json.loads(Path(args.job_file).read_text(encoding="utf-8"))
