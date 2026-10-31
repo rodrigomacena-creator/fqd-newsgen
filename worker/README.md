@@ -24,7 +24,9 @@ Padrões com render pronto: `editorial-pb-vermelho` (1), `estudio-serif-cinemati
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-venv ffmpeg fonts-inter fonts-liberation nodejs npm
+sudo apt install -y git python3 python3-venv ffmpeg fonts-inter fonts-liberation curl
+# Node 22 (o Node 18 do apt do Ubuntu é velho demais para o @vercel/blob, que pede >= 20)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - && sudo apt install -y nodejs
 sudo useradd -r -m -d /opt/fqd-newsgen videogen   # usuário só para o worker
 
 sudo -u videogen git clone https://github.com/rodrigomacena-creator/fqd-newsgen /opt/fqd-newsgen
@@ -38,7 +40,8 @@ sudo -u videogen nano .env          # preencher (veja abaixo)
 ```
 
 O repositório é privado: para o `git clone` use um token de acesso do GitHub
-(`https://<token>@github.com/...`) ou uma deploy key.
+(`https://<token>@github.com/...`) ou uma deploy key. Se clonar no Windows e copiar para a VPS,
+rode `git checkout -- .` lá para desfazer a conversão de fim de linha (CRLF).
 
 No `.env` do worker:
 
