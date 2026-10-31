@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getVideoPattern } from "@/lib/videogen/patterns";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
+import { RENDERABLE_PATTERNS } from "@/lib/videogen/types";
 
 /**
  * Coloca o vídeo na fila de render (status "queued"). Quem renderiza é o worker na VPS,
@@ -13,6 +14,12 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
   if (!job) return NextResponse.json({ error: "Vídeo não encontrado." }, { status: 404 });
   if (!job.script) return NextResponse.json({ error: "Gere o roteiro primeiro." }, { status: 400 });
   const pattern = getVideoPattern(job.patternId);
+  if (!RENDERABLE_PATTERNS.includes(job.patternId)) {
+    return NextResponse.json(
+      { error: `O worker ainda não sabe renderizar o padrão "${pattern?.nome ?? job.patternId}".` },
+      { status: 400 }
+    );
+  }
   if (!pattern?.semNarracao && !job.narrationUrl) {
     return NextResponse.json({ error: "Gere a narração antes de mandar para o render." }, { status: 400 });
   }

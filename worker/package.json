@@ -1,0 +1,9 @@
+{
+  "name": "videogen-worker-upload",
+  "private": true,
+  "type": "module",
+  "description": "Só o upload do mp4 pro Vercel Blob (o SDK oficial é em JS). O render em si é Python.",
+  "dependencies": {
+    "@vercel/blob": "^2.8.0"
+  }
+}

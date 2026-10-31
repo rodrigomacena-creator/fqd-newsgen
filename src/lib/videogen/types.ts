@@ -62,3 +62,6 @@ export const DURATION_OPTIONS = [5, 10, 15, 20, 30, 45, 60];
 // Ritmo medido com a voz Marco no eleven_v4 (ele ignora "speed" e adiciona pausas de
 // respiração): ~2,3 palavras/s em pt-BR. Usado pra dimensionar o roteiro e a estimativa na tela.
 export const WORDS_PER_SECOND = 2.3;
+
+/** Padrões que o worker de render (worker/) já sabe montar. Os outros ainda não vão pra fila. */
+export const RENDERABLE_PATTERNS = ["editorial-pb-vermelho"];

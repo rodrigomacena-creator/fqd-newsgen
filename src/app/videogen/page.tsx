@@ -7,7 +7,7 @@ import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { useVoices } from "@/lib/videogen/useVoices";
 import { VIDEO_PATTERNS, getVideoPattern } from "@/lib/videogen/patterns";
-import { DEFAULT_VOICE_ID, DURATION_OPTIONS, VIDEO_STATUS_LABEL } from "@/lib/videogen/types";
+import { DEFAULT_VOICE_ID, DURATION_OPTIONS, RENDERABLE_PATTERNS, VIDEO_STATUS_LABEL } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
 const STAGES = ["Lendo o guia do padrão…", "Escrevendo o roteiro…", "Desenhando as cenas…", "Quase lá…"];
@@ -92,6 +92,7 @@ export default function VideoGenPage() {
             <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">Padrão visual</h2>
             <p className="mt-1 text-xs text-text-secondary">
               Os {VIDEO_PATTERNS.length} estilos do catálogo. O roteiro segue o ritmo, o texto na tela e o CTA do padrão.
+              Os marcados com &quot;gera mp4&quot; já têm render automático; os outros, por enquanto, geram roteiro e narração.
             </p>
             <div className="mt-4 grid max-h-[420px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
               {VIDEO_PATTERNS.map((p) => {
@@ -117,6 +118,11 @@ export default function VideoGenPage() {
                         {p.numero}. {p.nome}
                       </span>
                       <span className="block text-xs text-text-secondary">{p.tom}</span>
+                      {RENDERABLE_PATTERNS.includes(p.id) && (
+                        <span className="mr-1 mt-1 inline-block rounded-full bg-accent-yellow/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent-yellow">
+                          gera mp4
+                        </span>
+                      )}
                       {p.semNarracao && (
                         <span className="mt-1 inline-block rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-secondary">
                           sem narração
