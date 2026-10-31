@@ -230,8 +230,11 @@ reais encontradas ao construir o projeto, não só a estrutura.
   incorpora o player do YouTube na notícia e no rascunho do WordPress (iframe 16:9, máx. 770px).
 - **Deploy**: o projeto Vercel `fqd-newsgen` está conectado ao GitHub — todo push na `main` gera
   deploy de produção automático (pushes em outros branches geram preview, que hoje só tem
-  `BLOB_READ_WRITE_TOKEN` configurado). Migrations de banco NÃO rodam sozinhas no deploy: se o
-  commit traz migration nova, rode `npx prisma migrate deploy` contra o banco de produção.
+  `BLOB_READ_WRITE_TOKEN` configurado). Migrations rodam sozinhas no build de **produção** (`scripts/migrate-on-deploy.mjs`,
+  chamado pelo `npm run build`, só quando `VERCEL_ENV=production`); previews e builds locais pulam.
+  Se a migration falhar, o build falha e a versão anterior continua no ar. Por isso migrations
+  precisam ser seguras pra rodar antes do código novo entrar (adicionar coluna/tabela, nunca
+  apagar algo que a versão no ar ainda usa).
 - `src/lib/reviseArticle.ts` — fluxo "Pedir ajuste à IA": edita a MESMA notícia em vigor, nunca
   cria uma nova
 - `src/lib/generateImages.ts` — wrapper da Images API da OpenRouter
