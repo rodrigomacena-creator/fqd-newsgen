@@ -12,12 +12,13 @@ const NAV_LINKS = [
   { href: "/configuracoes", label: "Configurações" },
 ];
 
-export function Header() {
+/** wide: alinha com páginas de layout largo (max-w-6xl), como o VideoGen. */
+export function Header({ wide = false }: { wide?: boolean } = {}) {
   const pathname = usePathname();
 
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur">
-      <div className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
+      <div className={`mx-auto flex ${wide ? "max-w-6xl" : "max-w-4xl"} items-center justify-between gap-3 px-4 py-4 sm:px-6`}>
         <Link href="/" className="inline-flex shrink-0 items-center gap-2">
           <Image
             src="/logo-fqdtv.png"

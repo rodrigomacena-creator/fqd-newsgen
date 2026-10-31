@@ -5,27 +5,26 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
+import { CostPanel } from "@/components/videogen/CostPanel";
+import {
+  AutoTextarea,
+  Icon,
+  Spinner,
+  StatusBadge,
+  cardClass,
+  dangerButton,
+  fieldClass,
+  iconButton,
+  labelClass,
+  primaryButton,
+  secondaryButton,
+  sectionTitle,
+} from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
 import { getVideoPattern } from "@/lib/videogen/patterns";
 import { DEFAULT_PRONUNCIATIONS } from "@/lib/videogen/pronunciation";
-import {
-  RENDERABLE_PATTERNS,
-  VIDEO_STATUS_LABEL,
-  WORDS_PER_SECOND,
-  fullNarration,
-  type VideoScene,
-  type VideoScript,
-} from "@/lib/videogen/types";
+import { RENDERABLE_PATTERNS, WORDS_PER_SECOND, fullNarration, type VideoScene, type VideoScript } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
-import { CostPanel } from "@/components/videogen/CostPanel";
-
-const input =
-  "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent-yellow disabled:opacity-50";
-const sectionTitle = "text-[15px] font-bold uppercase tracking-wide text-accent-yellow";
-const secondaryButton =
-  "rounded-lg border border-border px-4 py-2.5 text-sm font-medium transition hover:border-accent-yellow hover:text-accent-yellow disabled:cursor-not-allowed disabled:opacity-50";
-const primaryButton =
-  "rounded-lg bg-accent-yellow px-5 py-2.5 text-sm font-semibold text-accent-yellow-ink transition hover:bg-accent-yellow/90 disabled:cursor-not-allowed disabled:opacity-60";
 
 const EMPTY_SCENE: VideoScene = { narration: "", onScreen: "", visual: "", imagePrompt: "", durationS: 2 };
 
@@ -40,6 +39,7 @@ export function VideoJobEditor({ id }: { id: string }) {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   const applyJob = useCallback((next: VideoJobDTO) => {
     setJob(next);
@@ -71,6 +71,20 @@ export function VideoJobEditor({ id }: { id: string }) {
     return () => clearInterval(timer);
   }, [polling, id]);
 
+  // Avisa antes de sair da página com edições não salvas.
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   async function call(kind: Exclude<Busy, null>, url: string, init?: RequestInit) {
     setBusy(kind);
     setError(null);
@@ -94,7 +108,10 @@ export function VideoJobEditor({ id }: { id: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ script }),
     });
-    if (data) applyJob(data.job);
+    if (data) {
+      applyJob(data.job);
+      setToast("Alterações salvas");
+    }
     return Boolean(data);
   }
 
@@ -108,7 +125,10 @@ export function VideoJobEditor({ id }: { id: string }) {
   }
 
   async function regenerateScript() {
-    if (dirty && !window.confirm("Gerar de novo descarta suas edições no roteiro. Continuar?")) return;
+    const msg = dirty
+      ? "Gerar o roteiro de novo descarta suas edições e a narração atual. Continuar?"
+      : "Gerar o roteiro de novo substitui o atual e descarta a narração. Continuar?";
+    if (script && !window.confirm(msg)) return;
     const data = await call("script", `/api/videogen/jobs/${id}/script`, { method: "POST" });
     if (data) applyJob(data.job);
   }
@@ -126,9 +146,15 @@ export function VideoJobEditor({ id }: { id: string }) {
   }
 
   async function remove() {
-    if (!window.confirm("Excluir este vídeo e os arquivos dele?")) return;
+    if (!window.confirm("Excluir este vídeo? O roteiro, a narração e o mp4 são apagados de vez.")) return;
     const data = await call("delete", `/api/videogen/jobs/${id}`, { method: "DELETE" });
     if (data) router.push("/videogen");
+  }
+
+  function discard() {
+    if (!job) return;
+    setScript(job.script);
+    setDirty(false);
   }
 
   function update(patch: Partial<VideoScript>) {
@@ -153,387 +179,677 @@ export function VideoJobEditor({ id }: { id: string }) {
     setDirty(true);
   }
 
+  function removeScene(index: number) {
+    if (!script) return;
+    const sc = script.scenes[index];
+    const hasText = [sc.narration, sc.onScreen, sc.visual, sc.imagePrompt].some((t) => t.trim());
+    if (hasText && !window.confirm(`Remover a cena ${index + 1}?`)) return;
+    update({ scenes: script.scenes.filter((_, j) => j !== index) });
+  }
+
   if (notFound) {
     return (
       <Shell>
-        <p className="text-text-secondary">
-          Vídeo não encontrado. <Link href="/videogen" className="text-accent-yellow hover:underline">Voltar</Link>
-        </p>
+        <div className={`${cardClass} text-center`}>
+          <p className="text-text-secondary">Este vídeo não existe mais (pode ter sido excluído).</p>
+          <Link href="/videogen" className={`mt-4 ${secondaryButton}`}>
+            Voltar ao VideoGen
+          </Link>
+        </div>
       </Shell>
     );
   }
   if (!job) {
     return (
       <Shell>
-        {error ? <p className="text-accent-red">{error}</p> : <p className="text-text-secondary">Carregando…</p>}
+        {error ? (
+          <p role="alert" className="rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
+            {error}
+          </p>
+        ) : (
+          <div className="animate-pulse space-y-4 motion-reduce:animate-none" aria-label="Carregando">
+            <div className="h-4 w-24 rounded bg-surface-2" />
+            <div className="h-8 w-2/3 rounded bg-surface-2" />
+            <div className="h-64 rounded-2xl bg-surface-2" />
+          </div>
+        )}
       </Shell>
     );
   }
 
   const pattern = getVideoPattern(job.patternId);
+  const noNarration = Boolean(pattern?.semNarracao);
   const locked = job.status === "queued" || job.status === "rendering";
   const disabled = locked || busy !== null;
   const renderable = RENDERABLE_PATTERNS.includes(job.patternId);
   const narration = script ? fullNarration(script) : "";
   const wordCount = narration ? narration.split(/\s+/).length : 0;
-  const estimate = pattern?.semNarracao
-    ? script?.scenes.reduce((sum, s) => sum + s.durationS, 0) ?? 0
-    : wordCount / WORDS_PER_SECOND;
+  const estimate = noNarration ? script?.scenes.reduce((sum, s) => sum + s.durationS, 0) ?? 0 : wordCount / WORDS_PER_SECOND;
+
+  const nextStep = (
+    <NextStep
+      job={job}
+      hasScript={Boolean(script)}
+      noNarration={noNarration}
+      renderable={renderable}
+      busy={busy}
+      dirty={dirty}
+      onGenerateScript={regenerateScript}
+      onNarration={generateNarration}
+      onQueue={() => queue()}
+      onUnqueue={() => queue(true)}
+    />
+  );
 
   return (
-    <Shell>
-      <Link href="/videogen" className="text-sm text-text-secondary hover:text-accent-yellow">
-        ← VideoGen
+    <Shell padBottom={dirty}>
+      <Link
+        href="/videogen"
+        className="inline-flex min-h-11 items-center gap-1.5 text-sm text-text-secondary transition hover:text-accent-yellow"
+      >
+        <Icon name="back" className="h-4 w-4" /> Todos os vídeos
       </Link>
-      <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
+      <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{script?.title || job.topic}</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-balance sm:text-3xl">{script?.title || job.topic}</h1>
           <p className="mt-2 text-sm text-text-secondary">
-            {pattern ? `${pattern.numero}. ${pattern.nome}` : job.patternId} · alvo {job.durationS}s · {job.topic}
+            {pattern ? `${pattern.numero}. ${pattern.nome}` : job.patternId} · alvo {job.durationS}s
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-surface-2 px-3 py-1 text-xs font-medium text-text-secondary">
-          {VIDEO_STATUS_LABEL[job.status]}
-          {job.status === "rendering" && job.progress != null && ` · ${job.progress}%`}
-        </span>
+        <StatusBadge status={job.status} progress={job.progress} />
       </div>
 
-      {error && <p className="mt-5 rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">{error}</p>}
-      {job.error && !error && (
-        <p className="mt-5 rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">{job.error}</p>
+      {(error || job.error) && (
+        <div role="alert" className="mt-5 flex gap-2 rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
+          <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="min-w-0 [overflow-wrap:anywhere]">{error || job.error}</span>
+        </div>
       )}
 
-      {!script ? (
-        <section className="mt-6 rounded-2xl border border-border bg-surface p-5 sm:p-6">
-          <p className="text-sm text-text-secondary">O roteiro ainda não foi gerado.</p>
-          <button type="button" onClick={regenerateScript} disabled={disabled} className={`mt-4 ${primaryButton}`}>
-            {busy === "script" ? "Gerando roteiro…" : "Gerar roteiro"}
-          </button>
-        </section>
-      ) : (
-        <div className="mt-6 space-y-5">
-          <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* no celular, o próximo passo vem antes do roteiro longo */}
+      <div className="mt-6 lg:hidden">{nextStep}</div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+        <div className="min-w-0 space-y-6">
+          {!script ? (
+            <section className={cardClass}>
               <h2 className={sectionTitle}>Roteiro</h2>
-              <span className="text-xs text-text-secondary">
-                {pattern?.semNarracao
-                  ? `${script.scenes.length} cenas · ≈${Math.round(estimate)}s`
-                  : `${wordCount} palavras · ≈${Math.round(estimate)}s de narração · ${script.scenes.length} cenas`}
-              </span>
-            </div>
-            <label className="mt-4 block text-xs font-medium text-text-secondary">Título interno</label>
-            <input
-              value={script.title}
-              onChange={(e) => update({ title: e.target.value })}
-              disabled={disabled}
-              className={`mt-1 ${input}`}
-            />
-
-            <ol className="mt-5 space-y-4">
-              {script.scenes.map((scene, i) => (
-                <li key={i} className="rounded-xl border border-border bg-background p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                      Cena {i + 1}
-                    </span>
-                    <div className="flex items-center gap-1 text-text-secondary">
-                      <label className="flex items-center gap-1 text-xs">
-                        <input
-                          type="number"
-                          min={0.5}
-                          max={60}
-                          step={0.5}
-                          value={scene.durationS}
-                          onChange={(e) => updateScene(i, { durationS: Number(e.target.value) })}
-                          disabled={disabled}
-                          className="w-16 rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent-yellow"
-                        />
-                        s
-                      </label>
-                      <IconButton label="Subir" onClick={() => moveScene(i, -1)} disabled={disabled || i === 0}>↑</IconButton>
-                      <IconButton
-                        label="Descer"
-                        onClick={() => moveScene(i, 1)}
-                        disabled={disabled || i === script.scenes.length - 1}
-                      >
-                        ↓
-                      </IconButton>
-                      <IconButton
-                        label="Remover cena"
-                        onClick={() => update({ scenes: script.scenes.filter((_, j) => j !== i) })}
-                        disabled={disabled || script.scenes.length <= 1}
-                      >
-                        ×
-                      </IconButton>
-                    </div>
+              <p className="mt-3 text-sm text-text-secondary">
+                O roteiro ainda não foi gerado. Use o botão &quot;Gerar roteiro&quot; para tentar de novo.
+              </p>
+            </section>
+          ) : (
+            <>
+              <section className={cardClass} aria-labelledby="roteiro-title">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 id="roteiro-title" className={sectionTitle}>
+                      Roteiro
+                    </h2>
+                    <p className="mt-1 text-xs text-text-secondary">
+                      {noNarration
+                        ? `${script.scenes.length} cenas · ≈${Math.round(estimate)}s`
+                        : `${wordCount} palavras · ≈${Math.round(estimate)}s de narração · ${script.scenes.length} cenas`}
+                      {!noNarration && estimate > job.durationS * 1.15 && (
+                        <span className="text-warning"> · passa do alvo de {job.durationS}s</span>
+                      )}
+                    </p>
                   </div>
-                  {!pattern?.semNarracao && (
-                    <>
-                      <label className="mt-3 block text-xs font-medium text-text-secondary">Narração (legenda)</label>
-                      <textarea
-                        rows={2}
-                        value={scene.narration}
-                        onChange={(e) => updateScene(i, { narration: e.target.value })}
-                        disabled={disabled}
-                        className={`mt-1 resize-y ${input}`}
-                      />
-                    </>
-                  )}
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs font-medium text-text-secondary">Texto na tela</label>
-                      <input
-                        value={scene.onScreen}
-                        onChange={(e) => updateScene(i, { onScreen: e.target.value })}
-                        disabled={disabled}
-                        className={`mt-1 ${input}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-text-secondary">Visual</label>
-                      <input
-                        value={scene.visual}
-                        onChange={(e) => updateScene(i, { visual: e.target.value })}
-                        disabled={disabled}
-                        className={`mt-1 ${input}`}
-                      />
-                    </div>
-                  </div>
-                  <details className="mt-3">
-                    <summary className="cursor-pointer text-xs font-medium text-text-secondary hover:text-foreground">
-                      Prompt da imagem (inglês)
-                    </summary>
-                    <textarea
-                      rows={3}
-                      value={scene.imagePrompt}
-                      onChange={(e) => updateScene(i, { imagePrompt: e.target.value })}
-                      disabled={disabled}
-                      className={`mt-2 resize-y font-mono text-xs ${input}`}
-                    />
-                  </details>
-                </li>
-              ))}
-            </ol>
-            <button
-              type="button"
-              onClick={() => update({ scenes: [...script.scenes, { ...EMPTY_SCENE }] })}
-              disabled={disabled}
-              className="mt-3 text-sm font-medium text-accent-yellow hover:underline disabled:opacity-50"
-            >
-              + Adicionar cena
-            </button>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {!pattern?.semNarracao && (
-                <div>
-                  <label className="block text-xs font-medium text-text-secondary">CTA falado</label>
-                  <input
-                    value={script.cta.narration}
-                    onChange={(e) => update({ cta: { ...script.cta, narration: e.target.value } })}
-                    disabled={disabled}
-                    className={`mt-1 ${input}`}
-                  />
+                  <button type="button" onClick={regenerateScript} disabled={disabled} className={secondaryButton}>
+                    {busy === "script" ? <Spinner /> : <Icon name="refresh" className="h-4 w-4" />}
+                    {busy === "script" ? "Gerando…" : "Gerar de novo"}
+                  </button>
                 </div>
-              )}
-              <div>
-                <label className="block text-xs font-medium text-text-secondary">CTA na tela</label>
+
+                <label htmlFor="title" className={`mt-5 ${labelClass}`}>
+                  Título interno
+                </label>
                 <input
-                  value={script.cta.onScreen}
-                  onChange={(e) => update({ cta: { ...script.cta, onScreen: e.target.value } })}
+                  id="title"
+                  value={script.title}
+                  onChange={(e) => update({ title: e.target.value })}
                   disabled={disabled}
-                  className={`mt-1 ${input}`}
+                  className={`mt-1 ${fieldClass}`}
+                />
+
+                <ol className="mt-5 space-y-4">
+                  {script.scenes.map((scene, i) => (
+                    <SceneCard
+                      key={i}
+                      index={i}
+                      total={script.scenes.length}
+                      scene={scene}
+                      noNarration={noNarration}
+                      disabled={disabled}
+                      onChange={(patch) => updateScene(i, patch)}
+                      onMove={(d) => moveScene(i, d)}
+                      onRemove={() => removeScene(i)}
+                    />
+                  ))}
+                </ol>
+                <button
+                  type="button"
+                  onClick={() => update({ scenes: [...script.scenes, { ...EMPTY_SCENE }] })}
+                  disabled={disabled}
+                  className={`mt-4 w-full border-dashed ${secondaryButton}`}
+                >
+                  <Icon name="plus" className="h-4 w-4" /> Adicionar cena
+                </button>
+              </section>
+
+              <section className={cardClass} aria-labelledby="fecho-title">
+                <h2 id="fecho-title" className={sectionTitle}>
+                  Fechamento e post
+                </h2>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  {!noNarration && (
+                    <div>
+                      <label htmlFor="cta-narration" className={labelClass}>
+                        CTA falado
+                      </label>
+                      <AutoTextarea
+                        id="cta-narration"
+                        value={script.cta.narration}
+                        onChange={(e) => update({ cta: { ...script.cta, narration: e.target.value } })}
+                        disabled={disabled}
+                        className={`mt-1 ${fieldClass}`}
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label htmlFor="cta-screen" className={labelClass}>
+                      CTA na tela
+                    </label>
+                    <AutoTextarea
+                      id="cta-screen"
+                      value={script.cta.onScreen}
+                      onChange={(e) => update({ cta: { ...script.cta, onScreen: e.target.value } })}
+                      disabled={disabled}
+                      className={`mt-1 ${fieldClass}`}
+                    />
+                  </div>
+                </div>
+
+                <label htmlFor="keywords" className={`mt-4 ${labelClass}`}>
+                  Palavras em destaque
+                </label>
+                <input
+                  id="keywords"
+                  aria-describedby="keywords-help"
+                  value={script.keywords.join(", ")}
+                  onChange={(e) => update({ keywords: e.target.value.split(",").map((k) => k.trim()).filter(Boolean) })}
+                  disabled={disabled}
+                  className={`mt-1 ${fieldClass}`}
+                />
+                <p id="keywords-help" className="mt-1 text-xs text-text-secondary">
+                  Separadas por vírgula. O vídeo destaca essas palavras na legenda.
+                </p>
+
+                <label htmlFor="music" className={`mt-4 ${labelClass}`}>
+                  Trilha (descrição em inglês)
+                </label>
+                <AutoTextarea
+                  id="music"
+                  value={script.musicPrompt}
+                  onChange={(e) => update({ musicPrompt: e.target.value })}
+                  disabled={disabled}
+                  className={`mt-1 ${fieldClass}`}
+                />
+
+                <div className="mt-4 flex items-end justify-between gap-2">
+                  <label htmlFor="caption" className={labelClass}>
+                    Legenda do post
+                  </label>
+                  <CopyButton text={script.postCaption} />
+                </div>
+                <AutoTextarea
+                  id="caption"
+                  minRows={3}
+                  value={script.postCaption}
+                  onChange={(e) => update({ postCaption: e.target.value })}
+                  disabled={disabled}
+                  className={`mt-1 ${fieldClass}`}
+                />
+              </section>
+            </>
+          )}
+        </div>
+
+        <aside className="min-w-0 space-y-6" aria-label="Narração, render e custo">
+          <div className="hidden lg:block">{nextStep}</div>
+
+          {script && !noNarration && (
+            <section className={cardClass} aria-labelledby="narracao-title">
+              <h2 id="narracao-title" className={sectionTitle}>
+                Narração
+              </h2>
+              <label htmlFor="voice" className={`mt-4 ${labelClass}`}>
+                Voz (ElevenLabs)
+              </label>
+              <div className="mt-1">
+                <VoiceSelect
+                  id="voice"
+                  voices={voices}
+                  value={job.voiceId}
+                  onChange={(v) => changeVoice(v.id, v.name)}
+                  disabled={disabled}
+                  loading={loadingVoices}
+                  error={voicesError}
                 />
               </div>
-            </div>
-
-            <label className="mt-4 block text-xs font-medium text-text-secondary">
-              Palavras em destaque (separadas por vírgula)
-            </label>
-            <input
-              value={script.keywords.join(", ")}
-              onChange={(e) =>
-                update({ keywords: e.target.value.split(",").map((k) => k.trim()).filter(Boolean) })
-              }
-              disabled={disabled}
-              className={`mt-1 ${input}`}
-            />
-
-            <label className="mt-4 block text-xs font-medium text-text-secondary">Trilha (prompt em inglês)</label>
-            <input
-              value={script.musicPrompt}
-              onChange={(e) => update({ musicPrompt: e.target.value })}
-              disabled={disabled}
-              className={`mt-1 ${input}`}
-            />
-
-            <label className="mt-4 block text-xs font-medium text-text-secondary">Legenda do post</label>
-            <textarea
-              rows={4}
-              value={script.postCaption}
-              onChange={(e) => update({ postCaption: e.target.value })}
-              disabled={disabled}
-              className={`mt-1 resize-y ${input}`}
-            />
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button type="button" onClick={save} disabled={disabled || !dirty} className={primaryButton}>
-                {busy === "save" ? "Salvando…" : dirty ? "Salvar alterações" : "Salvo"}
-              </button>
-              <button type="button" onClick={regenerateScript} disabled={disabled} className={secondaryButton}>
-                {busy === "script" ? "Gerando roteiro…" : "Gerar roteiro de novo"}
-              </button>
-            </div>
-          </section>
-
-          {!pattern?.semNarracao && (
-            <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-              <h2 className={sectionTitle}>Narração</h2>
-              <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
-                <div>
-                  <label htmlFor="voice" className="block text-xs font-medium text-text-secondary">
-                    Voz (ElevenLabs)
-                  </label>
-                  <div className="mt-1">
-                    <VoiceSelect
-                      id="voice"
-                      voices={voices}
-                      value={job.voiceId}
-                      onChange={(v) => changeVoice(v.id, v.name)}
-                      disabled={disabled}
-                      loading={loadingVoices}
-                      error={voicesError}
-                    />
-                  </div>
-                </div>
-                <button type="button" onClick={generateNarration} disabled={disabled} className={primaryButton}>
-                  {busy === "narration"
-                    ? "Gerando narração…"
-                    : job.narrationUrl
-                      ? "Gerar narração de novo"
-                      : "Gerar narração"}
-                </button>
-              </div>
-
               {job.narrationUrl ? (
                 <div className="mt-4">
                   <audio key={job.narrationUrl} controls src={job.narrationUrl} className="w-full" />
                   <p className="mt-1 text-xs text-text-secondary">
                     {job.narrationDurationS?.toFixed(1)}s · {job.narrationWords?.length ?? 0} palavras sincronizadas
-                    {job.narrationDurationS && job.narrationDurationS > job.durationS * 1.15 &&
-                      " · ficou mais longa que o alvo; encurte o roteiro se precisar"}
                   </p>
+                  {job.narrationDurationS && job.narrationDurationS > job.durationS * 1.15 && (
+                    <p className="mt-1 text-xs text-warning">
+                      Ficou mais longa que o alvo de {job.durationS}s. Se quiser, encurte o roteiro e gere de novo.
+                    </p>
+                  )}
+                  <button type="button" onClick={generateNarration} disabled={disabled} className={`mt-3 w-full ${secondaryButton}`}>
+                    {busy === "narration" ? <Spinner /> : <Icon name="refresh" className="h-4 w-4" />}
+                    {busy === "narration" ? "Gerando narração…" : "Gerar narração de novo"}
+                  </button>
                 </div>
               ) : (
                 <p className="mt-3 text-xs text-text-secondary">
-                  {dirty ? "As edições serão salvas antes de gerar. " : ""}
-                  Siglas em inglês e o site são convertidos para a pronúncia certa automaticamente.
+                  Siglas em inglês e o site viram a pronúncia certa automaticamente. Ajuste abaixo, se precisar.
                 </p>
               )}
-
               <PronunciationEditor script={script} disabled={disabled} onChange={(p) => update({ pronunciations: p })} />
             </section>
           )}
 
-          <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-            <h2 className={sectionTitle}>Render</h2>
+          <section className={cardClass} aria-labelledby="render-title">
+            <h2 id="render-title" className={sectionTitle}>
+              Vídeo
+            </h2>
             {job.status === "done" && job.videoUrl ? (
               <div className="mt-4">
-                <video controls src={job.videoUrl} className="mx-auto max-h-[640px] rounded-xl bg-black" />
-                <a
-                  href={job.videoUrl}
-                  download
-                  className={`mt-4 inline-block ${primaryButton}`}
-                >
-                  Baixar mp4
+                <video
+                  controls
+                  preload="metadata"
+                  src={job.videoUrl}
+                  className="mx-auto aspect-[9/16] max-h-[70dvh] w-full rounded-xl bg-black object-contain"
+                />
+                <a href={job.videoUrl} download className={`mt-4 w-full ${primaryButton}`}>
+                  <Icon name="download" className="h-4 w-4" /> Baixar mp4
                 </a>
+                <button type="button" onClick={() => queue()} disabled={disabled} className={`mt-2 w-full ${secondaryButton}`}>
+                  {busy === "queue" ? <Spinner /> : <Icon name="refresh" className="h-4 w-4" />}
+                  Renderizar de novo
+                </button>
               </div>
-            ) : locked ? (
-              <p className="mt-3 text-sm text-text-secondary">
-                {job.status === "queued"
-                  ? "Na fila. O worker de render pega o vídeo em instantes."
-                  : `Renderizando${job.progress != null ? ` (${job.progress}%)` : ""}…`}
-              </p>
             ) : (
               <p className="mt-3 text-sm text-text-secondary">
-                {job.status === "failed" && "O último render falhou (veja o erro acima). "}
-                O worker gera as imagens das cenas, a trilha, monta o vídeo no estilo do padrão e devolve o mp4 aqui.
+                {locked
+                  ? "Acompanhe o andamento no card de etapas."
+                  : renderable
+                    ? "O worker gera as imagens das cenas e a trilha, monta o vídeo no estilo do padrão e devolve o mp4 aqui."
+                    : "O render automático deste padrão ainda está em desenvolvimento. Por enquanto, ele gera roteiro e narração."}
               </p>
             )}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {job.status === "queued" ? (
-                <button type="button" onClick={() => queue(true)} disabled={busy !== null} className={secondaryButton}>
-                  Tirar da fila
-                </button>
-              ) : (
-                !locked && (
-                  <button
-                    type="button"
-                    onClick={() => queue()}
-                    disabled={disabled || !renderable || (!pattern?.semNarracao && !job.narrationUrl)}
-                    className={primaryButton}
-                  >
-                    {busy === "queue" ? "Enviando…" : job.status === "done" ? "Renderizar de novo" : "Enviar para render"}
-                  </button>
-                )
-              )}
+            <div className="mt-5 border-t border-border pt-4">
               <button
                 type="button"
                 onClick={remove}
                 disabled={busy !== null || job.status === "rendering"}
-                title={job.status === "rendering" ? "Aguarde o render terminar para excluir" : undefined}
-                className={secondaryButton}
+                aria-describedby={job.status === "rendering" ? "delete-help" : undefined}
+                className={`-ml-3 ${dangerButton}`}
               >
+                {busy === "delete" ? <Spinner /> : <Icon name="trash" className="h-4 w-4" />}
                 Excluir vídeo
               </button>
+              {job.status === "rendering" && (
+                <p id="delete-help" className="text-xs text-text-secondary">
+                  Disponível quando o render terminar.
+                </p>
+              )}
             </div>
-            {!renderable && !locked && (
-              <p className="mt-2 text-xs text-text-secondary">
-                O render automático deste padrão ainda está em desenvolvimento. Na página do VideoGen, os padrões
-                marcados com &quot;gera mp4&quot; já vão para a fila.
-              </p>
-            )}
-            {renderable && !pattern?.semNarracao && !job.narrationUrl && !locked && (
-              <p className="mt-2 text-xs text-text-secondary">Gere a narração antes de mandar para o render.</p>
-            )}
           </section>
 
           <CostPanel job={job} />
+        </aside>
+      </div>
+
+      {dirty && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur">
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+            <p className="text-sm font-medium">
+              <span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full bg-warning align-middle" />
+              Alterações não salvas
+            </p>
+            <div className="ml-auto flex gap-2">
+              <button type="button" onClick={discard} disabled={busy !== null} className={secondaryButton}>
+                Descartar
+              </button>
+              <button type="button" onClick={save} disabled={busy !== null} className={primaryButton}>
+                {busy === "save" && <Spinner />}
+                {busy === "save" ? "Salvando…" : "Salvar"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
+
+      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+        {toast && (
+          <span className="inline-flex items-center gap-2 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background shadow-lg">
+            <Icon name="check" className="h-4 w-4" /> {toast}
+          </span>
+        )}
+      </div>
     </Shell>
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, padBottom = false }: { children: React.ReactNode; padBottom?: boolean }) {
   return (
     <div className="flex min-h-full flex-col">
-      <Header />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10 sm:py-14">{children}</main>
+      <Header wide />
+      <main className={`mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12 ${padBottom ? "pb-32" : ""}`}>
+        {children}
+      </main>
     </div>
   );
 }
 
-function IconButton({
-  label,
-  onClick,
-  disabled,
-  children,
+// ---------- etapas ----------
+
+type StepState = "done" | "current" | "todo";
+
+function NextStep({
+  job,
+  hasScript,
+  noNarration,
+  renderable,
+  busy,
+  dirty,
+  onGenerateScript,
+  onNarration,
+  onQueue,
+  onUnqueue,
 }: {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  children: React.ReactNode;
+  job: VideoJobDTO;
+  hasScript: boolean;
+  noNarration: boolean;
+  renderable: boolean;
+  busy: Busy;
+  dirty: boolean;
+  onGenerateScript: () => void;
+  onNarration: () => void;
+  onQueue: () => void;
+  onUnqueue: () => void;
 }) {
+  const hasNarration = noNarration || Boolean(job.narrationUrl);
+  const done = job.status === "done" && Boolean(job.videoUrl);
+  const inRender = job.status === "queued" || job.status === "rendering";
+
+  const steps: { label: string; icon: string; state: StepState }[] = [
+    { label: "Roteiro", icon: "doc", state: hasScript ? "done" : "current" },
+    ...(noNarration
+      ? []
+      : [{ label: "Narração", icon: "mic", state: (hasNarration ? "done" : hasScript ? "current" : "todo") as StepState }]),
+    { label: "Vídeo", icon: "film", state: done ? "done" : hasScript && hasNarration ? "current" : "todo" },
+  ];
+
+  let title: string;
+  let body: React.ReactNode = null;
+  let action: React.ReactNode = null;
+  const savingNote = dirty ? " Suas alterações são salvas antes." : "";
+
+  if (!hasScript) {
+    title = "Gerar o roteiro";
+    action = (
+      <button type="button" onClick={onGenerateScript} disabled={busy !== null} className={`w-full ${primaryButton}`}>
+        {busy === "script" && <Spinner />} {busy === "script" ? "Gerando roteiro…" : "Gerar roteiro"}
+      </button>
+    );
+  } else if (!hasNarration) {
+    title = "Revise o roteiro e gere a narração";
+    body = `Edite o que quiser nas cenas. A narração usa o texto atual.${savingNote}`;
+    action = (
+      <button type="button" onClick={onNarration} disabled={busy !== null} className={`w-full ${primaryButton}`}>
+        {busy === "narration" ? <Spinner /> : <Icon name="mic" className="h-4 w-4" />}
+        {busy === "narration" ? "Gerando narração…" : "Gerar narração"}
+      </button>
+    );
+  } else if (job.status === "queued") {
+    title = "Na fila de render";
+    body = "O worker pega o vídeo em instantes. Você pode sair desta página.";
+    action = (
+      <button type="button" onClick={onUnqueue} disabled={busy !== null} className={`w-full ${secondaryButton}`}>
+        Tirar da fila
+      </button>
+    );
+  } else if (job.status === "rendering") {
+    const p = job.progress ?? 0;
+    title = "Renderizando o vídeo";
+    body = (
+      <>
+        <div
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={p}
+          aria-label="Progresso do render"
+          className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2"
+        >
+          <div className="h-full rounded-full bg-accent-yellow transition-[width] duration-700" style={{ width: `${Math.max(3, p)}%` }} />
+        </div>
+        <p className="mt-2 text-xs text-text-secondary">
+          <span className="tabular-nums">{p}%</span> · leva alguns minutos. Você pode sair desta página.
+        </p>
+      </>
+    );
+  } else if (done) {
+    title = "Vídeo pronto";
+    body = "Assista e baixe no card do vídeo. A legenda do post está no fim do roteiro.";
+    action = (
+      <a href={job.videoUrl!} download className={`w-full ${primaryButton}`}>
+        <Icon name="download" className="h-4 w-4" /> Baixar mp4
+      </a>
+    );
+  } else if (!renderable) {
+    title = "Roteiro e narração prontos";
+    body = "O render automático deste padrão ainda está em desenvolvimento.";
+  } else {
+    title = job.status === "failed" ? "O render falhou. Tente de novo" : "Tudo pronto para o render";
+    body = `O worker gera as imagens, a trilha e monta o mp4 (alguns minutos).${savingNote}`;
+    action = (
+      <button type="button" onClick={onQueue} disabled={busy !== null} className={`w-full ${primaryButton}`}>
+        {busy === "queue" ? <Spinner /> : <Icon name="arrow" className="h-4 w-4" />}
+        {busy === "queue" ? "Enviando…" : "Enviar para render"}
+      </button>
+    );
+  }
+
+  return (
+    <section className={`${cardClass} border-accent-yellow/30`} aria-label="Etapas do vídeo">
+      <ol className="flex items-start">
+        {steps.map((s, i) => (
+          <li key={s.label} className="relative flex flex-1 flex-col items-center gap-1.5 text-center">
+            {i > 0 && (
+              <span
+                aria-hidden
+                className={`absolute right-1/2 top-4 h-0.5 w-[calc(100%-2.5rem)] -translate-x-5 ${s.state === "todo" ? "bg-border" : "bg-success/50"}`}
+              />
+            )}
+            <span
+              className={`relative flex h-8 w-8 items-center justify-center rounded-full border-2 bg-surface ${
+                s.state === "done"
+                  ? "border-success text-success"
+                  : s.state === "current"
+                    ? "border-accent-yellow text-accent-yellow"
+                    : "border-border text-text-secondary"
+              }`}
+              aria-hidden
+            >
+              {s.state === "done" ? <Icon name="check" className="h-4 w-4" /> : <Icon name={s.icon} className="h-4 w-4" />}
+            </span>
+            <span className={`text-xs font-semibold ${s.state === "todo" ? "text-text-secondary" : ""}`}>
+              {s.label}
+              <span className="sr-only">
+                {s.state === "done" ? " (concluída)" : s.state === "current" ? " (etapa atual)" : " (pendente)"}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+        {inRender || done ? "Situação" : "Próximo passo"}
+      </p>
+      <p className="mt-1 font-semibold">{title}</p>
+      {typeof body === "string" ? <p className="mt-1 text-sm text-text-secondary">{body}</p> : body}
+      {action && <div className="mt-4">{action}</div>}
+    </section>
+  );
+}
+
+// ---------- cena ----------
+
+function SceneCard({
+  index,
+  total,
+  scene,
+  noNarration,
+  disabled,
+  onChange,
+  onMove,
+  onRemove,
+}: {
+  index: number;
+  total: number;
+  scene: VideoScene;
+  noNarration: boolean;
+  disabled: boolean;
+  onChange: (patch: Partial<VideoScene>) => void;
+  onMove: (delta: number) => void;
+  onRemove: () => void;
+}) {
+  const n = index + 1;
+  const ids = (k: string) => `scene-${index}-${k}`;
+  return (
+    <li className="rounded-xl border border-border bg-background p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-2 text-sm font-semibold">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-2 text-xs tabular-nums">{n}</span>
+          Cena {n}
+        </span>
+        <div className="flex items-center gap-1">
+          {noNarration && (
+            <label className="mr-1 flex items-center gap-1.5 text-xs text-text-secondary">
+              Duração
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0.5}
+                max={60}
+                step={0.5}
+                value={scene.durationS}
+                onChange={(e) => onChange({ durationS: Number(e.target.value) })}
+                disabled={disabled}
+                className="h-10 w-16 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-accent-yellow"
+              />
+              s
+            </label>
+          )}
+          <button type="button" aria-label={`Mover cena ${n} para cima`} title="Mover para cima" onClick={() => onMove(-1)} disabled={disabled || index === 0} className={iconButton}>
+            <Icon name="up" className="h-4 w-4" />
+          </button>
+          <button type="button" aria-label={`Mover cena ${n} para baixo`} title="Mover para baixo" onClick={() => onMove(1)} disabled={disabled || index === total - 1} className={iconButton}>
+            <Icon name="down" className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Remover cena ${n}`}
+            title="Remover cena"
+            onClick={onRemove}
+            disabled={disabled || total <= 1}
+            className={`${iconButton} hover:bg-accent-red/10 hover:text-accent-red`}
+          >
+            <Icon name="trash" className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      {!noNarration && (
+        <>
+          <label htmlFor={ids("narration")} className={`mt-3 ${labelClass}`}>
+            Narração (vira a legenda)
+          </label>
+          <AutoTextarea
+            id={ids("narration")}
+            minRows={2}
+            value={scene.narration}
+            onChange={(e) => onChange({ narration: e.target.value })}
+            disabled={disabled}
+            className={`mt-1 ${fieldClass}`}
+          />
+        </>
+      )}
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor={ids("screen")} className={labelClass}>
+            Texto na tela
+          </label>
+          <AutoTextarea
+            id={ids("screen")}
+            value={scene.onScreen}
+            onChange={(e) => onChange({ onScreen: e.target.value })}
+            disabled={disabled}
+            className={`mt-1 ${fieldClass}`}
+          />
+        </div>
+        <div>
+          <label htmlFor={ids("visual")} className={labelClass}>
+            O que aparece (descrição)
+          </label>
+          <AutoTextarea
+            id={ids("visual")}
+            value={scene.visual}
+            onChange={(e) => onChange({ visual: e.target.value })}
+            disabled={disabled}
+            className={`mt-1 ${fieldClass}`}
+          />
+        </div>
+      </div>
+      <details className="group mt-3">
+        <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-foreground">
+          <span aria-hidden className="transition group-open:rotate-90">›</span> Prompt da imagem (inglês)
+        </summary>
+        <AutoTextarea
+          aria-label={`Prompt da imagem da cena ${n}`}
+          minRows={3}
+          value={scene.imagePrompt}
+          onChange={(e) => onChange({ imagePrompt: e.target.value })}
+          disabled={disabled}
+          className={`mt-1 font-mono text-xs ${fieldClass}`}
+        />
+      </details>
+    </li>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded px-2 py-1 text-sm transition hover:bg-surface-2 hover:text-foreground disabled:opacity-30"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch {
+          /* sem permissão de área de transferência: o usuário copia à mão */
+        }
+      }}
+      className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-medium text-accent-yellow transition hover:bg-accent-yellow/10"
     >
-      {children}
+      {copied ? <Icon name="check" /> : null}
+      {copied ? "Copiada" : "Copiar"}
     </button>
   );
 }
@@ -549,11 +865,12 @@ function PronunciationEditor({
 }) {
   const list = script.pronunciations;
   return (
-    <details className="mt-5">
-      <summary className="cursor-pointer text-xs font-medium text-text-secondary hover:text-foreground">
+    <details className="group mt-4">
+      <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-foreground">
+        <span aria-hidden className="transition group-open:rotate-90">›</span>
         Pronúncias ({DEFAULT_PRONUNCIATIONS.length} fixas + {list.length} deste vídeo)
       </summary>
-      <p className="mt-2 text-xs text-text-secondary">
+      <p className="mt-1 text-xs text-text-secondary">
         Fixas: {DEFAULT_PRONUNCIATIONS.map((p) => `${p.display} → ${p.spoken}`).join(" · ")}
       </p>
       <div className="mt-3 space-y-2">
@@ -561,30 +878,38 @@ function PronunciationEditor({
           <div key={i} className="flex gap-2">
             <input
               value={p.display}
+              aria-label="Como aparece na legenda"
               placeholder="Como aparece"
               onChange={(e) => onChange(list.map((x, j) => (j === i ? { ...x, display: e.target.value } : x)))}
               disabled={disabled}
-              className={input}
+              className={fieldClass}
             />
             <input
               value={p.spoken}
+              aria-label="Como a voz fala"
               placeholder="Como falar"
               onChange={(e) => onChange(list.map((x, j) => (j === i ? { ...x, spoken: e.target.value } : x)))}
               disabled={disabled}
-              className={input}
+              className={fieldClass}
             />
-            <IconButton label="Remover" onClick={() => onChange(list.filter((_, j) => j !== i))} disabled={disabled}>
-              ×
-            </IconButton>
+            <button
+              type="button"
+              aria-label={`Remover pronúncia ${p.display || i + 1}`}
+              onClick={() => onChange(list.filter((_, j) => j !== i))}
+              disabled={disabled}
+              className={`shrink-0 ${iconButton}`}
+            >
+              <Icon name="trash" className="h-4 w-4" />
+            </button>
           </div>
         ))}
         <button
           type="button"
           onClick={() => onChange([...list, { display: "", spoken: "" }])}
           disabled={disabled}
-          className="text-xs font-medium text-accent-yellow hover:underline disabled:opacity-50"
+          className="inline-flex min-h-11 items-center gap-1 text-xs font-medium text-accent-yellow hover:underline disabled:opacity-50"
         >
-          + Adicionar pronúncia
+          <Icon name="plus" /> Adicionar pronúncia
         </button>
       </div>
     </details>
