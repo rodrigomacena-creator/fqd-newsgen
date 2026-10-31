@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
 import { textToSpeechWithTimestamps } from "@/lib/videogen/elevenlabs";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
+import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { alignDisplayWords, mergePronunciations, spokenText } from "@/lib/videogen/pronunciation";
 import { fullNarration, type VideoScript } from "@/lib/videogen/types";
 
@@ -25,7 +26,8 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
 
   try {
     const pronunciations = mergePronunciations(script.pronunciations);
-    const { audio, alignment } = await textToSpeechWithTimestamps(job.voiceId, spokenText(display, pronunciations));
+    const { audio, alignment, credits } = await textToSpeechWithTimestamps(job.voiceId, spokenText(display, pronunciations));
+    if (credits !== null) await appendCosts(id, [costEntry("narration", "elevenlabs", { credits })]);
     const words = alignDisplayWords(display, pronunciations, alignment);
     const duration = alignment.character_end_times_seconds.at(-1) ?? 0;
 

@@ -9,6 +9,7 @@ import { useVoices } from "@/lib/videogen/useVoices";
 import { VIDEO_PATTERNS, getVideoPattern } from "@/lib/videogen/patterns";
 import { DEFAULT_VOICE_ID, DURATION_OPTIONS, RENDERABLE_PATTERNS, VIDEO_STATUS_LABEL } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
+import { formatUsd } from "@/components/videogen/CostPanel";
 
 const STAGES = ["Lendo o guia do padrão…", "Escrevendo o roteiro…", "Desenhando as cenas…", "Quase lá…"];
 
@@ -26,6 +27,7 @@ export default function VideoGenPage() {
   const [stage, setStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<VideoJobDTO[]>([]);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/videogen/jobs")
@@ -41,6 +43,23 @@ export default function VideoGenPage() {
   }, [loading]);
 
   const pattern = getVideoPattern(patternId);
+
+  async function removeJob(job: VideoJobDTO) {
+    const what = job.videoUrl ? "o vídeo, o roteiro e a narração" : "o roteiro e a narração";
+    if (!window.confirm(`Excluir "${job.script?.title || job.topic}"? Isso apaga ${what} de vez.`)) return;
+    setDeleting(job.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/videogen/jobs/${job.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Não foi possível excluir.");
+      setJobs((list) => list.filter((j) => j.id !== job.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro inesperado.");
+    } finally {
+      setDeleting(null);
+    }
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -215,19 +234,36 @@ export default function VideoGenPage() {
             <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">Vídeos recentes</h2>
             <ul className="mt-3 divide-y divide-border rounded-2xl border border-border bg-surface">
               {jobs.map((job) => (
-                <li key={job.id}>
-                  <Link href={`/videogen/${job.id}`} className="flex items-center gap-3 px-5 py-3 hover:bg-surface-2">
+                <li key={job.id} className="flex items-center hover:bg-surface-2">
+                  <Link href={`/videogen/${job.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-5 pr-2">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{job.script?.title || job.topic}</span>
                       <span className="block truncate text-xs text-text-secondary">
                         {getVideoPattern(job.patternId)?.nome ?? job.patternId} · {job.durationS}s ·{" "}
                         {new Date(job.createdAt).toLocaleString("pt-BR")}
+                        {job.costSummary && ` · ≈ ${formatUsd(job.costSummary.totalUsd)}`}
                       </span>
                     </span>
                     <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-text-secondary">
                       {job.error && job.status === "draft" ? "Erro no roteiro" : VIDEO_STATUS_LABEL[job.status]}
                     </span>
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => removeJob(job)}
+                    disabled={deleting !== null || job.status === "rendering"}
+                    title={job.status === "rendering" ? "Aguarde o render terminar para excluir" : "Excluir"}
+                    aria-label="Excluir"
+                    className="mr-3 shrink-0 rounded-lg p-2 text-text-secondary transition hover:bg-accent-red/10 hover:text-accent-red disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {deleting === job.id ? (
+                      <span className="block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden>
+                        <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </button>
                 </li>
               ))}
             </ul>

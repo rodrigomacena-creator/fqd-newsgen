@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
 import { checkWorkerAuth } from "@/lib/videogen/workerAuth";
+import { appendCosts, sanitizeCosts } from "@/lib/videogen/costs";
 
 /**
  * Atualização do worker sobre um job que ele está renderizando:
  * { progress } durante o render, { status: "done", videoUrl } no fim ou { status: "failed", error }.
+ * Qualquer uma pode trazer { costs: CostEntry[] } com os gastos do worker (imagens e trilha).
  * Só vale enquanto o job está "rendering" (se o usuário excluiu o vídeo, responde 404/409 e o
  * worker descarta o trabalho).
  */
@@ -14,7 +16,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/wo
   if (denied) return denied;
   const { id } = await ctx.params;
 
-  let body: { progress?: number; status?: string; videoUrl?: string; error?: string };
+  let body: { progress?: number; status?: string; videoUrl?: string; error?: string; costs?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -26,6 +28,8 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/wo
   if (job.status !== "rendering") {
     return NextResponse.json({ error: `O vídeo não está renderizando (status ${job.status}).` }, { status: 409 });
   }
+
+  await appendCosts(id, sanitizeCosts(body.costs));
 
   if (body.status === "done") {
     if (!body.videoUrl) return NextResponse.json({ error: "Informe videoUrl." }, { status: 400 });

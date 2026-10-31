@@ -273,6 +273,14 @@ reais encontradas ao construir o projeto, não só a estrutura.
   (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
   caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.
   O `eleven_v4` ignora `speed`; o ritmo medido é ~2,3 palavras/s (`WORDS_PER_SECOND`).
+  **Custos** (`VideoJob.costs`, JSON `CostEntry[]`, `src/lib/videogen/costs.ts`): cada etapa paga
+  acrescenta uma linha (a lista só cresce; gerar de novo soma). Roteiro e imagens usam
+  `usage.cost` da OpenRouter (pedido com `usage: { include: true }`); a narração usa o header
+  `character-cost` do ElevenLabs; a trilha não tem custo na resposta e é estimada no worker
+  (~13,75 créditos/s, medido pela API de uso). Créditos viram dólar com
+  `ELEVENLABS_USD_PER_CREDIT` (padrão US$ 22 / 100 mil, plano Creator). O worker manda os gastos
+  dele somados por etapa junto do `done`/`failed`. Jobs com `costs` nulo são anteriores a isso.
+  Excluir um job apaga a pasta `videogen/<id>/` no Blob; não é permitido enquanto `rendering`.
 
 `Article.sources` e `Article.sections` são JSON-em-string (não tabelas relacionais) — decisão
 deliberada de simplicidade, mantida assim de propósito.

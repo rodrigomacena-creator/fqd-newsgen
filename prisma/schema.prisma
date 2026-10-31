@@ -78,6 +78,7 @@ model VideoJob {
   narrationDurationS Float?
   videoUrl           String? // mp4 final no Vercel Blob (escrito pelo worker)
   progress           Int? // 0-100, atualizado pelo worker
+  costs              String? // JSON string: CostEntry[] (gastos de OpenRouter e ElevenLabs, ver src/lib/videogen/costs.ts)
   error              String?
   startedAt          DateTime?
   finishedAt         DateTime?

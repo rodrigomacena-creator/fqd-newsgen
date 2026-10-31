@@ -69,7 +69,7 @@ export interface TtsAlignment {
 export async function textToSpeechWithTimestamps(
   voiceId: string,
   text: string
-): Promise<{ audio: Buffer; alignment: TtsAlignment }> {
+): Promise<{ audio: Buffer; alignment: TtsAlignment; credits: number | null }> {
   const res = await fetch(`${API}/text-to-speech/${encodeURIComponent(voiceId)}/with-timestamps`, {
     method: "POST",
     headers: { "xi-api-key": apiKey(), "Content-Type": "application/json" },
@@ -83,5 +83,11 @@ export async function textToSpeechWithTimestamps(
   if (!res.ok) throw new Error(`ElevenLabs recusou a narração: ${await readError(res)}`);
   const data = (await res.json()) as { audio_base64: string; alignment: TtsAlignment | null };
   if (!data.alignment) throw new Error("ElevenLabs não retornou o alinhamento das palavras.");
-  return { audio: Buffer.from(data.audio_base64, "base64"), alignment: data.alignment };
+  // créditos cobrados por esta narração (header do ElevenLabs; o eleven_v4 cobra menos de 1 por caractere)
+  const cost = Number(res.headers.get("character-cost"));
+  return {
+    audio: Buffer.from(data.audio_base64, "base64"),
+    alignment: data.alignment,
+    credits: Number.isFinite(cost) && res.headers.has("character-cost") ? cost : null,
+  };
 }

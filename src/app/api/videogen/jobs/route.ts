@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getVideoPattern } from "@/lib/videogen/patterns";
 import { generateVideoScript, VIDEOGEN_TEXT_MODEL } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
+import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { DEFAULT_VOICE_ID } from "@/lib/videogen/types";
 
 export const maxDuration = 300;
@@ -48,11 +49,13 @@ export async function POST(request: Request) {
       durationS,
       textModel,
       extraInstructions,
+      costs: "[]",
     },
   });
 
   try {
-    const script = await generateVideoScript({ pattern, topic, durationS, extraInstructions, model: textModel });
+    const { script, usd } = await generateVideoScript({ pattern, topic, durationS, extraInstructions, model: textModel });
+    await appendCosts(job.id, [costEntry("script", "openrouter", { usd })]);
     const updated = await prisma.videoJob.update({
       where: { id: job.id },
       data: { script: JSON.stringify(script), status: "script_ready", error: null },
