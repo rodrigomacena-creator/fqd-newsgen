@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
-import { getVideoPattern } from "@/lib/videogen/patterns";
+import { resolveStyle } from "@/lib/videogen/templates";
 import { checkWorkerAuth } from "@/lib/videogen/workerAuth";
 
 // Um job "rendering" sem notícia do worker há esse tempo é considerado abandonado
@@ -36,7 +36,12 @@ export async function POST(request: Request) {
     });
     if (claimed.count === 1) {
       const job = await prisma.videoJob.findUniqueOrThrow({ where: { id: next.id } });
-      return NextResponse.json({ job: serializeVideoJob(job), pattern: getVideoPattern(job.patternId) ?? null });
+      const style = await resolveStyle(job.patternId);
+      // templateSpec: ficha do motor genérico quando o estilo é um template montado pela aplicação
+      return NextResponse.json({
+        job: { ...serializeVideoJob(job), templateSpec: style?.spec ?? null },
+        pattern: style?.pattern ?? null,
+      });
     }
   }
   return NextResponse.json({ job: null });

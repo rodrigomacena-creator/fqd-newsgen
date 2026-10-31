@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
@@ -8,20 +8,30 @@ import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { formatUsd } from "@/components/videogen/CostPanel";
 import { FlowSteps, Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, sectionTitle } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
-import { VIDEO_PATTERNS, getVideoPattern } from "@/lib/videogen/patterns";
-import { DEFAULT_VOICE_ID, DURATION_OPTIONS, RENDERABLE_PATTERNS, WORDS_PER_SECOND } from "@/lib/videogen/types";
+import { VIDEO_PATTERNS, type VideoPattern } from "@/lib/videogen/patterns";
+import { useStyles } from "@/lib/videogen/useStyles";
+import { DEFAULT_VOICE_ID, DURATION_OPTIONS, WORDS_PER_SECOND } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
 const STAGES = ["Lendo o guia do padrão…", "Escrevendo o roteiro…", "Desenhando as cenas…", "Quase lá…"];
 const MAX_TOPIC = 2000;
+const noopSubscribe = () => () => {};
 
 export default function VideoGenPage() {
   const router = useRouter();
   const { voices, loading: loadingVoices, error: voicesError } = useVoices();
 
   const [topic, setTopic] = useState("");
-  const [patternId, setPatternId] = useState(RENDERABLE_PATTERNS[0] ?? VIDEO_PATTERNS[0]?.id ?? "");
-  const [onlyRenderable, setOnlyRenderable] = useState(true);
+  const { styles, loaded: stylesLoaded, getStyle } = useStyles();
+  const [chosenPattern, setPatternId] = useState<string | null>(null);
+  // /videogen?estilo=<id> (link "Criar vídeo neste estilo" da tela de templates)
+  const wantedPattern = useSyncExternalStore(
+    noopSubscribe,
+    () => new URLSearchParams(window.location.search).get("estilo"),
+    () => null
+  );
+  const patternId =
+    chosenPattern ?? (wantedPattern && styles.some((s) => s.id === wantedPattern) ? wantedPattern : VIDEO_PATTERNS[0]?.id ?? "");
   const [voiceId, setVoiceId] = useState(DEFAULT_VOICE_ID);
   const [voiceName, setVoiceName] = useState("Macena");
   const [durationS, setDurationS] = useState(15);
@@ -58,8 +68,7 @@ export default function VideoGenPage() {
     return () => clearInterval(id);
   }, [loading]);
 
-  const pattern = getVideoPattern(patternId);
-  const visiblePatterns = onlyRenderable ? VIDEO_PATTERNS.filter((p) => RENDERABLE_PATTERNS.includes(p.id)) : VIDEO_PATTERNS;
+  const pattern = getStyle(patternId);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -161,79 +170,76 @@ export default function VideoGenPage() {
                 <h2 className={sectionTitle} aria-hidden>
                   Estilo visual
                 </h2>
-                <div role="group" aria-label="Filtrar estilos" className="inline-flex rounded-lg border border-border p-0.5 text-xs font-medium">
-                  {[
-                    { v: true, label: `Geram mp4 (${RENDERABLE_PATTERNS.length})` },
-                    { v: false, label: `Todos (${VIDEO_PATTERNS.length})` },
-                  ].map((o) => (
-                    <button
-                      key={o.label}
-                      type="button"
-                      aria-pressed={onlyRenderable === o.v}
-                      onClick={() => setOnlyRenderable(o.v)}
-                      className={`min-h-9 rounded-md px-3 transition ${
-                        onlyRenderable === o.v ? "bg-accent-yellow text-accent-yellow-ink" : "text-text-secondary hover:text-foreground"
-                      }`}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
+                <Link
+                  href="/videogen/templates"
+                  className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-accent-yellow hover:underline"
+                >
+                  <Icon name="plus" className="h-4 w-4" /> Montar template a partir de um vídeo
+                </Link>
+              </div>
+              <div className="mt-4 grid gap-5 sm:grid-cols-[200px_minmax(0,1fr)]">
+                <StylePreview style={pattern} />
+                <div className="grid content-start gap-2" role="radiogroup" aria-label="Estilos">
+                  {styles.map((p) => {
+                    const active = p.id === patternId;
+                    return (
+                      <label
+                        key={p.id}
+                        className={`flex cursor-pointer items-center gap-3 rounded-xl border p-2 pr-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-yellow/40 ${
+                          active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="pattern"
+                          value={p.id}
+                          checked={active}
+                          onChange={() => setPatternId(p.id)}
+                          className="sr-only"
+                        />
+                        <span className="relative h-16 w-9 shrink-0 overflow-hidden rounded-md bg-surface-2">
+                          {p.sampleUrl && (
+                            <video
+                              src={`${p.sampleUrl}#t=1.5`}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              aria-hidden
+                              className="h-full w-full object-cover"
+                            />
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium">{p.nome}</span>
+                          <span className="line-clamp-2 block text-xs text-text-secondary">{p.tom}</span>
+                          {(p.kind === "template" || p.semNarracao) && (
+                            <span className="mt-1 flex flex-wrap gap-1">
+                              {p.kind === "template" && (
+                                <span className="rounded-full bg-accent-yellow/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-yellow">
+                                  seu template
+                                </span>
+                              )}
+                              {p.semNarracao && (
+                                <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                                  sem narração
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          aria-hidden
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                            active ? "border-accent-yellow bg-accent-yellow text-accent-yellow-ink" : "border-border"
+                          }`}
+                        >
+                          {active && <Icon name="check" className="h-3 w-3" />}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
-              {!onlyRenderable && (
-                <p className="mt-2 text-xs text-text-secondary">
-                  Os estilos sem a marca &quot;gera mp4&quot; ainda não têm render automático: por enquanto geram só roteiro e
-                  narração.
-                </p>
-              )}
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {visiblePatterns.map((p) => {
-                  const active = p.id === patternId;
-                  const renderable = RENDERABLE_PATTERNS.includes(p.id);
-                  return (
-                    <label
-                      key={p.id}
-                      className={`flex cursor-pointer gap-3 rounded-xl border px-3 py-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-yellow/40 ${
-                        active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="pattern"
-                        value={p.id}
-                        checked={active}
-                        onChange={() => setPatternId(p.id)}
-                        className="mt-1 h-4 w-4 shrink-0 accent-accent-yellow"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-medium">
-                          {p.numero}. {p.nome}
-                        </span>
-                        <span className="block text-xs text-text-secondary">{p.tom}</span>
-                        {(renderable || p.semNarracao) && (
-                          <span className="mt-1.5 flex flex-wrap gap-1">
-                            {renderable && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success">
-                                <Icon name="check" className="h-3 w-3" /> gera mp4
-                              </span>
-                            )}
-                            {p.semNarracao && (
-                              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
-                                sem narração
-                              </span>
-                            )}
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-              {pattern && (
-                <p className="mt-4 rounded-lg bg-surface-2 px-3 py-2.5 text-xs text-text-secondary">
-                  <strong className="font-semibold text-foreground">{pattern.nome}:</strong> {pattern.ritmo}. CTA: {pattern.cta}
-                </p>
-              )}
             </fieldset>
 
             <fieldset className={cardClass} disabled={loading}>
@@ -379,7 +385,7 @@ export default function VideoGenPage() {
                             label={job.error && job.status === "draft" ? "Erro no roteiro" : undefined}
                           />
                           <span>
-                            {getVideoPattern(job.patternId)?.nome ?? job.patternId} · {job.durationS}s
+                            {getStyle(job.patternId)?.nome ?? (stylesLoaded ? "Estilo removido" : "…")} · {job.durationS}s
                           </span>
                           <span>
                             {new Date(job.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
@@ -405,6 +411,39 @@ export default function VideoGenPage() {
           </aside>
         </div>
       </main>
+    </div>
+  );
+}
+
+/** Exemplo de 5s do estilo escolhido: sempre visível, para a pessoa saber que vídeo vai sair. */
+function StylePreview({ style }: { style: VideoPattern | undefined }) {
+  return (
+    <div className="mx-auto w-full max-w-[200px] sm:mx-0">
+      <div className="relative aspect-[9/16] overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border">
+        {style?.sampleUrl ? (
+          <video
+            key={style.sampleUrl}
+            src={style.sampleUrl}
+            autoPlay
+            muted
+            loop
+            playsInline
+            controls
+            aria-label={`Exemplo do estilo ${style.nome}`}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <span className="flex h-full items-center justify-center px-4 text-center text-xs text-text-secondary">
+            Este estilo ainda não tem exemplo.
+          </span>
+        )}
+      </div>
+      {style && (
+        <p className="mt-2 text-xs text-text-secondary">
+          <strong className="font-semibold text-foreground">Exemplo de 5s</strong>
+          {style.ritmo ? ` · ${style.ritmo}` : ""}
+        </p>
+      )}
     </div>
   );
 }

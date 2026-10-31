@@ -63,12 +63,29 @@ export const DURATION_OPTIONS = [5, 10, 15, 20, 30, 45, 60];
 // respiração): ~2,3 palavras/s em pt-BR. Usado pra dimensionar o roteiro e a estimativa na tela.
 export const WORDS_PER_SECOND = 2.3;
 
-/** Padrões que o worker de render (worker/) já sabe montar. Os outros ainda não vão pra fila. */
-export const RENDERABLE_PATTERNS = ["editorial-pb-vermelho", "estudio-serif-cinematico", "papel-hera"];
+// ---------- templates (estilos montados a partir de um vídeo de referência) ----------
+
+export type VideoTemplateStatus = "queued" | "analyzing" | "ready" | "failed";
+
+export const TEMPLATE_STATUS_LABEL: Record<VideoTemplateStatus, string> = {
+  queued: "Na fila",
+  analyzing: "Montando",
+  ready: "Pronto",
+  failed: "Falhou",
+};
+
+/** Resumo do estilo que a IA devolve ao analisar o vídeo (mesmos campos do VideoPattern). */
+export interface TemplateSummary {
+  tom: string;
+  ritmo: string;
+  cenaS: [number, number];
+  semNarracao: boolean;
+  cta: string;
+}
 
 // ---------- custos ----------
 
-export type CostStep = "script" | "narration" | "images" | "music";
+export type CostStep = "script" | "narration" | "images" | "music" | "analysis";
 
 /** Um gasto registrado no job. A lista só cresce: gerar o roteiro de novo soma outro gasto. */
 export interface CostEntry {
@@ -98,6 +115,7 @@ export const COST_STEP_LABEL: Record<CostStep, string> = {
   narration: "Narração (ElevenLabs)",
   images: "Imagens das cenas (OpenRouter)",
   music: "Trilha (ElevenLabs)",
+  analysis: "Análise do vídeo de referência (OpenRouter)",
 };
 
 export function summarizeCosts(entries: CostEntry[], usdPerCredit: number): CostSummary {

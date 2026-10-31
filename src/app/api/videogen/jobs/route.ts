@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getVideoPattern } from "@/lib/videogen/patterns";
+import { resolveStyle } from "@/lib/videogen/templates";
 import { generateVideoScript, VIDEOGEN_TEXT_MODEL } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
@@ -34,8 +34,9 @@ export async function POST(request: Request) {
 
   const topic = body.topic?.trim().slice(0, MAX_TOPIC);
   if (!topic) return NextResponse.json({ error: "Informe o tema do vídeo." }, { status: 400 });
-  const pattern = getVideoPattern(body.patternId ?? "");
-  if (!pattern) return NextResponse.json({ error: "Escolha um padrão válido." }, { status: 400 });
+  const style = await resolveStyle(body.patternId?.trim() ?? "");
+  if (!style) return NextResponse.json({ error: "Escolha um estilo válido." }, { status: 400 });
+  const { pattern, guide } = style;
   const durationS = Math.min(90, Math.max(5, Math.round(Number(body.durationS) || 15)));
   const textModel = body.textModel?.trim() || VIDEOGEN_TEXT_MODEL;
   const extraInstructions = body.extraInstructions?.trim().slice(0, 2000) || null;
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
   });
 
   try {
-    const { script, usd } = await generateVideoScript({ pattern, topic, durationS, extraInstructions, model: textModel });
+    const { script, usd } = await generateVideoScript({ pattern, guide, topic, durationS, extraInstructions, model: textModel });
     await appendCosts(job.id, [costEntry("script", "openrouter", { usd })]);
     const updated = await prisma.videoJob.update({
       where: { id: job.id },

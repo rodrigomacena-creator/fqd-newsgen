@@ -1,5 +1,4 @@
 import { getOpenRouterClient, extractCompletionText } from "@/lib/openrouter";
-import patternGuides from "./patternGuides.json";
 import type { VideoPattern } from "./patterns";
 import { WORDS_PER_SECOND, fullNarration, type VideoScript, type VideoScene, type Pronunciation } from "./types";
 import { DEFAULT_PRONUNCIATIONS } from "./pronunciation";
@@ -18,8 +17,7 @@ function extractJson(raw: string): string {
   return raw.trim();
 }
 
-function buildSystemPrompt(pattern: VideoPattern, durationS: number): string {
-  const guide = (patternGuides as Record<string, string>)[pattern.id] ?? "";
+function buildSystemPrompt(pattern: VideoPattern, guide: string, durationS: number): string {
   const words = Math.round(durationS * WORDS_PER_SECOND);
   const avgScene = (pattern.cenaS[0] + pattern.cenaS[1]) / 2;
   const sceneCount = Math.max(1, Math.round(durationS / avgScene));
@@ -101,6 +99,8 @@ export function normalizeScript(input: unknown): VideoScript {
 
 export async function generateVideoScript(params: {
   pattern: VideoPattern;
+  /** Guia do estilo (markdown do padrão embutido ou o guia que a IA escreveu ao montar o template). */
+  guide: string;
   topic: string;
   durationS: number;
   extraInstructions?: string | null;
@@ -111,7 +111,7 @@ export async function generateVideoScript(params: {
   if (params.extraInstructions?.trim()) userParts.push(`Instruções extras: ${params.extraInstructions.trim()}`);
 
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: buildSystemPrompt(params.pattern, params.durationS) },
+    { role: "system", content: buildSystemPrompt(params.pattern, params.guide, params.durationS) },
     { role: "user", content: userParts.join("\n\n") },
   ];
   const model = params.model || VIDEOGEN_TEXT_MODEL;

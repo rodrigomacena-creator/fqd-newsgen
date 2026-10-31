@@ -9,7 +9,7 @@ import type { CostEntry, CostStep } from "./types";
  */
 export const ELEVENLABS_USD_PER_CREDIT = Number(process.env.ELEVENLABS_USD_PER_CREDIT) || 22 / 100_000;
 
-const STEPS: CostStep[] = ["script", "narration", "images", "music"];
+const STEPS: CostStep[] = ["script", "narration", "images", "music", "analysis"];
 
 export function parseCosts(value: string | null): CostEntry[] {
   if (!value) return [];

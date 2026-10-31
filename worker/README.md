@@ -17,8 +17,14 @@ POST .../jobs/:id/upload-token   ◄── token de upload só para este mp4
 POST .../jobs/:id {status:done}  ◄── fim
 ```
 
-Padrões com render pronto: `editorial-pb-vermelho` (1), `estudio-serif-cinematico` (2) e `papel-hera` (4, fundo fixo, não gera imagens por cena). Os outros entram em
-`render/<id>.py` + `render/__init__.py` e em `RENDERABLE_PATTERNS` (`src/lib/videogen/types.ts`).
+Estilos embutidos: `editorial-pb-vermelho` (1), `estudio-serif-cinematico` (2) e `papel-hera` (4, fundo fixo, não gera imagens por cena), cada um com seu `render/<id>.py`.
+
+Templates montados no app (/videogen/templates): quando não há vídeo na fila, o worker pede um template
+(`POST /api/videogen/worker/templates/claim`), baixa o vídeo de referência, mede os cortes, manda 12 quadros
+para um modelo com visão (`VIDEOGEN_VISION_MODEL`) e recebe a ficha de estilo do motor genérico
+(`render/template_engine.py`). Depois gera um exemplo de 5s (2 imagens + trilha) e sobe no Blob.
+Vídeos nesses estilos são renderizados pelo mesmo motor genérico com a ficha que vem no `claim`.
+Teste local sem o app: `python3 worker.py --template-video referencia.mp4 --out pasta/`.
 
 ## Instalação na VPS (Ubuntu/Debian)
 

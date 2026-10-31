@@ -23,9 +23,9 @@ import {
   sectionTitle,
 } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
-import { getVideoPattern } from "@/lib/videogen/patterns";
+import { useStyles } from "@/lib/videogen/useStyles";
 import { DEFAULT_PRONUNCIATIONS } from "@/lib/videogen/pronunciation";
-import { RENDERABLE_PATTERNS, WORDS_PER_SECOND, fullNarration, type VideoScene, type VideoScript } from "@/lib/videogen/types";
+import { WORDS_PER_SECOND, fullNarration, type VideoScene, type VideoScript } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
 const EMPTY_SCENE: VideoScene = { narration: "", onScreen: "", visual: "", imagePrompt: "", durationS: 2 };
@@ -35,6 +35,7 @@ type Busy = null | "save" | "script" | "narration" | "queue" | "delete";
 export function VideoJobEditor({ id }: { id: string }) {
   const router = useRouter();
   const { voices, loading: loadingVoices, error: voicesError } = useVoices();
+  const { loaded: stylesLoaded, getStyle } = useStyles();
   const [job, setJob] = useState<VideoJobDTO | null>(null);
   const [script, setScript] = useState<VideoScript | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -219,11 +220,11 @@ export function VideoJobEditor({ id }: { id: string }) {
     );
   }
 
-  const pattern = getVideoPattern(job.patternId);
+  const pattern = getStyle(job.patternId);
   const noNarration = Boolean(pattern?.semNarracao);
   const locked = job.status === "queued" || job.status === "rendering";
   const disabled = locked || busy !== null;
-  const renderable = RENDERABLE_PATTERNS.includes(job.patternId);
+  const renderable = !stylesLoaded || Boolean(pattern); // estilo removido não vai mais pro render
   const narration = script ? fullNarration(script) : "";
   const wordCount = narration ? narration.split(/\s+/).length : 0;
   const estimate = noNarration ? script?.scenes.reduce((sum, s) => sum + s.durationS, 0) ?? 0 : wordCount / WORDS_PER_SECOND;
@@ -261,7 +262,7 @@ export function VideoJobEditor({ id }: { id: string }) {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight text-balance sm:text-3xl">{script?.title || job.topic}</h1>
           <p className="mt-2 text-sm text-text-secondary">
-            {pattern ? `${pattern.numero}. ${pattern.nome}` : job.patternId} · alvo {job.durationS}s
+            {pattern ? pattern.nome : stylesLoaded ? "Estilo removido" : "…"} · alvo {job.durationS}s
           </p>
         </div>
         <StatusBadge status={job.status} progress={job.progress} />
@@ -657,8 +658,8 @@ function NextStep({
       </a>
     );
   } else if (!renderable) {
-    title = "Roteiro e narração prontos";
-    body = "O render automático deste padrão ainda está em desenvolvimento.";
+    title = "Estilo removido";
+    body = "O estilo deste vídeo foi excluído, então ele não pode mais ir para o render.";
   } else {
     title = job.status === "failed" ? "O render falhou. Tente de novo" : noNarration ? "Envie para o render" : "Ouça a narração e envie para o render";
     body = `Se a voz estiver boa, envie: o servidor gera as imagens, a trilha e monta o mp4 (alguns minutos). Se não, ajuste o roteiro e gere a narração de novo.${savingNote}`;

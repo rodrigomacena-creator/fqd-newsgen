@@ -1,4 +1,4 @@
-// Uso: node upload.mjs <arquivo.mp4> <pathname> <clientToken>
+// Uso: node upload.mjs <arquivo> <pathname> <clientToken>   (mp4 ou jpg)
 // Sobe o mp4 direto pro Vercel Blob com o token de upload limitado que o app gerou
 // (POST /api/videogen/worker/jobs/:id/upload-token) e imprime { "url": "..." }.
 import { readFile } from "node:fs/promises";
@@ -13,7 +13,7 @@ const body = await readFile(file);
 const blob = await put(pathname, body, {
   access: "public",
   token,
-  contentType: "video/mp4",
+  contentType: /\.jpe?g$/i.test(pathname) ? "image/jpeg" : "video/mp4",
   multipart: body.length > 8 * 1024 * 1024,
 });
 console.log(JSON.stringify({ url: blob.url }));

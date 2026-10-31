@@ -87,3 +87,27 @@ model VideoJob {
 
   @@index([status, createdAt])
 }
+
+// Estilo de vídeo montado pela aplicação a partir de um vídeo de referência (/videogen/templates).
+// O worker analisa o vídeo com IA, preenche a ficha de estilo (spec) que o motor genérico
+// (worker/render/template_engine.py) sabe renderizar e gera um exemplo de 5s.
+model VideoTemplate {
+  id           String    @id @default(cuid())
+  name         String
+  referenceUrl String // vídeo de referência enviado pelo usuário (Vercel Blob)
+  notes        String? // observações do usuário sobre o que aproveitar do vídeo
+  status       String    @default("queued") // queued | analyzing | ready | failed
+  progress     Int?
+  spec         String? // JSON: ficha de estilo (ver worker/render/template_engine.py)
+  summary      String? // JSON: { tom, ritmo, cenaS, semNarracao, cta } pro seletor e pro roteiro
+  guide        String? // markdown com as dicas do estilo, entra no prompt do roteiro
+  sampleUrl    String? // exemplo de 5s renderizado pelo motor genérico
+  costs        String? // JSON: CostEntry[]
+  error        String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, createdAt])
+}

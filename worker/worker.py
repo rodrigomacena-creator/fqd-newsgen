@@ -4,14 +4,16 @@
 Loop: pede um job ao app (POST /api/videogen/worker/claim), gera as imagens das cenas
 (OpenRouter, nano banana), a trilha (ElevenLabs Music), baixa a narração, renderiza o
 vídeo no estilo do padrão, mixa o áudio, sobe o mp4 no Vercel Blob e avisa o app.
+Sem vídeo na fila, pede um template para montar (template_builder.py): analisa o vídeo de
+referência com IA e gera um exemplo de 5s com o motor genérico (render/template_engine.py).
 
 Uso:
   python3 worker.py                 # loop infinito (o que o systemd roda)
   python3 worker.py --once          # processa no máximo um job e sai
   python3 worker.py --job-file j.json --out teste.mp4   # render local de um job salvo, sem o app
+  python3 worker.py --template-video ref.mp4 --out pasta/   # monta um template local, sem o app
 """
 import argparse
-import base64
 import json
 import os
 import shutil
@@ -25,7 +27,8 @@ from pathlib import Path
 
 import requests
 
-from render import RENDERERS
+from providers import download, generate_image, generate_music, silent_audio
+from render import RENDERERS, template_engine
 from render.common import mix
 from render.timeline import build_timeline
 
@@ -48,7 +51,6 @@ load_env_file(HERE / ".env")
 
 APP_URL = os.environ.get("VIDEOGEN_APP_URL", "").rstrip("/")
 WORKER_TOKEN = os.environ.get("VIDEOGEN_WORKER_TOKEN", "")
-IMAGE_MODEL = os.environ.get("VIDEOGEN_IMAGE_MODEL", "google/gemini-nano-banana-2.1")
 POLL_SECONDS = float(os.environ.get("VIDEOGEN_POLL_SECONDS", "10"))
 WORKDIR = Path(os.environ.get("VIDEOGEN_WORKDIR", tempfile.gettempdir())) / "videogen-worker"
 
@@ -113,79 +115,15 @@ class App:
     def upload_token(self, job_id):
         return self._post(f"/api/videogen/worker/jobs/{job_id}/upload-token")
 
+    # templates (montados a partir de um vídeo de referência)
+    def claim_template(self):
+        return self._post("/api/videogen/worker/templates/claim")
 
-# ---------- geração de assets ----------
+    def template_update(self, template_id, payload, timeout=60):
+        return self._post(f"/api/videogen/worker/templates/{template_id}", payload, timeout=timeout)
 
-# Trilha: o ElevenLabs não informa o custo da música na resposta. Medido em 31/10/2026 pela
-# API de uso (plano Creator, music_v1): ~13,75 créditos por segundo pedido (10s = 138, 22s = 302).
-MUSIC_CREDITS_PER_SECOND = float(os.environ.get("VIDEOGEN_MUSIC_CREDITS_PER_SECOND") or 13.75)
-
-
-def generate_image(prompt, out_path, attempts=2, costs=None):
-    key = os.environ.get("OPENROUTER_API_KEY")
-    if not key:
-        raise RuntimeError("OPENROUTER_API_KEY não configurada no worker.")
-    last = ""
-    for _ in range(attempts):
-        try:
-            r = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {key}", "X-Title": "FQD News GEN - VideoGen"},
-                json={
-                    "model": IMAGE_MODEL,
-                    "modalities": ["image", "text"],
-                    "image_config": {"aspect_ratio": "9:16"},
-                    "messages": [{"role": "user", "content": prompt}],
-                    "usage": {"include": True},
-                },
-                timeout=240,
-            )
-            data = r.json()
-            cost = (data.get("usage") or {}).get("cost")
-            if costs is not None and cost is not None:
-                costs.append({"step": "images", "provider": "openrouter", "usd": float(cost)})
-            url = data["choices"][0]["message"]["images"][0]["image_url"]["url"]
-            out_path.write_bytes(base64.b64decode(url.split(",", 1)[1]))
-            return out_path
-        except Exception:
-            last = r.text[:200] if "r" in locals() else "sem resposta"
-    raise RuntimeError(f"imagem falhou: {last}")
-
-
-def generate_music(prompt, seconds, out_path, costs=None):
-    key = os.environ.get("ELEVENLABS_API_KEY")
-    if not key:
-        raise RuntimeError("ELEVENLABS_API_KEY não configurada no worker.")
-    prompt = (prompt or "Dark minimal electronic underscore, tense, subtle pulse").strip()
-    if "no vocals" not in prompt.lower():
-        prompt = "Instrumental only, no vocals. " + prompt
-    length = max(10, seconds + 2)
-    r = requests.post(
-        "https://api.elevenlabs.io/v1/music",
-        headers={"xi-api-key": key, "Content-Type": "application/json"},
-        json={"prompt": prompt, "music_length_ms": int(length * 1000), "model_id": "music_v1"},
-        timeout=300,
-    )
-    if r.status_code != 200:
-        raise RuntimeError(f"trilha falhou: HTTP {r.status_code} {r.text[:200]}")
-    if costs is not None:
-        costs.append({"step": "music", "provider": "elevenlabs", "credits": round(length * MUSIC_CREDITS_PER_SECOND),
-                      "estimated": True})
-    out_path.write_bytes(r.content)
-    return out_path
-
-
-def download(url, out_path):
-    r = requests.get(url, timeout=120)
-    r.raise_for_status()
-    out_path.write_bytes(r.content)
-    return out_path
-
-
-def silent_audio(seconds, out_path):
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-                    "-t", str(seconds), str(out_path)], check=True)
-    return out_path
+    def template_upload_token(self, template_id, kind):
+        return self._post(f"/api/videogen/worker/templates/{template_id}/upload-token", {"file": kind})
 
 
 # ---------- pipeline ----------
@@ -196,6 +134,8 @@ REUSE_ASSETS = False  # --reuse: em teste local, reaproveita imagens/trilha já 
 def produce(job, workdir, report=lambda p: None, costs=None):
     """Gera assets, renderiza e mixa. Devolve o caminho do mp4 final."""
     module = RENDERERS.get(job["patternId"])
+    if not module and job.get("templateSpec"):
+        module = template_engine  # template montado pela aplicação: motor genérico + ficha de estilo
     if not module:
         raise RuntimeError(f'O worker ainda não sabe renderizar o padrão "{job["patternId"]}".')
     script = job.get("script") or {}
@@ -241,7 +181,13 @@ def produce(job, workdir, report=lambda p: None, costs=None):
     report(50)
 
     video_only = workdir / "video_only.mp4"
-    duration = module.render(job, {"images": images}, str(video_only), on_progress=lambda p: report(50 + 40 * p))
+    extra = {}
+    if module is template_engine:
+        extra["spec"] = job["templateSpec"]
+        texture_url = ((job["templateSpec"] or {}).get("background") or {}).get("textureUrl")
+        if texture_url:
+            extra["texture"] = download(texture_url, workdir / "textura.jpg")
+    duration = module.render(job, {"images": images, **extra}, str(video_only), on_progress=lambda p: report(50 + 40 * p))
     report(92)
 
     final = workdir / "video.mp4"
@@ -249,8 +195,8 @@ def produce(job, workdir, report=lambda p: None, costs=None):
     return final
 
 
-def upload(app, job_id, path):
-    tok = app.upload_token(job_id)
+def upload(app, job_id, path, tok=None):
+    tok = tok or app.upload_token(job_id)
     out = subprocess.run(["node", str(HERE / "upload.mjs"), str(path), tok["pathname"], tok["clientToken"]],
                          capture_output=True, text=True, cwd=HERE, timeout=900)
     if out.returncode != 0:
@@ -286,15 +232,62 @@ def process(app, job):
         shutil.rmtree(workdir, ignore_errors=True)
 
 
+def process_template(app, template):
+    import template_builder
+
+    tid = template["id"]
+    workdir = WORKDIR / f"template-{tid}"
+    log(f"template {tid}: montando \"{template.get('name', '')[:60]}\"")
+    last = {"t": 0.0}
+
+    def report(p):
+        now = time.time()
+        if now - last["t"] >= 3 or p >= 90:
+            last["t"] = now
+            try:
+                app.template_update(tid, {"progress": int(p)}, timeout=20)
+            except JobGone:
+                raise
+            except Exception as e:
+                log("aviso: progresso não enviado:", e)
+
+    def blob_upload(path, kind):
+        return upload(app, tid, path, app.template_upload_token(tid, kind))
+
+    costs = []
+    try:
+        result = template_builder.build(template, workdir, report, costs, blob_upload)
+        app.template_update(tid, {"status": "ready", **result, "costs": merge_costs(costs)})
+        log(f"template {tid}: pronto {result['sampleUrl']}")
+    except JobGone as e:
+        log(f"template {tid}: descartado ({e})")
+    except Exception as e:
+        traceback.print_exc()
+        try:
+            app.template_update(tid, {"status": "failed", "error": str(e)[:900], "costs": merge_costs(costs)})
+        except Exception as e2:
+            log("aviso: não consegui marcar o template como falho:", e2)
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true", help="processa no máximo um job e sai")
     ap.add_argument("--job-file", help="render local de um job em JSON (formato da API), sem o app")
     ap.add_argument("--out", default="video.mp4", help="saída do --job-file")
     ap.add_argument("--reuse", action="store_true", help="com --job-file: reaproveita imagens e trilha já geradas")
+    ap.add_argument("--template-video", help="monta um template local a partir deste vídeo (sem o app); saída em --out")
     args = ap.parse_args()
     global REUSE_ASSETS
     REUSE_ASSETS = args.reuse
+
+    if args.template_video:
+        import template_builder
+
+        result = template_builder.build_local(args.template_video, args.out)
+        log("ok", result["sampleUrl"])
+        return
 
     if args.job_file:
         job = json.loads(Path(args.job_file).read_text(encoding="utf-8"))
@@ -315,6 +308,14 @@ def main():
             res = {"job": None}
         if res.get("job"):
             process(app, res["job"])
+            continue
+        try:
+            tpl = app.claim_template()
+        except Exception as e:
+            log("erro ao pedir template:", e)
+            tpl = {"template": None}
+        if tpl.get("template"):
+            process_template(app, tpl["template"])
             continue
         if args.once:
             return

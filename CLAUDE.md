@@ -251,9 +251,20 @@ reais encontradas ao construir o projeto, não só a estrutura.
 - `src/components/EditableText.tsx`, `RemovableImage.tsx`, `ModelPicker.tsx`,
   `ProfileCard.tsx`/`ProfileManager.tsx`, `HistoryList.tsx`, `InstagramPostCard.tsx`
 
-- **VideoGen** (`/videogen`, `/videogen/[id]`, `src/lib/videogen/`, `src/components/videogen/`,
-  `/api/videogen/*`): gera vídeos curtos verticais (Reels/Shorts) a partir de um dos padrões
-  visuais do catálogo em `videogen/padroes/*.md` (copiado do projeto "Video Generator"). Depois de
+- **VideoGen** (`/videogen`, `/videogen/[id]`, `/videogen/templates`, `src/lib/videogen/`, `src/components/videogen/`,
+  `/api/videogen/*`): gera vídeos curtos verticais (Reels/Shorts) num "estilo". Há dois tipos de estilo,
+  unificados por `listStyles()`/`resolveStyle()` em `src/lib/videogen/templates.ts` (formato `VideoPattern`):
+  (1) **embutidos** — `videogen/padroes/*.md`, cada um com renderizador próprio em `worker/render/<id>.py`
+  e exemplo de 5s em `public/videogen/exemplos/<id>.mp4` (os padrões sem renderizador foram apagados em
+  31/10/2026 a pedido do Rodrigo; não recrie); (2) **templates** — tabela `VideoTemplate`, montados pela
+  própria aplicação: o usuário sobe um vídeo de referência (upload direto do navegador pro Blob via
+  `/api/videogen/templates/upload`), o worker baixa, mede cortes com ffmpeg, manda 12 quadros pra um
+  modelo com visão (`VIDEOGEN_VISION_MODEL`) e recebe uma **ficha de estilo** (`spec`) que o **motor
+  genérico** `worker/render/template_engine.py` sabe renderizar (fundo, tratamento/movimento da imagem,
+  legenda, título, transição, sobreposições, CTA — `normalize_spec()` é a fonte da verdade do formato e
+  corrige qualquer valor inválido), mais um guia pro roteirista (`guide`) e um exemplo de 5s (`sampleUrl`).
+  Decisão do Rodrigo: motor único configurável, **nunca** código gerado por IA rodando na VPS. O seletor
+  de estilo sempre mostra o exemplo de 5s do estilo escolhido. Depois de
   editar/adicionar um padrão, rode `node scripts/videogen-patterns.mjs` pra regenerar
   `src/lib/videogen/patterns.json` (resumo, vai pro client) e `patternGuides.json` (markdown
   completo, só no servidor, entra no prompt do roteiro). Fluxo: POST `/api/videogen/jobs` cria o
@@ -267,8 +278,11 @@ reais encontradas ao construir o projeto, não só a estrutura.
   forma atômica (e devolve pra fila jobs `rendering` parados há 20 min), `jobs/[id]` recebe
   progresso/`done`/`failed`, e `jobs/[id]/upload-token` gera um client token do Blob limitado ao
   mp4 daquele job (o mp4 passa do limite de corpo das funções, então o worker sobe direto pro
-  Blob via `worker/upload.mjs`; a VPS nunca recebe o `BLOB_READ_WRITE_TOKEN`). Só os padrões
-  em `RENDERABLE_PATTERNS` (`types.ts`) vão pra fila; cada um tem um `worker/render/<id>.py`.
+  Blob via `worker/upload.mjs`; a VPS nunca recebe o `BLOB_READ_WRITE_TOKEN`). Todo estilo que
+  `resolveStyle()` acha pode ir pra fila; o `claim` manda `templateSpec` junto quando o estilo é um
+  template (render pelo motor genérico). Sem vídeo na fila, o worker pede um template pra montar
+  (`/api/videogen/worker/templates/*`: claim atômico, progresso/ready/failed e token de upload limitado
+  ao exemplo/textura). Teste local sem o app: `python3 worker.py --template-video ref.mp4 --out pasta/`.
   Pronúncia (`pronunciation.ts`): o texto enviado ao TTS troca siglas/marcas em inglês e o site
   (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
   caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.

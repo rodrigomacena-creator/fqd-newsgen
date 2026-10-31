@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getVideoPattern } from "@/lib/videogen/patterns";
+import { resolveStyle } from "@/lib/videogen/templates";
 import { generateVideoScript } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
@@ -15,12 +15,13 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
   if (job.status === "queued" || job.status === "rendering") {
     return NextResponse.json({ error: "O vídeo está na fila de render." }, { status: 409 });
   }
-  const pattern = getVideoPattern(job.patternId);
-  if (!pattern) return NextResponse.json({ error: "Padrão do vídeo não existe mais." }, { status: 400 });
+  const style = await resolveStyle(job.patternId);
+  if (!style) return NextResponse.json({ error: "O estilo deste vídeo não existe mais." }, { status: 400 });
 
   try {
     const { script, usd } = await generateVideoScript({
-      pattern,
+      pattern: style.pattern,
+      guide: style.guide,
       topic: job.topic,
       durationS: job.durationS,
       extraInstructions: job.extraInstructions,
