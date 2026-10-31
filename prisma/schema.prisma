@@ -58,3 +58,31 @@ model InstructionProfile {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
+
+// VideoGen: um vídeo curto (Reels/Shorts) gerado a partir de um padrão do catálogo
+// (videogen/padroes). O app gera roteiro e narração; a renderização do mp4 é feita
+// por um worker fora da Vercel (VPS), que pega jobs com status "queued".
+model VideoJob {
+  id                 String    @id @default(cuid())
+  topic              String
+  patternId          String // id do padrão em videogen/padroes (ex.: "editorial-pb-vermelho")
+  voiceId            String // voice_id do ElevenLabs
+  voiceName          String
+  durationS          Int // duração alvo em segundos
+  textModel          String // modelo da OpenRouter usado no roteiro
+  extraInstructions  String?
+  status             String    @default("draft") // draft | script_ready | queued | rendering | done | failed
+  script             String? // JSON string: VideoScript (ver src/lib/videogen/types.ts)
+  narrationUrl       String? // mp3 da narração no Vercel Blob
+  narrationWords     String? // JSON string: [palavra, início_s, fim_s][] (palavras já com a grafia de exibição)
+  narrationDurationS Float?
+  videoUrl           String? // mp4 final no Vercel Blob (escrito pelo worker)
+  progress           Int? // 0-100, atualizado pelo worker
+  error              String?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status, createdAt])
+}
