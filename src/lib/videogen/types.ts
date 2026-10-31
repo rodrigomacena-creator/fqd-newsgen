@@ -56,10 +56,10 @@ export function fullNarration(script: VideoScript): string {
     .join(" ");
 }
 
-export const DEFAULT_VOICE_ID = "UY3oRETjQaraEM058uNo"; // "Marco  Narração" (voz clonada)
+export const DEFAULT_VOICE_ID = "UY3oRETjQaraEM058uNo"; // "Macena" (voz clonada do Rodrigo)
 export const DURATION_OPTIONS = [5, 10, 15, 20, 30, 45, 60];
 
-// Ritmo medido com a voz Marco no eleven_v4 (ele ignora "speed" e adiciona pausas de
+// Ritmo medido com a voz Macena no eleven_v4 (ele ignora "speed" e adiciona pausas de
 // respiração): ~2,3 palavras/s em pt-BR. Usado pra dimensionar o roteiro e a estimativa na tela.
 export const WORDS_PER_SECOND = 2.3;
 

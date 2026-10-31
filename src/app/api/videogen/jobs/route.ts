@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       topic,
       patternId: pattern.id,
       voiceId: body.voiceId?.trim() || DEFAULT_VOICE_ID,
-      voiceName: body.voiceName?.trim() || "Marco Narração",
+      voiceName: body.voiceName?.trim() || "Macena",
       durationS,
       textModel,
       extraInstructions,

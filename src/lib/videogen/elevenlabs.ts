@@ -35,6 +35,11 @@ export interface VoiceOption {
   previewUrl: string | null;
 }
 
+/** Nome de exibição no app, por id de voz (sobrepõe o nome cadastrado no ElevenLabs). */
+export const VOICE_DISPLAY_NAMES: Record<string, string> = {
+  UY3oRETjQaraEM058uNo: "Macena", // no ElevenLabs se chama "Marco  Narração"
+};
+
 export async function listVoices(): Promise<VoiceOption[]> {
   const res = await fetch(`${API}/voices`, { headers: { "xi-api-key": apiKey() }, cache: "no-store" });
   if (!res.ok) throw new Error(`ElevenLabs recusou a listagem de vozes: ${await readError(res)}`);
@@ -52,7 +57,7 @@ export async function listVoices(): Promise<VoiceOption[]> {
   return data.voices
     .map((v) => ({
       id: v.voice_id,
-      name: v.name.replace(/[\p{C}\s]+/gu, " ").trim(),
+      name: VOICE_DISPLAY_NAMES[v.voice_id] ?? v.name.replace(/[\p{C}\s]+/gu, " ").trim(),
       category: v.category,
       language: v.labels?.language ?? v.fine_tuning?.language ?? null,
       previewUrl: v.preview_url ?? null,
