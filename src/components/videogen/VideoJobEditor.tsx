@@ -7,6 +7,8 @@ import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { CostPanel } from "@/components/videogen/CostPanel";
 import {
+  FlowSteps,
+  FLOW_STEPS,
   AutoTextarea,
   Icon,
   Spinner,
@@ -226,8 +228,14 @@ export function VideoJobEditor({ id }: { id: string }) {
   const wordCount = narration ? narration.split(/\s+/).length : 0;
   const estimate = noNarration ? script?.scenes.reduce((sum, s) => sum + s.durationS, 0) ?? 0 : wordCount / WORDS_PER_SECOND;
 
+  const hasNarrationNow = noNarration || Boolean(job.narrationUrl);
+  const flowDone = job.status === "done" && Boolean(job.videoUrl);
+  // 1 = revisar roteiro, 2 = ouvir narração/enviar, 3 = render, 4 = pronto
+  const flowCurrent = flowDone ? 4 : locked ? 3 : script && hasNarrationNow ? (noNarration ? 3 : 2) : 1;
+
   const nextStep = (
     <NextStep
+      step={flowCurrent}
       job={job}
       hasScript={Boolean(script)}
       noNarration={noNarration}
@@ -265,6 +273,10 @@ export function VideoJobEditor({ id }: { id: string }) {
           <span className="min-w-0 [overflow-wrap:anywhere]">{error || job.error}</span>
         </div>
       )}
+
+      <div className="mt-6">
+        <FlowSteps current={flowCurrent} finished={flowDone} skipped={noNarration ? [2] : []} />
+      </div>
 
       {/* no celular, o próximo passo vem antes do roteiro longo */}
       <div className="mt-6 lg:hidden">{nextStep}</div>
@@ -558,9 +570,8 @@ function Shell({ children, padBottom = false }: { children: React.ReactNode; pad
 
 // ---------- etapas ----------
 
-type StepState = "done" | "current" | "todo";
-
 function NextStep({
+  step,
   job,
   hasScript,
   noNarration,
@@ -572,6 +583,7 @@ function NextStep({
   onQueue,
   onUnqueue,
 }: {
+  step: number;
   job: VideoJobDTO;
   hasScript: boolean;
   noNarration: boolean;
@@ -585,15 +597,7 @@ function NextStep({
 }) {
   const hasNarration = noNarration || Boolean(job.narrationUrl);
   const done = job.status === "done" && Boolean(job.videoUrl);
-  const inRender = job.status === "queued" || job.status === "rendering";
 
-  const steps: { label: string; icon: string; state: StepState }[] = [
-    { label: "Roteiro", icon: "doc", state: hasScript ? "done" : "current" },
-    ...(noNarration
-      ? []
-      : [{ label: "Narração", icon: "mic", state: (hasNarration ? "done" : hasScript ? "current" : "todo") as StepState }]),
-    { label: "Vídeo", icon: "film", state: done ? "done" : hasScript && hasNarration ? "current" : "todo" },
-  ];
 
   let title: string;
   let body: React.ReactNode = null;
@@ -609,7 +613,7 @@ function NextStep({
     );
   } else if (!hasNarration) {
     title = "Revise o roteiro e gere a narração";
-    body = `Edite o que quiser nas cenas. A narração usa o texto atual.${savingNote}`;
+    body = `Edite o que quiser nas cenas; a narração usa o texto atual. Depois você ouve a voz e manda para o render.${savingNote}`;
     action = (
       <button type="button" onClick={onNarration} disabled={busy !== null} className={`w-full ${primaryButton}`}>
         {busy === "narration" ? <Spinner /> : <Icon name="mic" className="h-4 w-4" />}
@@ -656,8 +660,8 @@ function NextStep({
     title = "Roteiro e narração prontos";
     body = "O render automático deste padrão ainda está em desenvolvimento.";
   } else {
-    title = job.status === "failed" ? "O render falhou. Tente de novo" : "Tudo pronto para o render";
-    body = `O worker gera as imagens, a trilha e monta o mp4 (alguns minutos).${savingNote}`;
+    title = job.status === "failed" ? "O render falhou. Tente de novo" : noNarration ? "Envie para o render" : "Ouça a narração e envie para o render";
+    body = `Se a voz estiver boa, envie: o servidor gera as imagens, a trilha e monta o mp4 (alguns minutos). Se não, ajuste o roteiro e gere a narração de novo.${savingNote}`;
     action = (
       <button type="button" onClick={onQueue} disabled={busy !== null} className={`w-full ${primaryButton}`}>
         {busy === "queue" ? <Spinner /> : <Icon name="arrow" className="h-4 w-4" />}
@@ -667,39 +671,9 @@ function NextStep({
   }
 
   return (
-    <section className={`${cardClass} border-accent-yellow/30`} aria-label="Etapas do vídeo">
-      <ol className="flex items-start">
-        {steps.map((s, i) => (
-          <li key={s.label} className="relative flex flex-1 flex-col items-center gap-1.5 text-center">
-            {i > 0 && (
-              <span
-                aria-hidden
-                className={`absolute right-1/2 top-4 h-0.5 w-[calc(100%-2.5rem)] -translate-x-5 ${s.state === "todo" ? "bg-border" : "bg-success/50"}`}
-              />
-            )}
-            <span
-              className={`relative flex h-8 w-8 items-center justify-center rounded-full border-2 bg-surface ${
-                s.state === "done"
-                  ? "border-success text-success"
-                  : s.state === "current"
-                    ? "border-accent-yellow text-accent-yellow"
-                    : "border-border text-text-secondary"
-              }`}
-              aria-hidden
-            >
-              {s.state === "done" ? <Icon name="check" className="h-4 w-4" /> : <Icon name={s.icon} className="h-4 w-4" />}
-            </span>
-            <span className={`text-xs font-semibold ${s.state === "todo" ? "text-text-secondary" : ""}`}>
-              {s.label}
-              <span className="sr-only">
-                {s.state === "done" ? " (concluída)" : s.state === "current" ? " (etapa atual)" : " (pendente)"}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ol>
-      <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-text-secondary">
-        {inRender || done ? "Situação" : "Próximo passo"}
+    <section className={`${cardClass} border-accent-yellow/30`} aria-label="O que fazer agora">
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent-yellow">
+        {done ? "Concluído" : `Passo ${step + 1} de ${FLOW_STEPS.length} · ${FLOW_STEPS[step].label}`}
       </p>
       <p className="mt-1 font-semibold">{title}</p>
       {typeof body === "string" ? <p className="mt-1 text-sm text-text-secondary">{body}</p> : body}

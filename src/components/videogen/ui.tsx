@@ -80,3 +80,67 @@ export function Icon({ name, className = "h-3.5 w-3.5" }: { name: keyof typeof P
     </svg>
   );
 }
+
+export const FLOW_STEPS = [
+  { label: "Tema", hint: "Descreva o vídeo e escolha o estilo" },
+  { label: "Roteiro", hint: "A IA escreve; você revisa as cenas" },
+  { label: "Narração", hint: "Gere a voz e ouça" },
+  { label: "Render", hint: "O servidor monta o mp4" },
+  { label: "Pronto", hint: "Assista e baixe" },
+] as const;
+
+/**
+ * Trilha com as 5 etapas do VideoGen, igual em todas as telas, para o usuário
+ * saber onde está e o que ainda vem pela frente.
+ * `current` é o índice (0-4) da etapa em andamento; com `finished` todas ficam concluídas.
+ */
+export function FlowSteps({ current, finished = false, skipped = [] }: { current: number; finished?: boolean; skipped?: number[] }) {
+  return (
+    <nav aria-label="Etapas do vídeo" className="rounded-2xl border border-border bg-surface px-3 py-4 sm:px-5">
+      <p className="mb-3 px-1 text-xs font-semibold text-text-secondary sm:hidden">
+        {finished ? "Todas as etapas concluídas" : `Passo ${current + 1} de ${FLOW_STEPS.length}: ${FLOW_STEPS[current].hint}`}
+      </p>
+      <ol className="flex items-start">
+        {FLOW_STEPS.map((s, i) => {
+          const isSkipped = skipped.includes(i);
+          const state = finished || i < current ? "done" : i === current ? "current" : "todo";
+          return (
+            <li
+              key={s.label}
+              aria-current={state === "current" && !finished ? "step" : undefined}
+              className="relative flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center"
+            >
+              {i > 0 && (
+                <span
+                  aria-hidden
+                  className={`absolute right-1/2 top-4 h-0.5 w-[calc(100%-2.25rem)] -translate-x-[1.125rem] ${state === "todo" ? "bg-border" : "bg-success/50"}`}
+                />
+              )}
+              <span
+                aria-hidden
+                className={`relative flex h-8 w-8 items-center justify-center rounded-full border-2 text-sm font-bold tabular-nums ${
+                  isSkipped
+                    ? "border-dashed border-border bg-surface text-text-secondary"
+                    : state === "done"
+                      ? "border-success bg-success text-background"
+                      : state === "current"
+                        ? "border-accent-yellow bg-accent-yellow text-accent-yellow-ink ring-4 ring-accent-yellow/20"
+                        : "border-border bg-surface text-text-secondary"
+                }`}
+              >
+                {state === "done" && !isSkipped ? <Icon name="check" className="h-4 w-4" /> : i + 1}
+              </span>
+              <span className={`text-[11px] font-semibold sm:text-xs ${state === "todo" || isSkipped ? "text-text-secondary" : ""}`}>
+                {s.label}
+                <span className="sr-only">
+                  {isSkipped ? " (não se aplica)" : state === "done" ? " (concluída)" : state === "current" ? " (etapa atual)" : " (próxima)"}
+                </span>
+              </span>
+              <span className="hidden px-1 text-[11px] leading-snug text-text-secondary sm:block">{isSkipped ? "Sem narração neste estilo" : s.hint}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}

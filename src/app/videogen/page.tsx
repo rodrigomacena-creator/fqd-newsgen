@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { formatUsd } from "@/components/videogen/CostPanel";
-import { Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, sectionTitle } from "@/components/videogen/ui";
+import { FlowSteps, Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, sectionTitle } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
 import { VIDEO_PATTERNS, getVideoPattern } from "@/lib/videogen/patterns";
 import { DEFAULT_VOICE_ID, DURATION_OPTIONS, RENDERABLE_PATTERNS, WORDS_PER_SECOND } from "@/lib/videogen/types";
@@ -23,7 +23,7 @@ export default function VideoGenPage() {
   const [patternId, setPatternId] = useState(RENDERABLE_PATTERNS[0] ?? VIDEO_PATTERNS[0]?.id ?? "");
   const [onlyRenderable, setOnlyRenderable] = useState(true);
   const [voiceId, setVoiceId] = useState(DEFAULT_VOICE_ID);
-  const [voiceName, setVoiceName] = useState("Marco Narração");
+  const [voiceName, setVoiceName] = useState("Macena");
   const [durationS, setDurationS] = useState(15);
   const [extraInstructions, setExtraInstructions] = useState("");
   const [loading, setLoading] = useState(false);
@@ -112,7 +112,7 @@ export default function VideoGenPage() {
           <div className="max-w-2xl">
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">VideoGen</h1>
             <p className="mt-2 text-text-secondary">
-              Diga o tema e escolha o estilo. A IA escreve o roteiro; você revisa, gera a narração e manda para o render.
+              Cada vídeo passa por 5 etapas. Aqui você faz a primeira; nada é cobrado de narração ou render antes de você revisar o roteiro.
             </p>
           </div>
           {jobs && jobs.length > 0 && (
@@ -122,12 +122,16 @@ export default function VideoGenPage() {
           )}
         </div>
 
+        <div className="mt-6">
+          <FlowSteps current={0} />
+        </div>
+
         <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
           <form onSubmit={handleSubmit} noValidate className="min-w-0 space-y-5" aria-busy={loading}>
             <section className={cardClass}>
               <div className="flex items-baseline justify-between gap-2">
                 <label htmlFor="topic" className={sectionTitle}>
-                  1. Tema <span aria-hidden>*</span>
+                  Tema <span aria-hidden>*</span>
                   <span className="sr-only"> (obrigatório)</span>
                 </label>
                 <span className="text-xs tabular-nums text-text-secondary">
@@ -155,7 +159,7 @@ export default function VideoGenPage() {
               <legend className="sr-only">Estilo visual</legend>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className={sectionTitle} aria-hidden>
-                  2. Estilo visual
+                  Estilo visual
                 </h2>
                 <div role="group" aria-label="Filtrar estilos" className="inline-flex rounded-lg border border-border p-0.5 text-xs font-medium">
                   {[
@@ -235,7 +239,7 @@ export default function VideoGenPage() {
             <fieldset className={cardClass} disabled={loading}>
               <legend className="sr-only">Voz e duração</legend>
               <h2 className={sectionTitle} aria-hidden>
-                3. Voz e duração
+                Voz e duração
               </h2>
               <div className="mt-4 grid gap-5 sm:grid-cols-2">
                 <div>
@@ -321,8 +325,17 @@ export default function VideoGenPage() {
 
             <button type="submit" disabled={loading} className={`w-full py-3.5 ${primaryButton}`}>
               {loading && <Spinner className="h-4 w-4" />}
-              {loading ? STAGES[stage] : "Gerar roteiro"}
+              {loading ? STAGES[stage] : (
+                <>
+                  Gerar roteiro <Icon name="arrow" className="h-4 w-4" />
+                </>
+              )}
             </button>
+            {!loading && (
+              <p className="text-center text-xs text-text-secondary">
+                Próximo: você revisa o roteiro, depois gera a narração e manda para o render.
+              </p>
+            )}
             {loading && (
               <p className="text-center text-xs text-text-secondary" aria-live="polite">
                 Leva cerca de 20 a 40 segundos. Depois você revisa tudo antes de gastar com narração e render.
