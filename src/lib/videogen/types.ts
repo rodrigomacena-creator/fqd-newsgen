@@ -64,4 +64,4 @@ export const DURATION_OPTIONS = [5, 10, 15, 20, 30, 45, 60];
 export const WORDS_PER_SECOND = 2.3;
 
 /** Padrões que o worker de render (worker/) já sabe montar. Os outros ainda não vão pra fila. */
-export const RENDERABLE_PATTERNS = ["editorial-pb-vermelho"];
+export const RENDERABLE_PATTERNS = ["editorial-pb-vermelho", "estudio-serif-cinematico", "papel-hera"];
