@@ -15,6 +15,10 @@
   --accent-red: #e13b3b;
   --accent-red-deep: #ac2129;
   --cream: #f6eee2;
+
+  /* estados (status de render): sempre acompanhados de ícone/texto, nunca só a cor */
+  --success: #15803d;
+  --warning: #a16207;
 }
 
 [data-theme="dark"] {
@@ -32,6 +36,9 @@
   --accent-red: #e13b3b;
   --accent-red-deep: #ac2129;
   --cream: #f6eee2;
+
+  --success: #4ade80;
+  --warning: #facc15;
 }
 
 @theme inline {
@@ -47,6 +54,8 @@
   --color-accent-red: var(--accent-red);
   --color-accent-red-deep: var(--accent-red-deep);
   --color-cream: var(--cream);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --font-sans: var(--font-poppins);
 }
 
