@@ -296,11 +296,13 @@ export function VideoJobEditor({ id }: { id: string }) {
       onNarration={generateNarration}
       onQueue={() => queue()}
       onUnqueue={() => queue(true)}
+      onSave={save}
+      onDiscard={discard}
     />
   );
 
   return (
-    <Shell padBottom={dirty} bar={stepBar}>
+    <Shell padBottom>
       <Link
         href="/videogen"
         className="inline-flex min-h-11 items-center gap-1.5 text-sm text-text-secondary transition hover:text-accent-yellow"
@@ -556,27 +558,9 @@ export function VideoJobEditor({ id }: { id: string }) {
         </aside>
       </div>
 
-      {dirty && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur">
-          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-            <p className="text-sm font-medium">
-              <span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full bg-warning align-middle" />
-              Alterações não salvas
-            </p>
-            <div className="ml-auto flex gap-2">
-              <button type="button" onClick={discard} disabled={busy !== null} className={secondaryButton}>
-                Descartar
-              </button>
-              <button type="button" onClick={save} disabled={busy !== null} className={primaryButton}>
-                {busy === "save" && <Spinner />}
-                {busy === "save" ? "Salvando…" : "Salvar"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {stepBar}
 
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-40 z-50 lg:bottom-32 flex justify-center px-4">
         {toast && (
           <span className="inline-flex items-center gap-2 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background shadow-lg">
             <Icon name="check" className="h-4 w-4" /> {toast}
@@ -587,12 +571,11 @@ export function VideoJobEditor({ id }: { id: string }) {
   );
 }
 
-function Shell({ children, padBottom = false, bar }: { children: React.ReactNode; padBottom?: boolean; bar?: React.ReactNode }) {
+function Shell({ children, padBottom = false }: { children: React.ReactNode; padBottom?: boolean }) {
   return (
     <div className="flex min-h-full flex-col">
       <Header wide />
-      {bar}
-      <main className={`mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12 ${padBottom ? "pb-32" : ""}`}>
+      <main className={`mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12 ${padBottom ? "pb-60 sm:pb-52 lg:pb-40" : ""}`}>
         {children}
       </main>
     </div>
@@ -602,8 +585,10 @@ function Shell({ children, padBottom = false, bar }: { children: React.ReactNode
 // ---------- etapas ----------
 
 /**
- * Controlador de etapas: barra presa no topo (abaixo do cabeçalho) com as 5 etapas, a instrução da
- * etapa atual e o botão do próximo passo. Substitui a trilha solta e a caixa "o que fazer agora".
+ * Controlador de etapas: cartão flutuando no rodapé com as 5 etapas, a instrução da etapa atual e o
+ * botão do próximo passo (que brilha na hora de enviar para o render). Com alterações não salvas,
+ * ganha uma linha com Descartar/Salvar. Substitui a trilha solta, a caixa "o que fazer agora" e a
+ * barra de salvar antiga.
  */
 function StepBar({
   step,
@@ -617,6 +602,8 @@ function StepBar({
   onNarration,
   onQueue,
   onUnqueue,
+  onSave,
+  onDiscard,
 }: {
   step: number;
   job: VideoJobDTO;
@@ -629,6 +616,8 @@ function StepBar({
   onNarration: () => void;
   onQueue: () => void;
   onUnqueue: () => void;
+  onSave: () => void;
+  onDiscard: () => void;
 }) {
   const hasNarration = noNarration || Boolean(job.narrationUrl);
   const done = job.status === "done" && Boolean(job.videoUrl);
@@ -685,7 +674,7 @@ function StepBar({
     title = job.status === "failed" ? "O render falhou. Tente de novo" : noNarration ? "Envie para o render" : "Ouça a narração e envie para o render";
     hint = `Se a voz estiver boa, envie: o servidor gera as imagens, a trilha e monta o mp4. Se não, ajuste e gere de novo.${savingNote}`;
     action = (
-      <button type="button" onClick={onQueue} disabled={busy !== null} className={`${actionClass} ${primaryButton}`}>
+      <button type="button" onClick={onQueue} disabled={busy !== null} className={`${actionClass} ${primaryButton} btn-glow`}>
         {busy === "queue" ? <Spinner /> : <Icon name="arrow" className="h-4 w-4" />}
         {busy === "queue" ? "Enviando…" : "Enviar para render"}
       </button>
@@ -698,9 +687,27 @@ function StepBar({
   return (
     <section
       aria-label="Etapas do vídeo"
-      className="sticky top-[69px] z-[9] border-b border-border bg-surface/95 shadow-[0_6px_18px_rgba(0,0,0,0.06)] backdrop-blur"
+      className="fixed inset-x-0 bottom-0 z-40 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4"
     >
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-2.5 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:gap-6">
+      <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-2xl border border-border bg-surface/95 shadow-[0_12px_40px_rgba(0,0,0,0.18)] backdrop-blur">
+      {dirty && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-2/60 px-4 py-2 sm:px-5">
+          <p className="text-xs font-medium sm:text-sm">
+            <span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full bg-warning align-middle" />
+            Alterações não salvas
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={onDiscard} disabled={busy !== null} className={`!min-h-9 !px-3 !text-xs ${secondaryButton}`}>
+              Descartar
+            </button>
+            <button type="button" onClick={onSave} disabled={busy !== null} className={`!min-h-9 !px-3 !text-xs ${secondaryButton}`}>
+              {busy === "save" && <Spinner />}
+              {busy === "save" ? "Salvando…" : "Salvar"}
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="flex w-full flex-col gap-2.5 px-4 py-3 sm:px-5 lg:flex-row lg:items-center lg:gap-6">
         {/* celular: passo + barrinhas */}
         <div className="flex items-center justify-between gap-3 lg:hidden">
           <p className="text-xs font-semibold uppercase tracking-wide text-accent-yellow">
@@ -774,6 +781,7 @@ function StepBar({
           <div className="h-full bg-accent-yellow transition-[width] duration-700" style={{ width: `${Math.max(3, progress)}%` }} />
         </div>
       )}
+      </div>
     </section>
   );
 }
