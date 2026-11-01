@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveStyle } from "@/lib/videogen/templates";
+import { recentFreeStyles, resolveStyle } from "@/lib/videogen/templates";
 import { generateVideoScript, VIDEOGEN_TEXT_MODEL } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
@@ -87,6 +87,7 @@ export async function POST(request: Request) {
       durationS,
       extraInstructions,
       styleNotes,
+      recentStyles: pattern.kind === "free" ? await recentFreeStyles(job.id) : [],
       model: textModel,
       person,
       company,

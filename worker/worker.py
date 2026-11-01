@@ -154,6 +154,8 @@ def produce(job, workdir, report=lambda p: None, costs=None):
     # imagens das cenas em paralelo + trilha ao mesmo tempo
     images = {}
     used = {s.index for s in tl.scenes} if getattr(module, "USES_SCENE_IMAGES", True) else set()
+    # cena "só texto" (estilo livre) não usa imagem: não gasta geração com ela
+    used -= {i for i, sc in enumerate(scenes) if sc.get("layout") == "text_only" and not sc.get("imageUrl")}
     def cached(fn, path, *a):
         return path if REUSE_ASSETS and path.exists() else fn(*a, path, costs=costs)
 

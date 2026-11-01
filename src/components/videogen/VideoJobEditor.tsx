@@ -873,6 +873,7 @@ function FreeStyleSummary({ spec, notes }: { spec: Record<string, unknown> | und
     .filter((c): c is string => typeof c === "string" && /^#?[0-9a-f]{6}$/i.test(c))
     .map((c) => (c.startsWith("#") ? c : `#${c}`));
   const details = [
+    typeof spec?.archetype === "string" && spec.archetype,
     group("title").font && `título ${group("title").font}`,
     group("transition").kind && `transição ${group("transition").kind}`,
     group("motion").energy && `energia ${group("motion").energy}`,

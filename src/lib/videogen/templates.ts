@@ -4,7 +4,7 @@ import type { VideoTemplate } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import patternGuides from "./patternGuides.json";
 import { VIDEO_PATTERNS, getVideoPattern, type VideoPattern } from "./patterns";
-import { FREE_STYLE, FREE_STYLE_ID, freeStyleGuide } from "./freeStyle";
+import { FREE_STYLE, FREE_STYLE_ID, describeStyleSpec, freeStyleGuide } from "./freeStyle";
 import { ELEVENLABS_USD_PER_CREDIT, parseCosts } from "./costs";
 import { summarizeCosts, type CostSummary, type TemplateSummary, type VideoTemplateStatus } from "./types";
 
@@ -104,6 +104,19 @@ export async function resolveStyle(id: string): Promise<ResolvedStyle | null> {
   const t = await prisma.videoTemplate.findUnique({ where: { id } });
   if (!t || t.status !== "ready") return null;
   return { pattern: templateToPattern(t), guide: t.guide ?? "", spec: parseJson<unknown>(t.spec) };
+}
+
+/** Resumo do visual dos últimos vídeos em estilo livre (a IA evita repetir). */
+export async function recentFreeStyles(excludeId?: string, take = 4): Promise<string[]> {
+  const jobs = await prisma.videoJob.findMany({
+    where: { patternId: FREE_STYLE_ID, script: { not: null }, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    orderBy: { createdAt: "desc" },
+    take,
+    select: { script: true },
+  });
+  return jobs
+    .map((j) => describeStyleSpec(parseJson<{ styleSpec?: Record<string, unknown> }>(j.script)?.styleSpec))
+    .filter((d): d is string => Boolean(d));
 }
 
 /** Link aceito para montar template: YouTube ou Pinterest (o worker baixa com yt-dlp). */

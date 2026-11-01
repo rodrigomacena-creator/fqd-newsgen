@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveStyle } from "@/lib/videogen/templates";
+import { recentFreeStyles, resolveStyle } from "@/lib/videogen/templates";
 import { generateVideoScript } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
@@ -31,6 +31,8 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
       durationS: job.durationS,
       extraInstructions: job.extraInstructions,
       styleNotes: job.styleNotes,
+      // inclui o roteiro atual deste vídeo: "gerar de novo" deve sair diferente
+      recentStyles: style.pattern.kind === "free" ? await recentFreeStyles() : [],
       model: job.textModel,
     });
     await appendCosts(id, [costEntry("script", "openrouter", { usd })]);

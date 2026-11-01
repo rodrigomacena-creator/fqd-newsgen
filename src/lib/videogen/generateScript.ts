@@ -13,7 +13,7 @@ import {
 import { mergePronunciations } from "./pronunciation";
 import { isAllowedImageUrl } from "./profiles";
 import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
-import { freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
+import { SCENE_LAYOUTS, enforcePhotoPrompts, freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
 import { HUMANIZER_RULE } from "./humanizer";
 
 // Claude via OpenRouter (Rodrigo quer um provedor só pra LLM).
@@ -150,7 +150,7 @@ Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
 {
   "title": "título interno curto do vídeo",
   "scenes": [
-    { "narration": "...", "onScreen": "...", "visual": "...", "imagePrompt": "...", "durationS": 2${ctx.imageCount ? ', "userImage": null' : ""}, "direction": { "cut": "...", "camera": "...", "object": "...", "mark": "...", "emphasis": "..." } }
+    { "narration": "...", "onScreen": "...", "visual": "...", "imagePrompt": "...", "durationS": 2${free ? ', "layout": "..."' : ""}${ctx.imageCount ? ', "userImage": null' : ""}, "direction": { "cut": "...", "camera": "...", "object": "...", "mark": "...", "emphasis": "..." } }
   ],
   "cta": { "narration": "...", "onScreen": "..." },
   "keywords": ["..."],
@@ -182,6 +182,8 @@ export function normalizeScript(input: unknown): VideoScript {
     if (imageUrl && isAllowedImageUrl(imageUrl)) scene.imageUrl = imageUrl;
     const direction = normalizeDirection(o.direction, i);
     if (direction) scene.direction = direction;
+    const layout = str(o.layout);
+    if (SCENE_LAYOUTS.includes(layout)) scene.layout = layout;
     return scene;
   });
   const cta = (d.cta ?? {}) as Record<string, unknown>;
@@ -234,6 +236,8 @@ export async function generateVideoScript(params: {
   extraInstructions?: string | null;
   /** Direcionamento do usuário para o estilo livre (movimento, música, clima...). */
   styleNotes?: string | null;
+  /** Estilo livre: resumo das fichas dos vídeos livres recentes, para não repetir o visual. */
+  recentStyles?: string[];
   model?: string;
   person?: VideoProfileDTO | null;
   company?: VideoProfileDTO | null;
@@ -264,7 +268,7 @@ export async function generateVideoScript(params: {
       role: "system",
       content: buildSystemPrompt(
         params.pattern,
-        params.pattern.kind === "free" ? freeStyleGuide(params.styleNotes) : params.guide,
+        params.pattern.kind === "free" ? freeStyleGuide(params.styleNotes, params.recentStyles) : params.guide,
         params.durationS,
         ctx
       ),
@@ -277,7 +281,7 @@ export async function generateVideoScript(params: {
   async function ask(): Promise<{ raw: string; script: VideoScript }> {
     const completion = await client.chat.completions.create({
       model,
-      temperature: 0.7,
+      temperature: params.pattern.kind === "free" ? 0.95 : 0.7,
       // O modelo "pensa" antes de responder e esse raciocínio conta no max_tokens: com 6000, roteiros
       // longos (40s+, muitas cenas, instruções extras) eram cortados no meio do JSON.
       max_tokens: 16000,
@@ -328,5 +332,6 @@ export async function generateVideoScript(params: {
   }
   // toda cena sai com direção (a IA às vezes esquece em alguma)
   script.scenes = script.scenes.map((sc, i) => (sc.direction ? sc : { ...sc, direction: defaultDirection(i) }));
+  if (params.pattern.kind === "free") script.scenes = enforcePhotoPrompts(script.scenes, script.styleSpec);
   return { script, usd };
 }

@@ -58,7 +58,7 @@ FONT_DESCRIPTIONS = {
 
 CHOICES = {
     "background.kind": ["solid", "gradient", "texture", "blurred_image"],
-    "image.layout": ["fullbleed", "card", "circle", "top_half", "none"],
+    "image.layout": ["fullbleed", "card", "circle", "top_half", "polaroid", "split", "text_only", "none"],
     "image.filter": ["none", "bw", "duotone", "warm", "cool", "contrast", "muted"],
     "image.motion": ["push_in", "pull_out", "pan", "ken_burns", "zoom_punch", "drift", "static"],
     "caption.animation": ["word_pop", "word_reveal", "karaoke", "line_fade", "typewriter"],
@@ -77,7 +77,9 @@ DEFAULT_SPEC = {
     "palette": {"background": "#F5F2EA", "text": "#111111", "accent": "#E10600", "accentText": "#FFFFFF"},
     "background": {"kind": "solid", "color2": "#DDDDDD", "texturePrompt": "", "textureUrl": ""},
     "image": {"layout": "fullbleed", "filter": "none", "motion": "push_in", "scale": 0.82, "y": 0.42,
-              "cornerRadius": 24, "shadow": True, "borderColor": "", "borderWidth": 0},
+              "cornerRadius": 24, "shadow": True, "borderColor": "", "borderWidth": 0,
+              # photo: imagens são fotos reais (estilo livre). Sem traço à mão por cima.
+              "photo": False},
     "caption": {"enabled": True, "font": "inter-black", "size": 96, "uppercase": True, "color": "#FFFFFF",
                 "stroke": "#000000", "strokeWidth": 6, "y": 0.72, "animation": "word_pop", "highlight": "box",
                 "maxWordsPerLine": 3, "box": False, "boxColor": "#000000"},
@@ -92,6 +94,9 @@ DEFAULT_SPEC = {
 }
 
 ENERGY = {"calm": 0.6, "medium": 1.0, "high": 1.6}
+
+# layouts que uma cena pode pedir sozinha (scene["layout"], estilo livre)
+SCENE_LAYOUTS = ("fullbleed", "card", "circle", "top_half", "polaroid", "split", "text_only")
 
 _HEX = re.compile(r"^#?([0-9a-fA-F]{6})$")
 
@@ -155,8 +160,9 @@ def _is_light(hex_color):
 def _ensure_legible(spec):
     """Evita texto ilegível: tira legenda/título de cima do card e garante contorno sobre foto."""
     img, cap, title = spec["image"], spec["caption"], spec["title"]
-    if img["layout"] in ("card", "circle"):
-        hfrac = W * img["scale"] * (1.0 if img["layout"] == "circle" else 1.25) / H
+    if img["layout"] in ("card", "circle", "polaroid"):
+        ratio = {"circle": 1.0, "card": 1.25, "polaroid": 1.3}[img["layout"]]
+        hfrac = W * (min(img["scale"], 0.8) if img["layout"] == "polaroid" else img["scale"]) * ratio / H
         top, bottom = img["y"] - hfrac / 2, img["y"] + hfrac / 2
         if cap["enabled"] and top - 0.03 < cap["y"] < bottom + 0.03 and not cap["box"]:
             if bottom + 0.07 <= 0.93:
@@ -168,7 +174,7 @@ def _ensure_legible(spec):
                 title["y"] = round(top - 0.07, 3)
             else:
                 title["box"] = True
-    over_photo = img["layout"] in ("fullbleed", "top_half") or spec["background"]["kind"] in ("texture", "blurred_image")
+    over_photo = img["layout"] in ("fullbleed", "top_half", "split") or spec["background"]["kind"] in ("texture", "blurred_image")
     if over_photo and cap["enabled"] and not cap["box"] and (not cap["stroke"] or cap["strokeWidth"] < 3):
         cap["stroke"] = "#000000" if _is_light(cap["color"]) else "#FFFFFF"
         cap["strokeWidth"] = max(cap["strokeWidth"], 5)
@@ -234,11 +240,13 @@ class SceneVisual:
     impacto e flutua) e, se a ficha pedir, a câmera (tremida de mão ou tranco na batida).
     """
 
-    def __init__(self, spec, img, texture, seed):
+    def __init__(self, spec, img, texture, seed, layout=None):
         self.spec = spec
         lay = spec["image"]
         mo = spec["motion"]
-        self.layout = lay["layout"] if img is not None else "none"
+        # layout da cena (estilo livre pode variar por cena) ou o da ficha
+        self.layout = (layout or lay["layout"]) if img is not None else ("text_only" if layout == "text_only" else "none")
+        self.scene_layout = bool(layout)
         self.motion = lay["motion"]
         self.amp = ENERGY[mo["energy"]]
         self.camera = mo["camera"]
@@ -257,10 +265,32 @@ class SceneVisual:
         self.shadow = None
         self.direction = None  # direção da cena (motion.py), quando o roteiro tem
         self.box = None  # caixa do card no último quadro (para o traço à mão)
+        self.scrim = None
         if self.layout == "fullbleed":
             self.big = cover_resize(img, int(W * 1.3), int(H * 1.3))
-        elif self.layout == "top_half":
+            if self.scene_layout:  # foto inteira numa cena avulsa: escurece topo e base para o texto
+                # escurece se o texto é claro; se o texto é escuro, clareia na cor do fundo
+                y = np.linspace(0, 1, H, dtype=np.float32)
+                a = np.clip((0.3 - y) / 0.3, 0, 1) * 0.6 + np.clip((y - 0.62) / 0.38, 0, 1) * 0.75
+                light_text = _is_light(spec["caption"]["color"]) or _is_light(spec["title"]["color"])
+                pal_bg = spec["palette"]["background"]
+                tone = (0, 0, 0) if light_text else (rgb(pal_bg) if _is_light(pal_bg) else (255, 255, 255))
+                self.scrim = (a[:, None, None], np.array(tone, np.float32))
+        elif self.layout in ("top_half", "split"):
             self.big = cover_resize(img, int(W * 1.25), int(H * 0.58 * 1.25))
+        elif self.layout == "polaroid":
+            # foto com moldura branca grossa (base maior), levemente torta
+            cw = int(W * min(lay["scale"], 0.8))
+            ch = int(cw * 1.1)
+            photo = cover_resize(img, cw, ch).crop((0, 0, cw, ch))
+            side, base = int(cw * 0.05), int(cw * 0.2)
+            framed = Image.new("RGB", (cw + 2 * side, ch + side + base), (250, 248, 242))
+            framed.paste(photo, (side, side))
+            self.card = framed.convert("RGBA")
+            self.tilt = (-4.5 if seed % 2 else 3.5) + (seed % 3) * 0.8
+            sh = Image.new("L", (framed.width + 120, framed.height + 120), 0)
+            sh.paste(110, (60, 80, 60 + framed.width, 80 + framed.height))
+            self.shadow = sh.filter(ImageFilter.GaussianBlur(26))
         elif self.layout in ("card", "circle"):
             cw = int(W * lay["scale"])
             ch = cw if self.layout == "circle" else int(cw * 1.25)
@@ -342,12 +372,18 @@ class SceneVisual:
             cx, cy = min(max(cx, 0), bw - cw), min(max(cy, 0), bh - ch)
             crop = self.big.crop((int(cx), int(cy), int(cx) + cw, int(cy) + ch)).resize((tw, th), Image.BILINEAR)
             fr.paste(crop, (0, 0))
+            if self.scrim is not None:
+                a, tone = self.scrim
+                fr = Image.fromarray((np.asarray(fr, dtype=np.float32) * (1 - a) + tone * a).astype(np.uint8))
+            if self.layout == "split":  # faixa de destaque na divisa da tela dividida
+                ImageDraw.Draw(fr).rectangle((0, th - 7, W, th + 9), fill=rgb(self.spec["palette"]["accent"]))
         elif self.card is not None and self.direction:
             # card como "objeto" da direção (mola, queda, balanço...) + flutuação leve
             dx, dy, s, rot = mv.object_motion(self.direction["object"], local_t)
             s *= 1.0 + 0.5 * (z - 1.0) + 0.03 * pulse
             bob = math.sin(local_t * 2.2 + self.phase[0]) * 6 * self.amp
             card = self.card.resize((max(1, int(self.card.width * s)), max(1, int(self.card.height * s))), Image.BILINEAR)
+            rot += getattr(self, "tilt", 0.0)
             if abs(rot) > 0.05:
                 card = card.rotate(rot, resample=Image.BILINEAR, expand=True)
             x = (W - card.width) / 2 + panx * 60 + dx + sx
@@ -363,7 +399,7 @@ class SceneVisual:
             enter = 0.82 + 0.18 * ease(k) + 0.05 * math.sin(k * math.pi) * self.amp
             s = enter * (0.97 + 0.06 * (z - 1.0) / max(0.14 * self.amp, 0.01) * 0.5 + 0.03 * pulse)
             bob = math.sin(local_t * 2.2 + self.phase[0]) * 12 * self.amp
-            rot = math.sin(local_t * 1.3 + self.phase[1]) * 1.6 * self.amp
+            rot = math.sin(local_t * 1.3 + self.phase[1]) * 1.6 * self.amp + getattr(self, "tilt", 0.0)
             card = self.card.resize((max(1, int(self.card.width * s)), max(1, int(self.card.height * s))), Image.BILINEAR)
             if abs(rot) > 0.05:
                 card = card.rotate(rot, resample=Image.BILINEAR, expand=True)
@@ -905,7 +941,8 @@ def render(job, assets, out_path, on_progress=None):
     for n, sc in enumerate(tl.scenes):
         path = assets.get("images", {}).get(sc.index)
         img = Image.open(path).convert("RGB") if path else None
-        visuals[sc.index] = SceneVisual(spec, img, texture, seed=n)
+        layout = sc.data.get("layout") if sc.data.get("layout") in SCENE_LAYOUTS else None
+        visuals[sc.index] = SceneVisual(spec, img, texture, seed=n, layout=layout)
         visuals[sc.index].direction = dirs.get(sc.index)
 
     def emphasis_at(t):
@@ -916,6 +953,13 @@ def render(job, assets, out_path, on_progress=None):
     cta_words = tl.cta_words or spread_words(cta.get("onScreen") or "", tl.cta_start + 0.1)
     captions = Captions(spec, tl.words, keys, tl.cta_start, emphasis_at if directed else None)
     title = Title(spec)
+    # cena "só texto": o texto da tela vira o protagonista, grande e no meio
+    big_spec = {**spec, "title": {**spec["title"], "enabled": True, "y": 0.44, "box": False,
+                                   "size": min(170, spec["title"]["size"] * 1.35)}}
+    title_big = Title(big_spec)
+    # cena com imagem na metade de cima: texto da tela vai para a parte lisa de baixo
+    low_spec = {**spec, "title": {**spec["title"], "y": 0.645, "box": False}}
+    title_low = Title(low_spec)
     finisher = Finisher(spec)
     particles = Particles(spec)
     mo = spec["motion"]
@@ -963,7 +1007,8 @@ def render(job, assets, out_path, on_progress=None):
                 fr = vis.frame(local / span, local, t, b if mo["beatPulse"] else 0.0, b)
                 flash = 0.0
                 if directed:
-                    if marks.kind.get(sc.index, "none") != "none" and t >= marks.at[sc.index]:
+                    no_marks = spec["image"]["photo"] or vis.layout in ("fullbleed", "text_only", "split", "top_half")
+                    if not no_marks and marks.kind.get(sc.index, "none") != "none" and t >= marks.at[sc.index]:
                         box = vis.box or (W * 0.22, H * 0.3, W * 0.78, H * 0.54)
                         im = Image.fromarray(fr).convert("RGBA")
                         marks.draw(im, sc.index, t, box, None, accent, 14)
@@ -981,7 +1026,12 @@ def render(job, assets, out_path, on_progress=None):
                 if flash > 0:
                     fr = np.clip(fr.astype(np.float32) + 60 * flash, 0, 255).astype(np.uint8)
                 particles.draw(fr, t)
-                title.draw(fr, sc.data.get("onScreen") or "", local, span)
+                if vis.layout in ("split", "top_half") and spec["title"]["y"] < 0.62:
+                    title_low.draw(fr, sc.data.get("onScreen") or "", local, span)
+                elif vis.layout == "text_only":
+                    title_big.draw(fr, sc.data.get("onScreen") or sc.data.get("narration") or "", local, span)
+                else:
+                    title.draw(fr, sc.data.get("onScreen") or "", local, span)
                 captions.draw(fr, t)
             fr = finisher.apply(np.ascontiguousarray(fr), n)
             writer.write(fr)

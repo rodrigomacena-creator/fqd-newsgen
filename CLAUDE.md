@@ -269,6 +269,11 @@ reais encontradas ao construir o projeto, não só a estrutura.
   como `templateSpec`, com `FREE_STYLE_FALLBACK_SPEC` se faltar). O usuário pode escrever um direcionamento
   (`VideoJob.styleNotes`: movimento, música, clima...). As listas de opções/fontes em `freeStyle.ts` espelham
   `CHOICES`/`FONT_DESCRIPTIONS` do `template_engine.py`: ao mudar lá, mude aqui.
+  Pra não sair tudo igual: a IA escolhe um **arquétipo** (documentario, revista, neon, tipografico, noticiario,
+  minimal-premium, colagem, cinematografico) diferente dos últimos vídeos livres (`recentFreeStyles()` manda o resumo
+  das fichas recentes), e cada cena tem `layout` próprio (`fullbleed`, `card`, `circle`, `top_half`, `split`,
+  `polaroid`, `text_only`; `text_only` não gera imagem). `image.photo = true` (foto real pedida) acrescenta
+  `PHOTO_SUFFIX` em todo imagePrompt e desliga os traços à mão no render.
   Decisão do Rodrigo: motor único configurável, **nunca** código gerado por IA rodando na VPS. O seletor
   de estilo sempre mostra o exemplo de 5s do estilo escolhido. Depois de
   editar/adicionar um padrão, rode `node scripts/videogen-patterns.mjs` pra regenerar

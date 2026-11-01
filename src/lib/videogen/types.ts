@@ -17,6 +17,8 @@ export interface VideoScene {
   imageUrl?: string;
   /** Direção de movimento da cena (todos os estilos; roteiro antigo sem direção renderiza como antes). Ver direction.ts. */
   direction?: SceneDirection;
+  /** Só no estilo livre: formato de montagem desta cena (ver SCENE_LAYOUTS em freeStyle.ts). */
+  layout?: string;
 }
 
 /** Imagem que o usuário subiu no briefing do vídeo (vai pra IA ver e pode ser usada nas cenas). */
