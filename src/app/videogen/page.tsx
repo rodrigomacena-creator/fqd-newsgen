@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
@@ -8,7 +8,7 @@ import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { BriefingImages } from "@/components/videogen/BriefingImages";
 import { ScriptLoader } from "@/components/videogen/ScriptLoader";
 import { formatUsd } from "@/components/videogen/CostPanel";
-import { FlowSteps, Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, sectionTitle } from "@/components/videogen/ui";
+import { FlowSteps, Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
 import { VIDEO_PATTERNS, type VideoPattern } from "@/lib/videogen/patterns";
 import { useStyles } from "@/lib/videogen/useStyles";
@@ -52,12 +52,17 @@ export default function VideoGenPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<VideoJobDTO[] | null>(null);
+  const [totalJobs, setTotalJobs] = useState(0);
+  const [showAll, setShowAll] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/videogen/jobs")
+    fetch(`/api/videogen/jobs?take=${HOME_LIST}`)
       .then((res) => res.json())
-      .then((data) => setJobs(data.jobs ?? []))
+      .then((data) => {
+        setJobs(data.jobs ?? []);
+        setTotalJobs(data.total ?? 0);
+      })
       .catch(() => setJobs([]));
   }, []);
 
@@ -66,9 +71,13 @@ export default function VideoGenPage() {
   useEffect(() => {
     if (!anyRendering) return;
     const t = setInterval(() => {
-      fetch("/api/videogen/jobs")
+      fetch(`/api/videogen/jobs?take=${HOME_LIST}`)
         .then((res) => res.json())
-        .then((data) => data.jobs && setJobs(data.jobs))
+        .then((data) => {
+          if (!data.jobs) return;
+          setJobs(data.jobs);
+          setTotalJobs(data.total ?? data.jobs.length);
+        })
         .catch(() => {});
     }, 8000);
     return () => clearInterval(t);
@@ -124,6 +133,7 @@ export default function VideoGenPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Não foi possível excluir.");
       setJobs((list) => (list ?? []).filter((j) => j.id !== job.id));
+      setTotalJobs((n) => Math.max(0, n - 1));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
     } finally {
@@ -145,7 +155,7 @@ export default function VideoGenPage() {
           </div>
           {jobs && jobs.length > 0 && (
             <a href="#seus-videos" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-accent-yellow lg:hidden">
-              Seus vídeos ({jobs.length}) <Icon name="down" className="h-4 w-4" />
+              Seus vídeos ({Math.max(totalJobs, jobs.length)}) <Icon name="down" className="h-4 w-4" />
             </a>
           )}
         </div>
@@ -253,7 +263,11 @@ export default function VideoGenPage() {
               </div>
               <div className="mt-4 grid gap-5 sm:grid-cols-[200px_minmax(0,1fr)]">
                 <StylePreview style={pattern} />
-                <div className="grid content-start gap-2" role="radiogroup" aria-label="Estilos">
+                <div
+                  className="grid max-h-[400px] content-start gap-2 overflow-y-auto overscroll-contain rounded-xl pr-1 [scrollbar-width:thin]"
+                  role="radiogroup"
+                  aria-label="Estilos"
+                >
                   {styles.map((p) => {
                     const active = p.id === patternId;
                     return (
@@ -464,7 +478,7 @@ export default function VideoGenPage() {
                             {getStyle(job.patternId)?.nome ?? (stylesLoaded ? "Estilo removido" : "…")} · {job.durationS}s
                           </span>
                           <span>
-                            {new Date(job.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+                            {formatDate(job.createdAt)}
                             {job.costSummary && job.costSummary.totalUsd > 0 && ` · ≈ ${formatUsd(job.costSummary.totalUsd)}`}
                           </span>
                         </span>
@@ -484,6 +498,12 @@ export default function VideoGenPage() {
                 })}
               </ul>
             )}
+            {jobs && totalJobs > jobs.length && (
+              <button type="button" onClick={() => setShowAll(true)} className={`mt-3 w-full ${secondaryButton}`}>
+                Ver mais ({totalJobs} vídeos no total)
+              </button>
+            )}
+            {showAll && <AllVideosModal getStyleName={(id) => getStyle(id)?.nome} onClose={() => setShowAll(false)} />}
           </aside>
         </div>
       </main>
@@ -573,5 +593,107 @@ function StylePreview({ style }: { style: VideoPattern | undefined }) {
         </p>
       )}
     </div>
+  );
+}
+
+const HOME_LIST = 20;
+const MODAL_PAGE = 10;
+
+function formatDate(iso: string, withTime = false) {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: withTime ? "2-digit" : "short",
+    ...(withTime ? { year: "numeric", hour: "2-digit", minute: "2-digit" } : {}),
+  });
+}
+
+/** Todos os vídeos gerados, com paginação e data/hora de criação. */
+function AllVideosModal({ getStyleName, onClose }: { getStyleName: (id: string) => string | undefined; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [page, setPage] = useState(0);
+  const [data, setData] = useState<{ page: number; jobs: VideoJobDTO[]; total: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/videogen/jobs?take=${MODAL_PAGE}&skip=${page * MODAL_PAGE}`)
+      .then((res) => res.json())
+      .then((d) => alive && setData({ page, jobs: d.jobs ?? [], total: d.total ?? 0 }))
+      .catch(() => alive && setError("Não foi possível carregar os vídeos."));
+    return () => {
+      alive = false;
+    };
+  }, [page]);
+
+  const pages = data ? Math.max(1, Math.ceil(data.total / MODAL_PAGE)) : 1;
+  const loadingPage = !data || data.page !== page;
+
+  return (
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      onClick={(e) => e.target === ref.current && ref.current?.close()}
+      aria-labelledby="all-videos-title"
+      className="m-auto w-[min(640px,calc(100vw-2rem))] rounded-2xl border border-border bg-surface p-0 text-foreground backdrop:bg-black/50"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <h2 id="all-videos-title" className="text-lg font-semibold">
+          Todos os vídeos{data ? ` (${data.total})` : ""}
+        </h2>
+        <button type="button" onClick={() => ref.current?.close()} aria-label="Fechar" className={iconButton}>
+          <Icon name="x" className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="max-h-[60vh] min-h-[200px] overflow-y-auto">
+        {error ? (
+          <p role="alert" className="px-5 py-6 text-sm text-accent-red">
+            {error}
+          </p>
+        ) : !data ? (
+          <div className="space-y-2 p-5" aria-label="Carregando">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-14 animate-pulse rounded-xl bg-surface-2 motion-reduce:animate-none" />
+            ))}
+          </div>
+        ) : (
+          <ul className={`divide-y divide-border transition-opacity ${loadingPage ? "opacity-50" : ""}`} aria-busy={loadingPage}>
+            {data.jobs.map((job) => {
+              const title = job.script?.title || job.topic;
+              return (
+                <li key={job.id}>
+                  <Link href={`/videogen/${job.id}`} className="flex flex-col gap-1.5 px-5 py-3 transition hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none">
+                    <span className="line-clamp-2 text-sm font-medium">{title}</span>
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
+                      <StatusBadge status={job.status} progress={job.progress} label={job.error && job.status === "draft" ? "Erro no roteiro" : undefined} />
+                      <span>
+                        {getStyleName(job.patternId) ?? "Estilo removido"} · {job.durationS}s
+                      </span>
+                      <span>Gerado em {formatDate(job.createdAt, true)}</span>
+                      {job.costSummary && job.costSummary.totalUsd > 0 && <span>≈ {formatUsd(job.costSummary.totalUsd)}</span>}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
+        <button type="button" onClick={() => setPage((p) => p - 1)} disabled={page === 0 || loadingPage} className={secondaryButton}>
+          <Icon name="back" className="h-4 w-4" /> Anterior
+        </button>
+        <span className="text-sm tabular-nums text-text-secondary">
+          Página {page + 1} de {pages}
+        </span>
+        <button type="button" onClick={() => setPage((p) => p + 1)} disabled={page + 1 >= pages || loadingPage} className={secondaryButton}>
+          Próxima <Icon name="arrow" className="h-4 w-4" />
+        </button>
+      </div>
+    </dialog>
   );
 }

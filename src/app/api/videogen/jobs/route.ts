@@ -11,9 +11,16 @@ export const maxDuration = 300;
 
 const MAX_TOPIC = 2000;
 
-export async function GET() {
-  const jobs = await prisma.videoJob.findMany({ orderBy: { createdAt: "desc" }, take: 30 });
-  return NextResponse.json({ jobs: jobs.map(serializeVideoJob) });
+/** Lista os vídeos, mais novos primeiro. `?take=&skip=` paginam (padrão 20, máx. 50); `total` = todos. */
+export async function GET(request: Request) {
+  const params = new URL(request.url).searchParams;
+  const take = Math.min(50, Math.max(1, Math.round(Number(params.get("take")) || 20)));
+  const skip = Math.max(0, Math.round(Number(params.get("skip")) || 0));
+  const [jobs, total] = await Promise.all([
+    prisma.videoJob.findMany({ orderBy: { createdAt: "desc" }, take, skip }),
+    prisma.videoJob.count(),
+  ]);
+  return NextResponse.json({ jobs: jobs.map(serializeVideoJob), total });
 }
 
 /** Cria o vídeo e já gera o roteiro (o usuário revisa antes da narração e do render). */
