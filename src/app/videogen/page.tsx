@@ -596,7 +596,7 @@ function StylePreview({ style }: { style: VideoPattern | undefined }) {
   );
 }
 
-const HOME_LIST = 10;
+const HOME_LIST = 5;
 const MODAL_PAGE = 10;
 
 function formatDate(iso: string, withTime = false) {
