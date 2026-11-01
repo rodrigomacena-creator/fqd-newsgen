@@ -242,13 +242,19 @@ export async function generateVideoScript(params: {
     const completion = await client.chat.completions.create({
       model,
       temperature: 0.7,
-      max_tokens: 6000,
+      // O modelo "pensa" antes de responder e esse raciocínio conta no max_tokens: com 6000, roteiros
+      // longos (40s+, muitas cenas, instruções extras) eram cortados no meio do JSON.
+      max_tokens: 16000,
       messages: messages as Parameters<typeof client.chat.completions.create>[0]["messages"],
-      // parâmetro da OpenRouter (fora do tipo do SDK): devolve usage.cost em dólar
-      ...({ usage: { include: true } } as object),
+      // parâmetros da OpenRouter (fora do tipo do SDK): usage.cost em dólar e teto do raciocínio
+      ...({ usage: { include: true }, reasoning: { max_tokens: 4000 } } as object),
     });
     usd += Number((completion.usage as { cost?: number } | undefined)?.cost) || 0;
     const raw = extractCompletionText(completion);
+    if (completion.choices?.[0]?.finish_reason === "length") {
+      console.error("Roteiro da IA cortado por tamanho:", JSON.stringify(completion.usage));
+      throw new Error("O roteiro ficou longo demais e veio cortado. Tente uma duração menor ou instruções extras mais curtas.");
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(extractJson(raw));
