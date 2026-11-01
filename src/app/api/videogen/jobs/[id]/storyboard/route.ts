@@ -17,6 +17,15 @@ const PARALLEL = 4;
  * aquela cena. { scene: n, action: "next_video" }: troca o vídeo de banco; "use_image": volta para imagem.
  */
 export async function POST(request: Request, ctx: RouteContext<"/api/videogen/jobs/[id]/storyboard">) {
+  try {
+    return await handle(request, ctx);
+  } catch (err) {
+    console.error("storyboard:", err);
+    return NextResponse.json({ error: `Falha no storyboard: ${err instanceof Error ? err.message : String(err)}` }, { status: 500 });
+  }
+}
+
+async function handle(request: Request, ctx: RouteContext<"/api/videogen/jobs/[id]/storyboard">) {
   const { id } = await ctx.params;
   const body = (await request.json().catch(() => ({}))) as { scene?: number; action?: "next_video" | "use_image" };
   const job = await prisma.videoJob.findUnique({ where: { id } });

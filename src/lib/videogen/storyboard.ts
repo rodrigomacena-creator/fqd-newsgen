@@ -33,6 +33,7 @@ export async function generateSceneImage(jobId: string, index: number, prompt: s
         messages: [{ role: "user", content: prompt }],
         usage: { include: true },
       }),
+      signal: AbortSignal.timeout(110_000),
     });
     const data = (await res.json().catch(() => null)) as {
       error?: { message?: string };

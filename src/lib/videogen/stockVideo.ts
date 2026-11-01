@@ -40,7 +40,7 @@ async function searchPixabay(query: string): Promise<Candidate[]> {
     safesearch: "true",
     per_page: "30",
   })}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`Pixabay respondeu HTTP ${res.status}`);
   type Size = { url: string; width: number; height: number; thumbnail?: string };
   const data = (await res.json()) as { hits?: { id: number; duration: number; videos: Record<string, Size> }[] };
@@ -62,7 +62,7 @@ async function searchPexels(query: string): Promise<Candidate[]> {
     size: "medium",
     per_page: "15",
   })}`;
-  const res = await fetch(url, { headers: { Authorization: key } });
+  const res = await fetch(url, { headers: { Authorization: key }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`Pexels respondeu HTTP ${res.status}`);
   type File = { link: string; width: number; height: number; file_type: string };
   const data = (await res.json()) as { videos?: { id: number; duration: number; image: string; video_files: File[] }[] };

@@ -104,7 +104,16 @@ export function VideoJobEditor({ id }: { id: string }) {
     setError(null);
     try {
       const res = await fetch(url, init);
-      const data = await res.json();
+      const text = await res.text();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        // resposta sem JSON (tempo esgotado, erro da plataforma): mostra o que veio de verdade
+        const detail = text.trim().replace(/\s+/g, " ").slice(0, 160);
+        data = { error: `O servidor respondeu HTTP ${res.status}${detail ? `: ${detail}` : " sem conteúdo"}.` };
+      }
       if (!res.ok) throw new Error(data.error || "Algo deu errado.");
       return data;
     } catch (err) {
