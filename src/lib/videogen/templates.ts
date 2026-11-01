@@ -4,6 +4,7 @@ import type { VideoTemplate } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import patternGuides from "./patternGuides.json";
 import { VIDEO_PATTERNS, getVideoPattern, type VideoPattern } from "./patterns";
+import { FREE_STYLE, FREE_STYLE_ID, freeStyleGuide } from "./freeStyle";
 import { ELEVENLABS_USD_PER_CREDIT, parseCosts } from "./costs";
 import { summarizeCosts, type CostSummary, type TemplateSummary, type VideoTemplateStatus } from "./types";
 
@@ -80,22 +81,23 @@ export function templateToPattern(t: VideoTemplate): VideoPattern {
   };
 }
 
-/** Todos os estilos que geram mp4: os embutidos e os templates prontos (mais novos primeiro). */
+/** Todos os estilos que geram mp4: estilo livre, embutidos e templates prontos (mais novos primeiro). */
 export async function listStyles(): Promise<VideoPattern[]> {
   const templates = await prisma.videoTemplate.findMany({ where: { status: "ready" }, orderBy: { createdAt: "desc" } });
-  return [...VIDEO_PATTERNS, ...templates.map(templateToPattern)];
+  return [FREE_STYLE, ...VIDEO_PATTERNS, ...templates.map(templateToPattern)];
 }
 
 export interface ResolvedStyle {
   pattern: VideoPattern;
   /** Guia do estilo que entra no prompt do roteiro. */
   guide: string;
-  /** Ficha do motor genérico (só templates). */
+  /** Ficha do motor genérico (só templates; no estilo livre ela vem no roteiro, script.styleSpec). */
   spec: unknown | null;
 }
 
-/** Acha um estilo pelo id: embutido primeiro, depois template pronto. */
+/** Acha um estilo pelo id: estilo livre, embutido, depois template pronto. */
 export async function resolveStyle(id: string): Promise<ResolvedStyle | null> {
+  if (id === FREE_STYLE_ID) return { pattern: FREE_STYLE, guide: freeStyleGuide(null), spec: null };
   const builtin = getVideoPattern(id);
   if (builtin) return { pattern: builtin, guide: (patternGuides as Record<string, string>)[id] ?? "", spec: null };
   if (!id) return null;

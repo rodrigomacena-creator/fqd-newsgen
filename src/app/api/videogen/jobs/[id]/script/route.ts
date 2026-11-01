@@ -30,6 +30,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
       topic: job.topic,
       durationS: job.durationS,
       extraInstructions: job.extraInstructions,
+      styleNotes: job.styleNotes,
       model: job.textModel,
     });
     await appendCosts(id, [costEntry("script", "openrouter", { usd })]);

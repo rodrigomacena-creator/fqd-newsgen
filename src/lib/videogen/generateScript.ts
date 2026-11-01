@@ -13,6 +13,7 @@ import {
 import { mergePronunciations } from "./pronunciation";
 import { isAllowedImageUrl } from "./profiles";
 import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
+import { freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
 
 // Claude via OpenRouter (Rodrigo quer um provedor só pra LLM).
 export const VIDEOGEN_TEXT_MODEL = process.env.VIDEOGEN_TEXT_MODEL || "anthropic/claude-sonnet-5.5";
@@ -102,6 +103,18 @@ function buildSystemPrompt(pattern: VideoPattern, guide: string, durationS: numb
   const dictionary = mergePronunciations(ctx.person?.pronunciations ?? [], ctx.company?.pronunciations ?? [])
     .map((p) => `"${p.display}" → "${p.spoken}"`)
     .join(", ");
+  const free = pattern.kind === "free";
+  const intro = free
+    ? `Você vai escrever o roteiro de UM vídeo e criar o estilo visual dele do zero (estilo livre). Siga o guia abaixo.
+
+=== GUIA DO ESTILO LIVRE ===
+${guide}
+=== FIM DO GUIA ===`
+    : `Você vai escrever o roteiro de UM vídeo no padrão visual "${pattern.nome}" (id ${pattern.id}). Siga à risca o guia do padrão abaixo: ritmo, tipo de texto na tela, estilo das imagens e CTA.
+
+=== GUIA DO PADRÃO ===
+${guide}
+=== FIM DO GUIA ===`;
   const imagesRule = ctx.imageCount
     ? `
 - Imagens do briefing: o usuário anexou ${ctx.imageCount} imagem(ns), numeradas de 1 a ${ctx.imageCount} na mensagem dele. Use-as para entender o assunto e, nas cenas em que uma delas combina com o que é dito, coloque o número dela em "userImage" (essa cena usa a foto real em vez de uma imagem gerada). Use cada imagem do briefing em pelo menos uma cena, a não ser que não tenha nada a ver com o roteiro; pode repetir uma imagem se fizer sentido. Nas cenas com "userImage", "imagePrompt" pode ficar vazio e "visual" descreve a foto. Nas outras cenas, deixe "userImage" como null e escreva o "imagePrompt" normalmente, no mesmo clima das fotos.`
@@ -111,11 +124,7 @@ function buildSystemPrompt(pattern: VideoPattern, guide: string, durationS: numb
 
 ${buildProfilesSection(ctx.person, ctx.company)}
 
-Você vai escrever o roteiro de UM vídeo no padrão visual "${pattern.nome}" (id ${pattern.id}). Siga à risca o guia do padrão abaixo: ritmo, tipo de texto na tela, estilo das imagens e CTA.
-
-=== GUIA DO PADRÃO ===
-${guide}
-=== FIM DO GUIA ===
+${intro}
 
 Regras do roteiro:
 - Duração alvo: ${durationS}s. ${
@@ -145,7 +154,7 @@ Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
   "keywords": ["..."],
   "musicPrompt": "...",
   "postCaption": "...",
-  "pronunciations": [{ "display": "...", "spoken": "..." }]
+  "pronunciations": [{ "display": "...", "spoken": "..." }]${free ? ',\n  "styleSpec": { "palette": {...}, "background": {...}, "image": {...}, "caption": {...}, "title": {...}, "transition": {...}, "overlay": {...}, "cta": {...}, "motion": {...} }' : ""}
 }`;
 }
 
@@ -185,6 +194,7 @@ export function normalizeScript(input: unknown): VideoScript {
     musicPrompt: str(d.musicPrompt),
     postCaption: str(d.postCaption),
     pronunciations,
+    ...(sanitizeStyleSpec(d.styleSpec) ? { styleSpec: sanitizeStyleSpec(d.styleSpec) } : {}),
   };
 }
 
@@ -220,6 +230,8 @@ export async function generateVideoScript(params: {
   topic: string;
   durationS: number;
   extraInstructions?: string | null;
+  /** Direcionamento do usuário para o estilo livre (movimento, música, clima...). */
+  styleNotes?: string | null;
   model?: string;
   person?: VideoProfileDTO | null;
   company?: VideoProfileDTO | null;
@@ -246,7 +258,15 @@ export async function generateVideoScript(params: {
 
   const ctx: ScriptContext = { person: params.person ?? null, company: params.company ?? null, imageCount: attached.length };
   const messages: { role: "system" | "user" | "assistant"; content: string | Part[] }[] = [
-    { role: "system", content: buildSystemPrompt(params.pattern, params.guide, params.durationS, ctx) },
+    {
+      role: "system",
+      content: buildSystemPrompt(
+        params.pattern,
+        params.pattern.kind === "free" ? freeStyleGuide(params.styleNotes) : params.guide,
+        params.durationS,
+        ctx
+      ),
+    },
     { role: "user", content: attached.length ? userContent : userParts.join("\n\n") },
   ];
   const model = params.model || VIDEOGEN_TEXT_MODEL;
@@ -298,7 +318,8 @@ export async function generateVideoScript(params: {
     );
     try {
       const shorter = (await ask()).script;
-      if (shorter.scenes.length > 0) script = shorter;
+      // no estilo livre a ficha às vezes some na versão curta: mantém a da primeira
+      if (shorter.scenes.length > 0) script = { ...shorter, styleSpec: shorter.styleSpec ?? script.styleSpec };
     } catch (err) {
       console.error("Falha ao encurtar o roteiro, mantendo o original:", err);
     }

@@ -73,6 +73,8 @@ export interface VideoScript {
   postCaption: string;
   /** Pronúncias extras deste vídeo, somadas ao dicionário padrão. */
   pronunciations: Pronunciation[];
+  /** Só no "estilo livre": ficha de estilo que a IA montou para este vídeo (formato do motor genérico). */
+  styleSpec?: Record<string, unknown>;
 }
 
 /** [palavra de exibição, início em s, fim em s] — mesmo formato do words.json do pipeline Python. */

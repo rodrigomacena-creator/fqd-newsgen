@@ -264,6 +264,11 @@ reais encontradas ao construir o projeto, não só a estrutura.
   legenda, título, transição, sobreposições, CTA — `normalize_spec()` é a fonte da verdade do formato e
   corrige qualquer valor inválido). O grupo `motion` da ficha (energia, câmera, partículas, pulso na batida, texto flutuando/
   saindo) tem padrões que já dão movimento a fichas antigas que não o têm, mais um guia pro roteirista (`guide`) e um exemplo de 5s (`sampleUrl`).
+  **Estilo livre** (`src/lib/videogen/freeStyle.ts`, id `estilo-livre`, primeiro da lista): sem template; a IA do
+  roteiro inventa o visual e devolve a ficha em `script.styleSpec` (mesmo formato do motor genérico; o `claim` manda
+  como `templateSpec`, com `FREE_STYLE_FALLBACK_SPEC` se faltar). O usuário pode escrever um direcionamento
+  (`VideoJob.styleNotes`: movimento, música, clima...). As listas de opções/fontes em `freeStyle.ts` espelham
+  `CHOICES`/`FONT_DESCRIPTIONS` do `template_engine.py`: ao mudar lá, mude aqui.
   Decisão do Rodrigo: motor único configurável, **nunca** código gerado por IA rodando na VPS. O seletor
   de estilo sempre mostra o exemplo de 5s do estilo escolhido. Depois de
   editar/adicionar um padrão, rode `node scripts/videogen-patterns.mjs` pra regenerar

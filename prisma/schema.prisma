@@ -71,6 +71,7 @@ model VideoJob {
   durationS          Int // duração alvo em segundos
   textModel          String // modelo da OpenRouter usado no roteiro
   extraInstructions  String?
+  styleNotes         String? // direcionamento do usuário para o "estilo livre" (movimento, música, clima...)
   status             String    @default("draft") // draft | script_ready | queued | rendering | done | failed
   script             String? // JSON string: VideoScript (ver src/lib/videogen/types.ts)
   narrationUrl       String? // mp3 da narração no Vercel Blob

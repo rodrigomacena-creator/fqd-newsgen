@@ -6,6 +6,7 @@ import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { DEFAULT_VOICE_ID } from "@/lib/videogen/types";
 import { cleanBriefingImages, getProfile } from "@/lib/videogen/profiles";
+import { MAX_STYLE_NOTES } from "@/lib/videogen/freeStyle";
 
 export const maxDuration = 300;
 
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
     voiceName?: string;
     durationS?: number;
     extraInstructions?: string;
+    styleNotes?: string;
     textModel?: string;
     personId?: string;
     companyId?: string;
@@ -51,6 +53,8 @@ export async function POST(request: Request) {
   const durationS = Math.min(90, Math.max(5, Math.round(Number(body.durationS) || 15)));
   const textModel = body.textModel?.trim() || VIDEOGEN_TEXT_MODEL;
   const extraInstructions = body.extraInstructions?.trim().slice(0, 2000) || null;
+  // direcionamento só faz sentido no estilo livre
+  const styleNotes = pattern.kind === "free" ? body.styleNotes?.trim().slice(0, MAX_STYLE_NOTES) || null : null;
   const person = await getProfile(body.personId?.trim(), "person");
   const company = await getProfile(body.companyId?.trim(), "company");
   const briefingImages = cleanBriefingImages(body.briefingImages);
@@ -70,6 +74,7 @@ export async function POST(request: Request) {
       durationS,
       textModel,
       extraInstructions,
+      styleNotes,
       costs: "[]",
     },
   });
@@ -81,6 +86,7 @@ export async function POST(request: Request) {
       topic,
       durationS,
       extraInstructions,
+      styleNotes,
       model: textModel,
       person,
       company,

@@ -22,6 +22,8 @@ export interface VideoJobDTO {
   durationS: number;
   textModel: string;
   extraInstructions: string | null;
+  /** Direcionamento do usuário para o estilo livre (movimento, música, clima...). */
+  styleNotes: string | null;
   /** Perfil (pessoa) que fala no vídeo. */
   personId: string | null;
   /** Perfil (empresa) para quem é o conteúdo. */

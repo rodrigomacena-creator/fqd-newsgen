@@ -50,6 +50,7 @@ export default function VideoGenPage() {
   const [uploadingImages, setUploadingImages] = useState(false);
   const [durationS, setDurationS] = useState(15);
   const [extraInstructions, setExtraInstructions] = useState("");
+  const [styleNotes, setStyleNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<VideoJobDTO[] | null>(null);
@@ -110,6 +111,7 @@ export default function VideoGenPage() {
           voiceName,
           durationS,
           extraInstructions,
+          styleNotes: pattern?.kind === "free" ? styleNotes : "",
           personId: personId || null,
           companyId: companyId || null,
           briefingImages,
@@ -215,7 +217,7 @@ export default function VideoGenPage() {
                   id="person"
                   label="Quem fala no vídeo"
                   icon="user"
-                  noneLabel="Narrador neutro (sem perfil)"
+                  emptyLabel="Nenhuma pessoa cadastrada"
                   profiles={people}
                   value={personId}
                   loaded={profilesLoaded}
@@ -228,7 +230,7 @@ export default function VideoGenPage() {
                   id="company"
                   label="Para qual empresa"
                   icon="building"
-                  noneLabel="Nenhuma (sem marca, site ou @)"
+                  emptyLabel="Nenhuma empresa cadastrada"
                   profiles={companies}
                   value={companyId}
                   loaded={profilesLoaded}
@@ -308,7 +310,8 @@ export default function VideoGenPage() {
                           onChange={() => setPatternId(p.id)}
                           className="sr-only"
                         />
-                        <span className="relative h-16 w-9 shrink-0 overflow-hidden rounded-md bg-surface-2">
+                        <span className="relative flex h-16 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-2">
+                          {p.kind === "free" && <Icon name="sparkles" className="h-4 w-4 text-accent-yellow" />}
                           {p.sampleUrl && (
                             <video
                               src={`${p.sampleUrl}#t=1.5`}
@@ -323,8 +326,13 @@ export default function VideoGenPage() {
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-medium">{p.nome}</span>
                           <span className="line-clamp-2 block text-xs text-text-secondary">{p.tom}</span>
-                          {(p.kind === "template" || p.semNarracao) && (
+                          {(p.kind !== "builtin" || p.semNarracao) && (
                             <span className="mt-1 flex flex-wrap gap-1">
+                              {p.kind === "free" && (
+                                <span className="rounded-full bg-accent-yellow/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-yellow">
+                                  livre
+                                </span>
+                              )}
                               {p.kind === "template" && (
                                 <span className="rounded-full bg-accent-yellow/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-yellow">
                                   seu template
@@ -351,6 +359,28 @@ export default function VideoGenPage() {
                   })}
                 </div>
               </div>
+              {pattern?.kind === "free" && (
+                <div className="mt-5">
+                  <label htmlFor="style-notes" className="flex items-center gap-1.5 text-sm font-medium">
+                    <Icon name="sparkles" className="h-4 w-4 text-accent-yellow" /> Direcionamento do estilo
+                    <span className="font-normal text-text-secondary">(opcional)</span>
+                  </label>
+                  <textarea
+                    id="style-notes"
+                    rows={3}
+                    maxLength={1500}
+                    value={styleNotes}
+                    onChange={(e) => setStyleNotes(e.target.value)}
+                    disabled={loading}
+                    aria-describedby="style-notes-help"
+                    placeholder="Ex.: clima retrô anos 80, cores neon, cortes rápidos com glitch, câmera tremida, trilha synthwave animada"
+                    className={`mt-2 resize-y ${fieldClass}`}
+                  />
+                  <p id="style-notes-help" className="mt-1.5 text-xs text-text-secondary">
+                    Movimento, música, clima, cores, ritmo, tipo de imagem… O que você não disser, eu escolho a partir do tema.
+                  </p>
+                </div>
+              )}
             </fieldset>
 
             <fieldset className={cardClass} disabled={loading}>
@@ -545,7 +575,7 @@ function ProfileSelect({
   id,
   label,
   icon,
-  noneLabel,
+  emptyLabel,
   profiles,
   value,
   loaded,
@@ -554,7 +584,8 @@ function ProfileSelect({
   id: string;
   label: string;
   icon: string;
-  noneLabel: string;
+  /** Só aparece quando não há nenhum perfil cadastrado desse tipo. */
+  emptyLabel: string;
   profiles: VideoProfileDTO[];
   value: string;
   loaded: boolean;
@@ -582,9 +613,9 @@ function ProfileSelect({
               {p.isDefault ? " (padrão)" : ""}
             </option>
           ))}
-        {loaded && (
+        {loaded && profiles.length === 0 && (
           <option value="" className="bg-background text-foreground">
-            {noneLabel}
+            {emptyLabel}
           </option>
         )}
       </select>
@@ -610,13 +641,21 @@ function StylePreview({ style }: { style: VideoPattern | undefined }) {
             aria-label={`Exemplo do estilo ${style.nome}`}
             className="h-full w-full object-cover"
           />
+        ) : style?.kind === "free" ? (
+          <span className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-xs text-text-secondary">
+            <Icon name="sparkles" className="h-8 w-8 text-accent-yellow" />
+            <span>
+              <strong className="block text-sm font-semibold text-foreground">Visual criado para este vídeo</strong>
+              Cores, fontes, imagens, transições e movimento saem do tema e do seu direcionamento.
+            </span>
+          </span>
         ) : (
           <span className="flex h-full items-center justify-center px-4 text-center text-xs text-text-secondary">
             Este estilo ainda não tem exemplo.
           </span>
         )}
       </div>
-      {style && (
+      {style && style.kind !== "free" && (
         <p className="mt-2 text-xs text-text-secondary">
           <strong className="font-semibold text-foreground">Exemplo de 5s</strong>
           {style.ritmo ? ` · ${style.ritmo}` : ""}
@@ -665,7 +704,7 @@ function ManageStylesModal({ styles, onDeleted, onClose }: { styles: VideoPatter
   }
 
   const templates = styles.filter((s) => s.kind === "template");
-  const builtins = styles.filter((s) => s.kind !== "template");
+  const builtins = styles.filter((s) => s.kind === "builtin");
 
   return (
     <dialog

@@ -315,6 +315,7 @@ export function VideoJobEditor({ id }: { id: string }) {
           <p className="mt-2 text-sm text-text-secondary">
             {profileLine} · {pattern ? pattern.nome : stylesLoaded ? "Estilo removido" : "…"} · alvo {job.durationS}s
           </p>
+          {pattern?.kind === "free" && <FreeStyleSummary spec={script?.styleSpec} notes={job.styleNotes} />}
         </div>
         <StatusBadge status={job.status} progress={job.progress} />
       </div>
@@ -850,5 +851,46 @@ function PronunciationEditor({
         </button>
       </div>
     </details>
+  );
+}
+
+/** Estilo livre: mostra o visual que a IA montou (paleta, fontes, movimento) e o direcionamento do usuário. */
+function FreeStyleSummary({ spec, notes }: { spec: Record<string, unknown> | undefined; notes: string | null }) {
+  const group = (name: string) => ((spec?.[name] ?? {}) as Record<string, unknown>);
+  const palette = group("palette");
+  const colors = ["background", "text", "accent", "accentText"]
+    .map((k) => palette[k])
+    .filter((c): c is string => typeof c === "string" && /^#?[0-9a-f]{6}$/i.test(c))
+    .map((c) => (c.startsWith("#") ? c : `#${c}`));
+  const details = [
+    group("title").font && `título ${group("title").font}`,
+    group("transition").kind && `transição ${group("transition").kind}`,
+    group("motion").energy && `energia ${group("motion").energy}`,
+  ].filter(Boolean);
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
+      <span className="inline-flex items-center gap-1 font-medium text-accent-yellow">
+        <Icon name="sparkles" className="h-3.5 w-3.5" /> Estilo criado pela IA
+      </span>
+      {spec ? (
+        <>
+          {colors.length > 0 && (
+            <span className="inline-flex items-center gap-1" aria-label={`Paleta: ${colors.join(", ")}`}>
+              {colors.map((c, i) => (
+                <span key={i} className="h-4 w-4 rounded-full ring-1 ring-border" style={{ background: c }} />
+              ))}
+            </span>
+          )}
+          {details.length > 0 && <span>{details.join(" · ")}</span>}
+        </>
+      ) : (
+        <span>sai junto com o roteiro</span>
+      )}
+      {notes && (
+        <span className="w-full line-clamp-2 [overflow-wrap:anywhere]" title={notes}>
+          Seu direcionamento: {notes}
+        </span>
+      )}
+    </div>
   );
 }

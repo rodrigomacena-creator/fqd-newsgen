@@ -4,6 +4,8 @@ import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { resolveStyle } from "@/lib/videogen/templates";
 import { checkWorkerAuth } from "@/lib/videogen/workerAuth";
 import { getProfile } from "@/lib/videogen/profiles";
+import { FREE_STYLE_FALLBACK_SPEC } from "@/lib/videogen/freeStyle";
+import type { VideoScript } from "@/lib/videogen/types";
 
 // Um job "rendering" sem notícia do worker há esse tempo é considerado abandonado
 // (worker caiu ou reiniciou) e volta pra fila.
@@ -39,12 +41,21 @@ export async function POST(request: Request) {
       const job = await prisma.videoJob.findUniqueOrThrow({ where: { id: next.id } });
       const style = await resolveStyle(job.patternId);
       const company = await getProfile(job.companyId, "company");
-      // templateSpec: ficha do motor genérico quando o estilo é um template montado pela aplicação
+      // estilo livre: a ficha foi montada pela IA junto com o roteiro
+      let templateSpec = style?.spec ?? null;
+      if (style?.pattern.kind === "free") {
+        let script: VideoScript | null = null;
+        try {
+          script = job.script ? (JSON.parse(job.script) as VideoScript) : null;
+        } catch {}
+        templateSpec = script?.styleSpec ?? FREE_STYLE_FALLBACK_SPEC;
+      }
+      // templateSpec: ficha do motor genérico quando o estilo é um template ou o estilo livre
       // brand: logo da empresa, que o worker põe no fim do vídeo (junto do CTA)
       return NextResponse.json({
         job: {
           ...serializeVideoJob(job),
-          templateSpec: style?.spec ?? null,
+          templateSpec,
           brand: company ? { name: company.name, logoUrl: company.logoUrl } : null,
         },
         pattern: style?.pattern ?? null,

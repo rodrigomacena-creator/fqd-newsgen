@@ -15,7 +15,7 @@ export interface VideoPattern {
   cta: string;
   /** Vídeo de exemplo de ~5s mostrado no seletor de estilo. */
   sampleUrl: string | null;
-  kind: "builtin" | "template";
+  kind: "builtin" | "template" | "free";
 }
 
 export const VIDEO_PATTERNS: VideoPattern[] = (patternsData as Omit<VideoPattern, "sampleUrl" | "kind">[]).map((p) => ({

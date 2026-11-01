@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { VIDEO_PATTERNS, type VideoPattern } from "./patterns";
+import { FREE_STYLE } from "./freeStyle";
 
 /**
- * Estilos que geram mp4 (embutidos + templates prontos). Começa com os embutidos, que já vêm
+ * Estilos que geram mp4 (estilo livre + embutidos + templates prontos). Começa com os embutidos, que já vêm
  * no bundle, e completa com os templates quando a API responde.
  */
 export function useStyles() {
-  const [styles, setStyles] = useState<VideoPattern[]>(VIDEO_PATTERNS);
+  const [styles, setStyles] = useState<VideoPattern[]>([FREE_STYLE, ...VIDEO_PATTERNS]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
