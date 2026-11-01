@@ -9,7 +9,6 @@ import { CostPanel } from "@/components/videogen/CostPanel";
 import { BriefingImages } from "@/components/videogen/BriefingImages";
 import { SceneStudio } from "@/components/videogen/SceneStudio";
 import {
-  FlowSteps,
   FLOW_STEPS,
   AutoTextarea,
   CopyButton,
@@ -284,8 +283,8 @@ export function VideoJobEditor({ id }: { id: string }) {
   // 1 = revisar roteiro, 2 = ouvir narração/enviar, 3 = render, 4 = pronto
   const flowCurrent = flowDone ? 4 : locked ? 3 : script && hasNarrationNow ? (noNarration ? 3 : 2) : 1;
 
-  const nextStep = (
-    <NextStep
+  const stepBar = (
+    <StepBar
       step={flowCurrent}
       job={job}
       hasScript={Boolean(script)}
@@ -301,7 +300,7 @@ export function VideoJobEditor({ id }: { id: string }) {
   );
 
   return (
-    <Shell padBottom={dirty}>
+    <Shell padBottom={dirty} bar={stepBar}>
       <Link
         href="/videogen"
         className="inline-flex min-h-11 items-center gap-1.5 text-sm text-text-secondary transition hover:text-accent-yellow"
@@ -325,12 +324,6 @@ export function VideoJobEditor({ id }: { id: string }) {
         </div>
       )}
 
-      <div className="mt-6">
-        <FlowSteps current={flowCurrent} finished={flowDone} skipped={noNarration ? [2] : []} />
-      </div>
-
-      {/* no celular, o próximo passo vem antes do roteiro longo */}
-      <div className="mt-6 lg:hidden">{nextStep}</div>
 
       {script && (
         <div className="mt-6">
@@ -461,7 +454,6 @@ export function VideoJobEditor({ id }: { id: string }) {
         </div>
 
         <aside className="min-w-0 space-y-6" aria-label="Narração, render e custo">
-          <div className="hidden lg:block">{nextStep}</div>
 
           {script && !noNarration && (
             <section className={cardClass} aria-labelledby="narracao-title">
@@ -595,10 +587,11 @@ export function VideoJobEditor({ id }: { id: string }) {
   );
 }
 
-function Shell({ children, padBottom = false }: { children: React.ReactNode; padBottom?: boolean }) {
+function Shell({ children, padBottom = false, bar }: { children: React.ReactNode; padBottom?: boolean; bar?: React.ReactNode }) {
   return (
     <div className="flex min-h-full flex-col">
       <Header wide />
+      {bar}
       <main className={`mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12 ${padBottom ? "pb-32" : ""}`}>
         {children}
       </main>
@@ -608,7 +601,11 @@ function Shell({ children, padBottom = false }: { children: React.ReactNode; pad
 
 // ---------- etapas ----------
 
-function NextStep({
+/**
+ * Controlador de etapas: barra presa no topo (abaixo do cabeçalho) com as 5 etapas, a instrução da
+ * etapa atual e o botão do próximo passo. Substitui a trilha solta e a caixa "o que fazer agora".
+ */
+function StepBar({
   step,
   job,
   hasScript,
@@ -635,87 +632,148 @@ function NextStep({
 }) {
   const hasNarration = noNarration || Boolean(job.narrationUrl);
   const done = job.status === "done" && Boolean(job.videoUrl);
-
+  const savingNote = dirty ? " Suas alterações são salvas antes." : "";
+  const actionClass = "w-full sm:w-auto";
 
   let title: string;
-  let body: React.ReactNode = null;
+  let hint = "";
   let action: React.ReactNode = null;
-  const savingNote = dirty ? " Suas alterações são salvas antes." : "";
+  let progress: number | null = null;
 
   if (!hasScript) {
     title = "Gerar o roteiro";
+    hint = "A IA escreve as cenas a partir do tema; depois você revisa.";
     action = (
-      <button type="button" onClick={onGenerateScript} disabled={busy !== null} className={`w-full ${primaryButton}`}>
-        {busy === "script" && <Spinner />} {busy === "script" ? "Gerando roteiro…" : "Gerar roteiro"}
+      <button type="button" onClick={onGenerateScript} disabled={busy !== null} className={`${actionClass} ${primaryButton}`}>
+        {busy === "script" ? <Spinner /> : <Icon name="sparkles" className="h-4 w-4" />}
+        {busy === "script" ? "Gerando roteiro…" : "Gerar roteiro"}
       </button>
     );
   } else if (!hasNarration) {
-    title = "Revise o roteiro e gere a narração";
-    body = `Edite o que quiser nas cenas; a narração usa o texto atual. Depois você ouve a voz e manda para o render.${savingNote}`;
+    title = "Revise as cenas e gere a narração";
+    hint = `Edite o que quiser; a narração usa o texto atual.${savingNote}`;
     action = (
-      <button type="button" onClick={onNarration} disabled={busy !== null} className={`w-full ${primaryButton}`}>
+      <button type="button" onClick={onNarration} disabled={busy !== null} className={`${actionClass} ${primaryButton}`}>
         {busy === "narration" ? <Spinner /> : <Icon name="mic" className="h-4 w-4" />}
         {busy === "narration" ? "Gerando narração…" : "Gerar narração"}
       </button>
     );
   } else if (job.status === "queued") {
     title = "Na fila de render";
-    body = "O worker pega o vídeo em instantes. Você pode sair desta página.";
+    hint = "O servidor pega o vídeo em instantes. Você pode sair desta página.";
     action = (
-      <button type="button" onClick={onUnqueue} disabled={busy !== null} className={`w-full ${secondaryButton}`}>
+      <button type="button" onClick={onUnqueue} disabled={busy !== null} className={`${actionClass} ${secondaryButton}`}>
         Tirar da fila
       </button>
     );
   } else if (job.status === "rendering") {
-    const p = job.progress ?? 0;
-    title = "Renderizando o vídeo";
-    body = (
-      <>
-        <div
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={p}
-          aria-label="Progresso do render"
-          className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2"
-        >
-          <div className="h-full rounded-full bg-accent-yellow transition-[width] duration-700" style={{ width: `${Math.max(3, p)}%` }} />
-        </div>
-        <p className="mt-2 text-xs text-text-secondary">
-          <span className="tabular-nums">{p}%</span> · leva alguns minutos. Você pode sair desta página.
-        </p>
-      </>
-    );
+    progress = job.progress ?? 0;
+    title = `Renderizando · ${progress}%`;
+    hint = "O servidor está montando o mp4 (alguns minutos). Você pode sair desta página.";
   } else if (done) {
     title = "Vídeo pronto";
-    body = "Assista e baixe no card do vídeo. A legenda do post está no fim do roteiro.";
+    hint = "Assista no card do vídeo. A legenda do post está no roteiro.";
     action = (
-      <a href={job.videoUrl!} download className={`w-full ${primaryButton}`}>
+      <a href={job.videoUrl!} download className={`${actionClass} ${primaryButton}`}>
         <Icon name="download" className="h-4 w-4" /> Baixar mp4
       </a>
     );
   } else if (!renderable) {
     title = "Estilo removido";
-    body = "O estilo deste vídeo foi excluído, então ele não pode mais ir para o render.";
+    hint = "O estilo deste vídeo foi excluído, então ele não pode mais ir para o render.";
   } else {
     title = job.status === "failed" ? "O render falhou. Tente de novo" : noNarration ? "Envie para o render" : "Ouça a narração e envie para o render";
-    body = `Se a voz estiver boa, envie: o servidor gera as imagens, a trilha e monta o mp4 (alguns minutos). Se não, ajuste o roteiro e gere a narração de novo.${savingNote}`;
+    hint = `Se a voz estiver boa, envie: o servidor gera as imagens, a trilha e monta o mp4. Se não, ajuste e gere de novo.${savingNote}`;
     action = (
-      <button type="button" onClick={onQueue} disabled={busy !== null} className={`w-full ${primaryButton}`}>
+      <button type="button" onClick={onQueue} disabled={busy !== null} className={`${actionClass} ${primaryButton}`}>
         {busy === "queue" ? <Spinner /> : <Icon name="arrow" className="h-4 w-4" />}
         {busy === "queue" ? "Enviando…" : "Enviar para render"}
       </button>
     );
   }
 
+  const stateOf = (i: number) => (done || i < step ? "done" : i === step ? "current" : "todo");
+  const skipped = (i: number) => noNarration && i === 2;
+
   return (
-    <section className={`${cardClass} border-accent-yellow/30`} aria-label="O que fazer agora">
-      <p className="text-xs font-semibold uppercase tracking-wide text-accent-yellow">
-        {done ? "Concluído" : `Passo ${step + 1} de ${FLOW_STEPS.length} · ${FLOW_STEPS[step].label}`}
-      </p>
-      <p className="mt-1 font-semibold">{title}</p>
-      {typeof body === "string" ? <p className="mt-1 text-sm text-text-secondary">{body}</p> : body}
-      {action && <div className="mt-4">{action}</div>}
+    <section
+      aria-label="Etapas do vídeo"
+      className="sticky top-[69px] z-[9] border-b border-border bg-surface/95 shadow-[0_6px_18px_rgba(0,0,0,0.06)] backdrop-blur"
+    >
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-2.5 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:gap-6">
+        {/* celular: passo + barrinhas */}
+        <div className="flex items-center justify-between gap-3 lg:hidden">
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent-yellow">
+            {done ? "Concluído" : `Passo ${step + 1} de ${FLOW_STEPS.length} · ${FLOW_STEPS[step].label}`}
+          </p>
+          <span aria-hidden className="flex gap-1">
+            {FLOW_STEPS.map((s, i) => (
+              <span
+                key={s.label}
+                className={`h-1.5 w-4 rounded-full ${skipped(i) ? "bg-border" : stateOf(i) === "done" ? "bg-success" : stateOf(i) === "current" ? "bg-accent-yellow" : "bg-border"}`}
+              />
+            ))}
+          </span>
+        </div>
+        {/* desktop: etapas em pílulas */}
+        <ol className="hidden shrink-0 items-center gap-1.5 lg:flex">
+          {FLOW_STEPS.map((s, i) => {
+            const st = stateOf(i);
+            const skip = skipped(i);
+            return (
+              <li key={s.label} className="flex items-center gap-1.5" aria-current={st === "current" && !done ? "step" : undefined}>
+                {i > 0 && <span aria-hidden className={`h-0.5 w-4 ${st === "todo" ? "bg-border" : "bg-success/50"}`} />}
+                <span
+                  className={`flex items-center gap-1.5 text-[13px] ${
+                    st === "current" && !skip
+                      ? "rounded-full border border-accent-yellow/30 bg-accent-yellow/[0.06] py-0.5 pl-0.5 pr-3 font-semibold text-accent-yellow"
+                      : st === "done" && !skip
+                        ? "font-medium text-success"
+                        : "text-text-secondary"
+                  }`}
+                >
+                  <span
+                    aria-hidden
+                    className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold tabular-nums ${
+                      skip
+                        ? "border-2 border-dashed border-border"
+                        : st === "done"
+                          ? "bg-success text-background"
+                          : st === "current"
+                            ? "bg-accent-yellow text-accent-yellow-ink"
+                            : "border-2 border-border-hover"
+                    }`}
+                  >
+                    {st === "done" && !skip ? <Icon name="check" className="h-3.5 w-3.5" /> : i + 1}
+                  </span>
+                  {s.label}
+                  <span className="sr-only">
+                    {skip ? " (não se aplica)" : st === "done" ? " (concluída)" : st === "current" ? " (etapa atual)" : " (próxima)"}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+        <span aria-hidden className="hidden w-px self-stretch bg-border lg:block" />
+        <div className="min-w-0 flex-1" aria-live="polite">
+          <p className="text-sm font-semibold">{title}</p>
+          {hint && <p className="mt-0.5 hidden text-xs text-text-secondary sm:block">{hint}</p>}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+      {progress !== null && (
+        <div
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress}
+          aria-label="Progresso do render"
+          className="h-1 bg-surface-2"
+        >
+          <div className="h-full bg-accent-yellow transition-[width] duration-700" style={{ width: `${Math.max(3, progress)}%` }} />
+        </div>
+      )}
     </section>
   );
 }
