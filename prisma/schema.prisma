@@ -97,7 +97,8 @@ model VideoJob {
 model VideoTemplate {
   id           String    @id @default(cuid())
   name         String
-  referenceUrl String // vídeo de referência enviado pelo usuário (Vercel Blob)
+  referenceUrl String // vídeo de referência enviado pelo usuário (Vercel Blob) ou o próprio link (quando sourceUrl)
+  sourceUrl    String? // link do YouTube/Pinterest; o worker baixa o vídeo com yt-dlp
   notes        String? // observações do usuário sobre o que aproveitar do vídeo
   status       String    @default("queued") // queued | analyzing | ready | failed
   progress     Int?

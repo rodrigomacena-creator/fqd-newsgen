@@ -301,7 +301,7 @@ def main():
     ap.add_argument("--job-file", help="render local de um job em JSON (formato da API), sem o app")
     ap.add_argument("--out", default="video.mp4", help="saída do --job-file")
     ap.add_argument("--reuse", action="store_true", help="com --job-file: reaproveita imagens e trilha já geradas")
-    ap.add_argument("--template-video", help="monta um template local a partir deste vídeo (sem o app); saída em --out")
+    ap.add_argument("--template-video", help="monta um template local a partir deste vídeo ou link do YouTube/Pinterest (sem o app); saída em --out")
     args = ap.parse_args()
     global REUSE_ASSETS
     REUSE_ASSETS = args.reuse

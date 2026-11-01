@@ -282,7 +282,11 @@ reais encontradas ao construir o projeto, não só a estrutura.
   `resolveStyle()` acha pode ir pra fila; o `claim` manda `templateSpec` junto quando o estilo é um
   template (render pelo motor genérico). Sem vídeo na fila, o worker pede um template pra montar
   (`/api/videogen/worker/templates/*`: claim atômico, progresso/ready/failed e token de upload limitado
-  ao exemplo/textura). Teste local sem o app: `python3 worker.py --template-video ref.mp4 --out pasta/`.
+  ao exemplo/textura). O template também pode vir de um **link do YouTube ou do Pinterest** (`VideoTemplate.sourceUrl`;
+  `referenceUrl` guarda o mesmo link): o worker baixa com yt-dlp (`worker/link_download.py`, só esses hosts,
+  até 1080p, de vídeo com mais de 3 min usa os 2 primeiros). O YouTube costuma bloquear IP de datacenter:
+  se falhar, configurar no `.env` do worker o proxy residencial (`RESIDENTIAL_PROXY_*`, mesmos nomes do
+  app) ou `VIDEOGEN_DOWNLOAD_PROXY`. Teste local sem o app: `python3 worker.py --template-video ref.mp4|URL --out pasta/`.
   Pronúncia (`pronunciation.ts`): o texto enviado ao TTS troca siglas/marcas em inglês e o site
   (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
   caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.

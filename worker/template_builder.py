@@ -202,7 +202,11 @@ def sample_job(result, spec):
 def build(template, workdir, report, costs, upload):
     """Monta o template. upload(path, file_kind) -> url pública. Devolve o payload do 'done'."""
     workdir.mkdir(parents=True, exist_ok=True)
-    ref = download(template["referenceUrl"], workdir / "referencia.mp4")
+    if template.get("sourceUrl"):  # link do YouTube/Pinterest: o worker baixa o vídeo
+        from link_download import download_link
+        ref, _title = download_link(template["sourceUrl"], workdir / "referencia.mp4")
+    else:
+        ref = download(template["referenceUrl"], workdir / "referencia.mp4")
     report(8)
 
     duration, width, height, has_audio = probe(ref)
@@ -283,7 +287,7 @@ def build(template, workdir, report, costs, upload):
 
 
 def build_local(video, out_dir, notes=""):
-    """Teste local sem o app: python3 worker.py --template-video ref.mp4 --out pasta/"""
+    """Teste local sem o app: python3 worker.py --template-video ref.mp4|URL --out pasta/"""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     costs = []
@@ -293,7 +297,10 @@ def build_local(video, out_dir, notes=""):
         dest.write_bytes(Path(path).read_bytes())
         return dest.resolve().as_uri()
 
-    template = {"referenceUrl": Path(video).resolve().as_uri(), "notes": notes}
+    if str(video).startswith(("http://", "https://")):  # link do YouTube/Pinterest
+        template = {"sourceUrl": str(video), "referenceUrl": str(video), "notes": notes}
+    else:
+        template = {"referenceUrl": Path(video).resolve().as_uri(), "notes": notes}
     result = build(template, out_dir / "work", lambda p: print(f"{p:.0f}%", flush=True), costs, upload)
     (out_dir / "template.json").write_text(json.dumps({**result, "costs": costs}, ensure_ascii=False, indent=2))
     return result

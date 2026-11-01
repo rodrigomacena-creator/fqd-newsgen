@@ -13,7 +13,7 @@ const MAX_BYTES = 300 * 1024 * 1024;
 const EXT: Record<string, string> = { "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm", "video/x-m4v": "m4v" };
 
 const HOW = [
-  { title: "Envie um vídeo de referência", body: "Um Reels ou Short com a edição que você quer copiar (até 300 MB)." },
+  { title: "Cole o link ou envie o vídeo", body: "Um Reels, Short ou pin com a edição que você quer copiar: link do YouTube ou do Pinterest, ou o arquivo." },
   { title: "A IA aprende a edição", body: "Ela assiste o vídeo e anota cores, fontes, legenda, transições e ritmo." },
   { title: "Veja o exemplo de 5s", body: "O motor de render monta um exemplo. Pronto, o estilo aparece no seletor." },
 ];
@@ -24,11 +24,15 @@ function randomId() {
   return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 16);
 }
 
+const LINK_RE = /^https?:\/\/([a-z0-9-]+\.)*(youtube\.com|youtu\.be|pin\.it|pinterest\.(com(\.[a-z]{2})?|co\.[a-z]{2}|[a-z]{2}))(\/|$)/i;
+
 function formatMb(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(bytes > 100 * 1024 * 1024 ? 0 : 1)} MB`;
 }
 
 export default function TemplatesPage() {
+  const [mode, setMode] = useState<"link" | "file">("link");
+  const [link, setLink] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
@@ -83,13 +87,39 @@ export default function TemplatesPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    setError(null);
+    if (mode === "link") {
+      if (!LINK_RE.test(link.trim())) {
+        setError("Cole um link do YouTube ou do Pinterest (ex.: youtube.com/shorts/…, pin.it/…).");
+        document.getElementById("tpl-link")?.focus();
+        return;
+      }
+      setBusy(true);
+      try {
+        const res = await fetch("/api/videogen/templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, notes, sourceUrl: link.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erro ao criar o template.");
+        setTemplates((list) => [data.template, ...(list ?? [])]);
+        setLink("");
+        setName("");
+        setNotes("");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Erro inesperado.");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (!file) {
       setError("Escolha o vídeo de referência.");
       inputRef.current?.focus();
       return;
     }
     setBusy(true);
-    setError(null);
     setUploadPct(0);
     try {
       const blob = await upload(`videogen/templates/ref-${randomId()}/referencia.${EXT[file.type]}`, file, {
@@ -175,6 +205,52 @@ export default function TemplatesPage() {
           <form onSubmit={handleSubmit} noValidate className={`${cardClass} min-w-0 space-y-5`} aria-busy={busy}>
             <h2 className={sectionTitle}>Novo template</h2>
 
+            <div role="tablist" aria-label="Como enviar a referência" className="inline-flex rounded-lg border border-border p-1">
+              {(
+                [
+                  ["link", "Colar link"],
+                  ["file", "Enviar arquivo"],
+                ] as const
+              ).map(([m, label]) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === m}
+                  onClick={() => {
+                    setMode(m);
+                    setError(null);
+                  }}
+                  disabled={busy}
+                  className={`min-h-9 rounded-md px-3 text-sm font-medium transition ${
+                    mode === m ? "bg-accent-yellow text-accent-yellow-ink" : "text-text-secondary hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {mode === "link" ? (
+              <div>
+                <label htmlFor="tpl-link" className="block text-sm font-medium">
+                  Link do vídeo <span aria-hidden>*</span>
+                </label>
+                <input
+                  id="tpl-link"
+                  type="url"
+                  inputMode="url"
+                  value={link}
+                  onChange={(e) => setLink(e.target.value)}
+                  disabled={busy}
+                  placeholder="https://www.youtube.com/shorts/… ou https://pin.it/…"
+                  className={`mt-2 ${fieldClass}`}
+                />
+                <p className="mt-1.5 text-xs text-text-secondary">
+                  YouTube (vídeo ou Short) ou Pinterest (pin com vídeo). O servidor baixa o vídeo sozinho; de vídeos longos, usa os 2 primeiros minutos.
+                </p>
+              </div>
+            ) : (
             <div>
               <span className="block text-sm font-medium">
                 Vídeo de referência <span aria-hidden>*</span>
@@ -215,6 +291,7 @@ export default function TemplatesPage() {
                 </span>
               </label>
             </div>
+            )}
 
             <div className="grid gap-5 sm:grid-cols-2">
               <div>
@@ -274,7 +351,7 @@ export default function TemplatesPage() {
 
             <button type="submit" disabled={busy} className={`w-full py-3.5 ${primaryButton}`}>
               {busy ? <Spinner className="h-4 w-4" /> : <Icon name="arrow" className="h-4 w-4" />}
-              {busy ? "Enviando…" : "Montar template"}
+              {busy ? (mode === "link" ? "Criando…" : "Enviando…") : "Montar template"}
             </button>
             <p className="text-center text-xs text-text-secondary">
               A montagem roda no servidor de render e leva de 2 a 5 minutos. Você pode sair desta página.
@@ -312,6 +389,10 @@ function TemplateCard({ t, busy, onRetry, onDelete }: { t: VideoTemplateDTO; bus
       <div className="relative aspect-[9/16] w-24 shrink-0 overflow-hidden rounded-lg bg-surface-2">
         {t.status === "ready" && t.sampleUrl ? (
           <video src={t.sampleUrl} muted loop playsInline autoPlay controls aria-label={`Exemplo de ${t.name}`} className="h-full w-full object-cover" />
+        ) : t.sourceUrl ? (
+          <span aria-hidden className="flex h-full w-full items-center justify-center text-text-secondary">
+            <Icon name="film" className="h-6 w-6" />
+          </span>
         ) : (
           <video src={`${t.referenceUrl}#t=1`} muted playsInline preload="metadata" aria-hidden className="h-full w-full object-cover opacity-60" />
         )}
@@ -348,13 +429,17 @@ function TemplateCard({ t, busy, onRetry, onDelete }: { t: VideoTemplateDTO; bus
         {t.status === "ready" && t.summary?.tom && <p className="mt-1.5 line-clamp-3 text-xs text-text-secondary">{t.summary.tom}</p>}
         {building && (
           <p className="mt-1.5 text-xs text-text-secondary">
-            {t.status === "queued" ? "Esperando o servidor de render." : "Analisando o vídeo e gerando o exemplo de 5s."}
+            {t.status === "queued"
+              ? "Esperando o servidor de render."
+              : t.sourceUrl && (t.progress ?? 0) < 8
+                ? "Baixando o vídeo do link."
+                : "Analisando o vídeo e gerando o exemplo de 5s."}
           </p>
         )}
         {t.status === "failed" && t.error && <p className="mt-1.5 line-clamp-3 text-xs text-accent-red [overflow-wrap:anywhere]">{t.error}</p>}
         <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-xs text-text-secondary">
           <a href={t.referenceUrl} target="_blank" rel="noreferrer" className="underline-offset-2 hover:text-accent-yellow hover:underline">
-            Ver referência
+            {t.sourceUrl ? (/pin(terest)?\./i.test(t.sourceUrl) ? "Ver no Pinterest" : "Ver no YouTube") : "Ver referência"}
           </a>
           {t.costSummary && t.costSummary.totalUsd > 0 && <span>≈ {formatUsd(t.costSummary.totalUsd)}</span>}
         </div>

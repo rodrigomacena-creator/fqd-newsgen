@@ -20,6 +20,8 @@ export interface VideoTemplateDTO {
   id: string;
   name: string;
   referenceUrl: string;
+  /** Link do YouTube/Pinterest quando o template foi montado a partir de um link. */
+  sourceUrl: string | null;
   notes: string | null;
   status: VideoTemplateStatus;
   progress: number | null;
@@ -37,6 +39,7 @@ export function serializeTemplate(t: VideoTemplate): VideoTemplateDTO {
     id: t.id,
     name: t.name,
     referenceUrl: t.referenceUrl,
+    sourceUrl: t.sourceUrl,
     notes: t.notes,
     status: t.status as VideoTemplateStatus,
     progress: t.progress,
@@ -99,4 +102,21 @@ export async function resolveStyle(id: string): Promise<ResolvedStyle | null> {
   const t = await prisma.videoTemplate.findUnique({ where: { id } });
   if (!t || t.status !== "ready") return null;
   return { pattern: templateToPattern(t), guide: t.guide ?? "", spec: parseJson<unknown>(t.spec) };
+}
+
+/** Link aceito para montar template: YouTube ou Pinterest (o worker baixa com yt-dlp). */
+export function normalizeSourceLink(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  const host = url.hostname.toLowerCase();
+  const ok =
+    /(^|\.)(youtube\.com|youtu\.be|pin\.it)$/.test(host) || /(^|\.)pinterest\.(com(\.[a-z]{2})?|co\.[a-z]{2}|[a-z]{2})$/.test(host);
+  if (!ok) return null;
+  url.protocol = "https:";
+  return url.toString();
 }

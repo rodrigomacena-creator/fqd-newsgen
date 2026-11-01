@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     });
     if (claimed.count === 1) {
       const t = await prisma.videoTemplate.findUniqueOrThrow({ where: { id: next.id } });
-      return NextResponse.json({ template: { id: t.id, name: t.name, referenceUrl: t.referenceUrl, notes: t.notes } });
+      return NextResponse.json({ template: { id: t.id, name: t.name, referenceUrl: t.referenceUrl, sourceUrl: t.sourceUrl, notes: t.notes } });
     }
   }
   return NextResponse.json({ template: null });
