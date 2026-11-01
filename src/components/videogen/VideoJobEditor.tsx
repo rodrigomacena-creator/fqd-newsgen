@@ -302,8 +302,7 @@ export function VideoJobEditor({ id }: { id: string }) {
   );
 
   return (
-    <Shell>
-      {stepBar}
+    <Shell top={stepBar}>
       <Link
         href="/videogen"
         className="inline-flex min-h-11 items-center gap-1.5 text-sm text-text-secondary transition hover:text-accent-yellow"
@@ -572,10 +571,11 @@ export function VideoJobEditor({ id }: { id: string }) {
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, top }: { children: React.ReactNode; top?: React.ReactNode }) {
   return (
     <div className="flex min-h-full flex-col">
       <Header wide />
+      {top}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
         {children}
       </main>
@@ -686,11 +686,12 @@ function StepBar({
   const skipped = (i: number) => noNarration && i === 2;
 
   return (
-    <section aria-label="Etapas do vídeo" className="sticky top-[69px] z-30 -mx-2 mb-6 pt-2 sm:mx-0">
-      {/* faixa por trás tapa o conteúdo que rola por baixo, entre o header e o card */}
-      <span aria-hidden className="absolute inset-x-0 -top-px h-6 bg-background" />
-      <div className="relative w-full overflow-hidden rounded-2xl border-2 border-accent-yellow bg-surface shadow-[0_14px_36px_rgba(0,0,0,0.16)] ring-4 ring-accent-yellow/10">
-      <div className="flex items-center justify-between gap-3 bg-accent-yellow px-4 py-1.5 text-accent-yellow-ink sm:px-5">
+    <section
+      aria-label="Etapas do vídeo"
+      className="sticky top-[69px] z-[9] w-full border-b-2 border-accent-yellow bg-surface shadow-[0_10px_28px_rgba(0,0,0,0.12)]"
+    >
+      <div className="bg-accent-yellow text-accent-yellow-ink">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-1.5 sm:px-6">
         <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em]">
           <Icon name="scenes" className="h-3.5 w-3.5" /> Controle de etapas
         </p>
@@ -698,8 +699,10 @@ function StepBar({
           {done ? "Tudo pronto" : <>Siga na ordem<span className="hidden sm:inline">: termine esta etapa para liberar a próxima</span> →</>}
         </p>
       </div>
+      </div>
+      <div className="mx-auto w-full max-w-6xl">
       {dirty && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-2/60 px-4 py-2 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-2/60 px-4 py-2 sm:px-6">
           <p className="text-xs font-medium sm:text-sm">
             <span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full bg-warning align-middle" />
             Alterações não salvas
@@ -715,7 +718,7 @@ function StepBar({
           </div>
         </div>
       )}
-      <div className="flex w-full flex-col gap-2.5 px-4 py-3 sm:px-5 lg:flex-row lg:items-center lg:gap-6">
+      <div className="flex w-full flex-col gap-2.5 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:gap-6">
         {/* celular: passo + barrinhas */}
         <div className="flex items-center justify-between gap-3 lg:hidden">
           <p className="text-xs font-semibold uppercase tracking-wide text-accent-yellow">
