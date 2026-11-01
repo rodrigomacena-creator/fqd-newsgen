@@ -4,7 +4,7 @@ import { deleteBlobIfOwned } from "@/lib/blobStorage";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { generateSceneImage, needsGeneratedImage, previewIsFresh } from "@/lib/videogen/storyboard";
-import { attachStockVideos, findStockVideo } from "@/lib/videogen/pexels";
+import { attachStockVideos, findStockVideo } from "@/lib/videogen/stockVideo";
 import type { VideoScript } from "@/lib/videogen/types";
 
 export const maxDuration = 300;
@@ -38,7 +38,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/jo
         if (!next) return NextResponse.json({ error: "Não achei outro vídeo para esta cena." }, { status: 404 });
         sc.stock = next;
       } catch (err) {
-        return NextResponse.json({ error: err instanceof Error ? err.message : "Falha no Pexels." }, { status: 502 });
+        return NextResponse.json({ error: err instanceof Error ? err.message : "Falha ao buscar vídeo de banco." }, { status: 502 });
       }
     }
     const saved = await prisma.videoJob.update({ where: { id }, data: { script: JSON.stringify(script) } });

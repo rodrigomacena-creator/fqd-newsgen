@@ -1012,6 +1012,9 @@ function Storyboard({
           </h2>
           <p className="mt-0.5 text-xs text-text-secondary">
             Veja as imagens antes do render e gere de novo só as que não gostou. O render usa estas imagens.
+            {scenes.some((sc) => sc.stock) && (
+              <> Vídeos de banco: {[...new Set(scenes.map((sc) => sc.stock && (sc.stock.source === "pexels" ? "Pexels" : "Pixabay")).filter(Boolean))].join(" e ")}.</>
+            )}
           </p>
         </div>
         {(missing > 0 || pendingStock > 0) && (

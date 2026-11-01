@@ -15,6 +15,7 @@ import { isAllowedImageUrl } from "./profiles";
 import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
 import { SCENE_LAYOUTS, enforcePhotoPrompts, freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
 import { HUMANIZER_RULE } from "./humanizer";
+import { STOCK_URL_RE } from "./stockVideo";
 
 // Claude via OpenRouter (Rodrigo quer um provedor só pra LLM).
 export const VIDEOGEN_TEXT_MODEL = process.env.VIDEOGEN_TEXT_MODEL || "anthropic/claude-sonnet-5.5";
@@ -193,8 +194,9 @@ export function normalizeScript(input: unknown): VideoScript {
     const stockQuery = str(o.stockQuery).slice(0, 80);
     if (stockQuery) scene.stockQuery = stockQuery;
     const st = (o.stock ?? null) as Record<string, unknown> | null;
-    if (st && typeof st.url === "string" && /^https:\/\/[a-z0-9.-]*pexels\.com\//i.test(st.url)) {
+    if (st && typeof st.url === "string" && STOCK_URL_RE.test(st.url)) {
       scene.stock = { url: st.url, thumb: str(st.thumb), id: Number(st.id) || 0, query: str(st.query), pick: Number(st.pick) || 0 };
+      if (st.source === "pixabay" || st.source === "pexels") scene.stock.source = st.source;
     }
     return scene;
   });

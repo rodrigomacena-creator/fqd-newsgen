@@ -21,10 +21,10 @@ export interface VideoScene {
   preview?: { url: string; prompt: string };
   /** Só no estilo livre: formato de montagem desta cena (ver SCENE_LAYOUTS em freeStyle.ts). */
   layout?: string;
-  /** Só no estilo livre: busca em inglês de um vídeo de banco (Pexels) para esta cena. */
+  /** Só no estilo livre: busca em inglês de um vídeo de banco (Pixabay/Pexels) para esta cena. */
   stockQuery?: string;
-  /** Clipe do Pexels escolhido para a cena (o worker usa no lugar da imagem). */
-  stock?: { url: string; thumb: string; id: number; query: string; pick?: number };
+  /** Clipe de banco (Pixabay/Pexels) escolhido para a cena (o worker usa no lugar da imagem). */
+  stock?: { url: string; thumb: string; id: number; query: string; pick?: number; source?: "pixabay" | "pexels" };
 }
 
 /** Imagem que o usuário subiu no briefing do vídeo (vai pra IA ver e pode ser usada nas cenas). */

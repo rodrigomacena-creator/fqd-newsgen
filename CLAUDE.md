@@ -317,9 +317,11 @@ reais encontradas ao construir o projeto, não só a estrutura.
   **Gancho**: o roteiro traz `script.hooks` (3 aberturas; a 1ª = cena 1) e o editor deixa trocar (`HookPicker`);
   o motor genérico abre com soco de zoom + clarão (`HOOK_LEN`). **Storyboard** (`storyboard.ts`, POST
   `.../storyboard`): gera a imagem de cada cena antes do render e salva em `scene.preview = {url, prompt}`; o worker
-  usa a prévia só se `preview.prompt` ainda é o `imagePrompt` da cena. **Vídeo de banco** (`pexels.ts`, só estilo
+  usa a prévia só se `preview.prompt` ainda é o `imagePrompt` da cena. **Vídeo de banco** (`stockVideo.ts`, só estilo
   livre com `image.photo`): a IA escreve `scene.stockQuery` (inglês); o app (storyboard ou `claim`, nunca o worker:
-  a chave `PEXELS_API_KEY` fica só na Vercel) acha o clipe vertical e grava `scene.stock`. No worker, cena com
+  as chaves ficam só na Vercel) acha o clipe e grava `scene.stock` (com `source`). Fonte principal: Pixabay
+  (`PIXABAY_API_KEY`; a API não filtra vertical, então prefere arquivos verticais e aceita horizontal ≥1080p, que o
+  worker recorta no centro); Pexels (`PEXELS_API_KEY`) fica de reserva (a emissão de chaves deles estava pausada em 11/2026). No worker, cena com
   `stock.url` vira tela cheia tocando o clipe (`extract_clip_frames` + `StockClip` no motor genérico); falhou, usa a imagem.
   **Editor de cenas em timeline** (`SceneStudio.tsx`): blocos por cena (largura = tempo, `sceneTiming.ts`
   espelha `worker/render/timeline.py`: tempos reais da narração se ela ainda bate com o roteiro, senão
@@ -389,4 +391,4 @@ Portal" aparece mas dá erro ao tentar enviar. `WORDPRESS_APP_PASSWORD` é a Sen
 `YOUTUBE_API_KEY` (YouTube Data API v3) é necessária só pra listar vídeos de canal/playlist;
 sem ela o resto do app funciona normalmente. `ELEVENLABS_API_KEY` é necessária só pro VideoGen
 (vozes e narração). `VIDEOGEN_WORKER_TOKEN` é o segredo compartilhado com o worker
-de render (sem ele as rotas `/api/videogen/worker/*` respondem 503). `PEXELS_API_KEY` (opcional) liga os vídeos de banco do estilo livre.
+de render (sem ele as rotas `/api/videogen/worker/*` respondem 503). `PIXABAY_API_KEY` (opcional; ou `PEXELS_API_KEY`) liga os vídeos de banco do estilo livre.

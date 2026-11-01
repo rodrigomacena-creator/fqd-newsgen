@@ -6,7 +6,7 @@ import { checkWorkerAuth } from "@/lib/videogen/workerAuth";
 import { getProfile } from "@/lib/videogen/profiles";
 import { FREE_STYLE_FALLBACK_SPEC } from "@/lib/videogen/freeStyle";
 import type { VideoScript } from "@/lib/videogen/types";
-import { attachStockVideos } from "@/lib/videogen/pexels";
+import { attachStockVideos } from "@/lib/videogen/stockVideo";
 
 // Um job "rendering" sem notícia do worker há esse tempo é considerado abandonado
 // (worker caiu ou reiniciou) e volta pra fila.
