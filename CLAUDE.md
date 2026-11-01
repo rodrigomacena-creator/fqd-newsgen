@@ -320,6 +320,9 @@ reais encontradas ao construir o projeto, não só a estrutura.
   baixado para `VIDEOGEN_MODELS_DIR`; sem modelo vira cartão). Os traços à mão são desenhados pelo render (na cor de
   destaque do estilo), por isso os imagePrompts não pedem setas/círculos. Ao criar um renderizador novo, use
   `motion.py` (corte, câmera, `ObjectLayer`, `Marks`, `emphasis`) guardado por `has_direction`.
+  **Voz humana** (`src/lib/videogen/humanizer.ts`): regras da skill "humanizer" (blader/humanizer, contra vícios de texto
+  de IA: "não é X, é Y", frases de efeito, trios forçados, travessões, palavras-muleta...) adaptadas pra narração em pt-BR;
+  entram no prompt de todo roteiro (`HUMANIZER_RULE` em `generateScript.ts`).
   **Perfis de comunicação** (`/videogen/perfis`, tabela `VideoProfile`, `src/lib/videogen/profiles.ts`,
   `/api/videogen/profiles*`): `kind` = `person` (quem fala: tom, jeito de falar, voz) ou `company` (para
   quem é o conteúdo: tom da marca, site, @, CTA, logo, cores). Cada vídeo guarda `personId`/`companyId`

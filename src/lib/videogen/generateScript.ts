@@ -14,6 +14,7 @@ import { mergePronunciations } from "./pronunciation";
 import { isAllowedImageUrl } from "./profiles";
 import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
 import { freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
+import { HUMANIZER_RULE } from "./humanizer";
 
 // Claude via OpenRouter (Rodrigo quer um provedor só pra LLM).
 export const VIDEOGEN_TEXT_MODEL = process.env.VIDEOGEN_TEXT_MODEL || "anthropic/claude-sonnet-5.5";
@@ -143,6 +144,7 @@ ${ctaRule(ctx.person, ctx.company)}${imagesRule}${directionPromptRule(pattern.id
 - "musicPrompt": em inglês, descreve a trilha instrumental no clima do padrão (sem vocais), para o ElevenLabs Music.
 - "postCaption": legenda do post em português, 2–4 linhas, com CTA e 3–6 hashtags.
 - Não invente números, estatísticas ou citações específicas que você não possa sustentar; prefira afirmações gerais e verdadeiras.
+${HUMANIZER_RULE}
 
 Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
 {
