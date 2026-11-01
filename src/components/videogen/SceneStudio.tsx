@@ -830,6 +830,28 @@ function SceneInspector({
           }
         />
 
+        {!scene.imageUrl && scene.layout !== "text_only" && (
+          <div>
+            <label htmlFor={ids("stock")} className={studioLabel}>
+              Vídeo de banco <span className="font-normal normal-case tracking-normal text-text-secondary">(opcional, busca em inglês)</span>
+            </label>
+            <input
+              id={ids("stock")}
+              value={scene.stockQuery ?? ""}
+              placeholder="ex.: barista pouring coffee"
+              maxLength={80}
+              onChange={(e) => onChange({ stockQuery: e.target.value || undefined, stock: undefined })}
+              disabled={disabled}
+              className={`mt-1.5 ${studioField}`}
+            />
+            <p className="mt-1.5 text-[11px] text-text-secondary">
+              {scene.stock
+                ? `Clipe escolhido (${scene.stock.source === "pexels" ? "Pexels" : "Pixabay"}). Troque no storyboard.`
+                : "Com uma busca aqui, a cena usa um vídeo filmado de verdade no lugar da imagem. Clique em “Buscar vídeos de banco” no storyboard para ver o clipe. Vale no estilo livre e nos templates."}
+            </p>
+          </div>
+        )}
+
         <MotionFields index={index} direction={scene.direction} directed={directed} disabled={disabled} onChange={(direction) => onChange({ direction })} onEnable={onEnableDirection} />
 
         <div>
