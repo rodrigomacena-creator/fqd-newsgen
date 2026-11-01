@@ -1,7 +1,7 @@
 "use client";
 
 // Peças de interface compartilhadas pelas telas do VideoGen.
-import { useLayoutEffect, useRef, type TextareaHTMLAttributes } from "react";
+import { useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
 import { VIDEO_STATUS_LABEL, type VideoJobStatus } from "@/lib/videogen/types";
 
 export const fieldClass =
@@ -77,6 +77,15 @@ const PATHS: Record<string, string> = {
   edit: "M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4",
   star: "M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z",
   x: "M6 6l12 12M18 6L6 18",
+  play: "M7 4.5v15l12.5-7.5z",
+  pause: "M8 5v14M16 5v14",
+  prev: "M15 6l-6 6 6 6",
+  next: "M9 6l6 6-6 6",
+  copy: "M9 9h11v11H9zM5 15H4V4h11v1",
+  grip: "M9 6v.5M9 12v.5M9 18v.5M15 6v.5M15 12v.5M15 18v.5",
+  wave: "M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2",
+  music: "M9 18V5l11-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zM20 16a3 3 0 11-6 0 3 3 0 016 0z",
+  scenes: "M3 6h4v12H3zM9 6h6v12H9zM17 6h4v12h-4z",
 };
 
 export function Icon({ name, className = "h-3.5 w-3.5" }: { name: keyof typeof PATHS | string; className?: string }) {
@@ -148,5 +157,27 @@ export function FlowSteps({ current, finished = false, skipped = [] }: { current
         })}
       </ol>
     </nav>
+  );
+}
+
+export function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch {
+          /* sem permissão de área de transferência: o usuário copia à mão */
+        }
+      }}
+      className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-medium text-accent-yellow transition hover:bg-accent-yellow/10"
+    >
+      {copied ? <Icon name="check" /> : null}
+      {copied ? "Copiada" : "Copiar"}
+    </button>
   );
 }
