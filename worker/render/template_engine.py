@@ -54,11 +54,16 @@ CHOICES = {
     "background.kind": ["solid", "gradient", "texture", "blurred_image"],
     "image.layout": ["fullbleed", "card", "circle", "top_half", "none"],
     "image.filter": ["none", "bw", "duotone", "warm", "cool", "contrast", "muted"],
-    "image.motion": ["push_in", "pull_out", "pan", "static"],
+    "image.motion": ["push_in", "pull_out", "pan", "ken_burns", "zoom_punch", "drift", "static"],
     "caption.animation": ["word_pop", "word_reveal", "karaoke", "line_fade", "typewriter"],
     "caption.highlight": ["box", "color", "underline", "none"],
-    "title.animation": ["slide_up", "fade", "pop", "typewriter"],
-    "transition.kind": ["cut", "punch_zoom", "crossfade", "slide_left", "slide_up", "blur_zoom", "flash"],
+    "title.animation": ["slide_up", "fade", "pop", "typewriter", "kinetic", "blur_in"],
+    "transition.kind": ["cut", "punch_zoom", "crossfade", "slide_left", "slide_up", "blur_zoom", "flash",
+                        "whip_pan", "zoom_in", "glitch"],
+    "motion.energy": ["calm", "medium", "high"],
+    "motion.camera": ["none", "handheld", "shake_on_beat"],
+    "motion.particles": ["none", "dust", "bokeh", "sparks"],
+    "motion.textIdle": ["none", "float", "pulse"],
     "cta.style": ["card", "fullscreen", "banner"],
 }
 
@@ -75,7 +80,12 @@ DEFAULT_SPEC = {
     "transition": {"kind": "punch_zoom", "durationS": 0.25},
     "overlay": {"grain": 0.3, "vignette": 0.3, "tint": "", "tintStrength": 0.0, "letterbox": False},
     "cta": {"style": "card", "background": "#111111", "color": "#FFFFFF", "font": "inter-black"},
+    # Movimento geral. Os padrões já dão vida a fichas antigas (que não têm este grupo).
+    "motion": {"energy": "medium", "camera": "none", "particles": "none", "beatPulse": True, "textIdle": "float",
+               "textExit": True},
 }
+
+ENERGY = {"calm": 0.6, "medium": 1.0, "high": 1.6}
 
 _HEX = re.compile(r"^#?([0-9a-fA-F]{6})$")
 
@@ -212,22 +222,37 @@ def _background(spec, scene_img=None, texture=None):
 
 
 class SceneVisual:
-    """Fundo + imagem da cena já tratados; frame(p) devolve o quadro com o movimento em p (0-1)."""
+    """Fundo + imagem da cena já tratados; frame(p, ...) devolve o quadro com o movimento em p (0-1).
+
+    Tudo se mexe o tempo todo: a imagem (zoom/pan), o fundo (paralaxe lenta), o card (entra com
+    impacto e flutua) e, se a ficha pedir, a câmera (tremida de mão ou tranco na batida).
+    """
 
     def __init__(self, spec, img, texture, seed):
         self.spec = spec
         lay = spec["image"]
+        mo = spec["motion"]
         self.layout = lay["layout"] if img is not None else "none"
         self.motion = lay["motion"]
+        self.amp = ENERGY[mo["energy"]]
+        self.camera = mo["camera"]
         self.seed = seed
+        self.dir = 1 if seed % 2 else -1
+        rnd = np.random.default_rng(seed + 11)
+        self.phase = rnd.uniform(0, 6.28, 6)
         img = _filter(img.convert("RGB"), lay["filter"], spec) if img is not None else None
         self.bg = _background(spec, img, texture)
+        # fundo com folga para a paralaxe (cor lisa não precisa)
+        self.bg_moves = spec["background"]["kind"] != "solid"
+        if self.bg_moves:
+            self.bg_big = self.bg.resize((int(W * 1.08), int(H * 1.08)), Image.BILINEAR)
         self.big = None
         self.card = None
+        self.shadow = None
         if self.layout == "fullbleed":
-            self.big = cover_resize(img, int(W * 1.16), int(H * 1.16))
+            self.big = cover_resize(img, int(W * 1.3), int(H * 1.3))
         elif self.layout == "top_half":
-            self.big = cover_resize(img, int(W * 1.12), int(H * 0.58 * 1.12))
+            self.big = cover_resize(img, int(W * 1.25), int(H * 0.58 * 1.25))
         elif self.layout in ("card", "circle"):
             cw = int(W * lay["scale"])
             ch = cw if self.layout == "circle" else int(cw * 1.25)
@@ -240,49 +265,135 @@ class SceneVisual:
                 framed.paste(card, (bw, bw), mask)
                 card = framed
                 mask = _rounded_mask(framed.size, radius + bw)
-            self.card = (card, mask)
+            rgba = card.convert("RGBA")
+            rgba.putalpha(mask)
+            self.card = rgba
             if lay["shadow"]:
                 sh = Image.new("L", (card.width + 120, card.height + 120), 0)
                 sh.paste(mask.point(lambda v: int(v * 0.45)), (60, 80))
                 self.shadow = sh.filter(ImageFilter.GaussianBlur(28))
-            else:
-                self.shadow = None
 
     def _zoom(self, p):
-        p = ease(p) if self.motion != "static" else 0
-        if self.motion == "push_in":
-            return 1.0 + 0.08 * p, 0
-        if self.motion == "pull_out":
-            return 1.08 - 0.08 * p, 0
-        if self.motion == "pan":
-            return 1.04, (p - 0.5) * (1 if self.seed % 2 else -1)
-        return 1.0, 0
+        """(zoom, pan_x, pan_y) da imagem em p. Mistura linear + ease para nunca "parar" no meio."""
+        a = self.amp
+        q = 0.45 * p + 0.55 * ease(p)
+        m = self.motion
+        if m == "push_in":
+            return 1.0 + 0.14 * a * q, 0.0, 0.0
+        if m == "pull_out":
+            return 1.0 + 0.14 * a * (1 - q), 0.0, 0.0
+        if m == "pan":
+            return 1.06 + 0.03 * a, (q - 0.5) * 1.6 * self.dir, 0.0
+        if m == "ken_burns":
+            return 1.02 + 0.12 * a * q, (q - 0.5) * 1.0 * self.dir, (0.5 - q) * 0.6
+        if m == "zoom_punch":  # entra fechado e abre rápido, depois segue aproximando devagar
+            hit = (1 - ease(min(p / 0.18, 1.0))) * 0.16 * a
+            return 1.02 + hit + 0.05 * a * p, 0.0, 0.0
+        if m == "drift":  # flutua devagar em todas as direções
+            t = p * 3.0
+            return (1.06 + 0.02 * a * math.sin(t + self.phase[0]),
+                    0.35 * a * math.sin(t * 0.9 + self.phase[1]),
+                    0.25 * a * math.sin(t * 0.7 + self.phase[2]))
+        return 1.0, 0.0, 0.0
 
-    def frame(self, p):
-        fr = self.bg.copy()
-        z, pan = self._zoom(p)
+    def _camera(self, t, pulse):
+        """Deslocamento (px) da câmera: tremida de mão contínua ou tranco nas batidas."""
+        if self.camera == "handheld":
+            k = 7 * self.amp
+            ph = self.phase
+            return (k * (math.sin(t * 2.1 + ph[3]) + 0.5 * math.sin(t * 5.3 + ph[4])),
+                    k * (math.sin(t * 1.7 + ph[5]) + 0.5 * math.sin(t * 4.1 + ph[0])))
+        if self.camera == "shake_on_beat" and pulse > 0.01:
+            k = 22 * self.amp * pulse
+            return k * math.sin(t * 61), k * math.cos(t * 47)
+        return 0.0, 0.0
+
+    def frame(self, p, local_t=0.0, t=0.0, pulse=0.0, shake=0.0):
+        z, panx, pany = self._zoom(p)
+        z += 0.05 * self.amp * pulse
+        sx, sy = self._camera(t, shake)
+        if self.bg_moves:
+            bw, bh = self.bg_big.size
+            ox = (bw - W) / 2 * (1 - (p - 0.5) * 0.8 * self.dir) - sx * 0.4
+            oy = (bh - H) / 2 - sy * 0.4
+            ox, oy = min(max(ox, 0), bw - W), min(max(oy, 0), bh - H)
+            fr = self.bg_big.crop((int(ox), int(oy), int(ox) + W, int(oy) + H))
+        else:
+            fr = self.bg.copy()
         if self.big is not None:
             bw, bh = self.big.size
             tw, th = (W, H) if self.layout == "fullbleed" else (W, int(H * 0.58))
-            f = 1.16 if self.layout == "fullbleed" else 1.12
+            f = 1.3 if self.layout == "fullbleed" else 1.25
             r = min(bw / tw, bh / th)
             cw, ch = min(bw, int(tw * r / (f * z))), min(bh, int(th * r / (f * z)))
-            cx = (bw - cw) / 2 + pan * (bw - cw) / 2
-            cy = (bh - ch) / 2
+            cx = (bw - cw) / 2 + panx * (bw - cw) / 2 - sx
+            cy = (bh - ch) / 2 + pany * (bh - ch) / 2 - sy
+            cx, cy = min(max(cx, 0), bw - cw), min(max(cy, 0), bh - ch)
             crop = self.big.crop((int(cx), int(cy), int(cx) + cw, int(cy) + ch)).resize((tw, th), Image.BILINEAR)
             fr.paste(crop, (0, 0))
         elif self.card is not None:
-            card, mask = self.card
-            s = z
-            w, h = int(card.width * s), int(card.height * s)
-            c, m = card.resize((w, h), Image.BILINEAR), mask.resize((w, h), Image.BILINEAR)
-            x = (W - w) // 2 + int(pan * 60)
-            y = int(H * self.spec["image"]["y"] - h / 2)
+            # entrada com impacto (sobe e passa um pouco do tamanho) + flutuação contínua
+            k = min(local_t / 0.4, 1.0)
+            enter = 0.82 + 0.18 * ease(k) + 0.05 * math.sin(k * math.pi) * self.amp
+            s = enter * (0.97 + 0.06 * (z - 1.0) / max(0.14 * self.amp, 0.01) * 0.5 + 0.03 * pulse)
+            bob = math.sin(local_t * 2.2 + self.phase[0]) * 12 * self.amp
+            rot = math.sin(local_t * 1.3 + self.phase[1]) * 1.6 * self.amp
+            card = self.card.resize((max(1, int(self.card.width * s)), max(1, int(self.card.height * s))), Image.BILINEAR)
+            if abs(rot) > 0.05:
+                card = card.rotate(rot, resample=Image.BILINEAR, expand=True)
+            x = (W - card.width) / 2 + panx * 70 + sx
+            y = H * self.spec["image"]["y"] - card.height / 2 + bob + (1 - ease(k)) * 90 + sy
             if self.shadow is not None:
-                sh = self.shadow.resize((int(self.shadow.width * s), int(self.shadow.height * s)))
-                fr.paste((0, 0, 0), (x - int(60 * s), y - int(60 * s)), sh)
-            fr.paste(c, (x, y), m)
+                sh = self.shadow.resize((max(1, int(self.shadow.width * s)), max(1, int(self.shadow.height * s))))
+                fr.paste((0, 0, 0), (int(x + (card.width - sh.width) / 2), int(y + (card.height - sh.height) / 2 + 20 * s)), sh)
+            fr.paste(card, (int(x), int(y)), card)
         return np.asarray(fr, dtype=np.uint8)
+
+
+class Particles:
+    """Partículas flutuando por cima da imagem (poeira, bokeh desfocado ou faíscas)."""
+
+    def __init__(self, spec, seed=5):
+        self.kind = spec["motion"]["particles"]
+        if self.kind == "none":
+            return
+        amp = ENERGY[spec["motion"]["energy"]]
+        rnd = np.random.default_rng(seed)
+        n = {"dust": 60, "bokeh": 18, "sparks": 40}[self.kind]
+        self.x0 = rnd.uniform(0, W, n)
+        self.y0 = rnd.uniform(0, H, n)
+        self.ph = rnd.uniform(0, 6.28, n)
+        if self.kind == "dust":
+            self.vy, self.vx = rnd.uniform(-25, -8, n) * amp, rnd.uniform(-8, 8, n)
+            sizes, color, soft = rnd.uniform(2, 5, n), (255, 255, 255), 1.2
+        elif self.kind == "bokeh":
+            self.vy, self.vx = rnd.uniform(-14, -4, n) * amp, rnd.uniform(-10, 10, n)
+            sizes, color, soft = rnd.uniform(28, 80, n), rgb(spec["palette"]["accent"]), 0.55
+        else:
+            self.vy, self.vx = rnd.uniform(-120, -50, n) * amp, rnd.uniform(-30, 30, n)
+            sizes, color, soft = rnd.uniform(2, 4, n), rgb(spec["palette"]["accent"]), 1.0
+        self.alpha = rnd.uniform(0.25, 0.7, n) if self.kind != "bokeh" else rnd.uniform(0.08, 0.22, n)
+        self.sprites = [self._sprite(int(sz), color, soft) for sz in sizes]
+
+    @staticmethod
+    def _sprite(r, color, soft):
+        size = r * 2 + 4
+        yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+        d = np.sqrt((xx - size / 2) ** 2 + (yy - size / 2) ** 2) / r
+        a = np.clip((1 - d) * (1 / max(1 - soft * 0.6, 0.15)), 0, 1)
+        arr = np.zeros((size, size, 4), np.uint8)
+        arr[..., :3] = color
+        arr[..., 3] = (a * 255).astype(np.uint8)
+        return Image.fromarray(arr, "RGBA")
+
+    def draw(self, fr, t):
+        if self.kind == "none":
+            return
+        for i, sp in enumerate(self.sprites):
+            x = (self.x0[i] + self.vx[i] * t + 18 * math.sin(t * 0.8 + self.ph[i])) % (W + 100) - 50
+            y = (self.y0[i] + self.vy[i] * t) % (H + 100) - 50
+            flicker = 0.75 + 0.25 * math.sin(t * 3 + self.ph[i]) if self.kind == "sparks" else 1.0
+            _paste_rgba(fr, sp, x - sp.width / 2, y - sp.height / 2, self.alpha[i] * flicker)
 
 
 # ---------- texto ----------
@@ -370,6 +481,7 @@ class Captions:
         self.cfg = spec["caption"]
         self.style = TextStyle(self.cfg, spec["palette"])
         self.keys = keys
+        self.amp = ENERGY[spec["motion"]["energy"]]
         words = [w for w in words if w[1] < cta_start - 0.05 and _clean(w[0])]
         chars = max(8, int(self.MAX_W / (self.cfg["size"] * 0.58)))
         lines = group_lines(words, max_chars=chars, max_words=self.cfg["maxWordsPerLine"])
@@ -430,6 +542,9 @@ class Captions:
                 alpha = ease((t - w[1]) / 0.12)
             elif anim == "karaoke" and t >= w[1] and self._mode(w[0], False) == "normal":
                 im = self.style.word_img(w[0], size, "spoken")
+            if anim != "typewriter" and w[1] <= t < w[1] + 0.3:  # a palavra falada agora dá um "pulo"
+                k = (t - w[1]) / 0.3
+                scale *= 1 + 0.09 * self.amp * math.sin(k * math.pi)
             if typed is not None:
                 n = len(_clean(w[0]))
                 if typed <= 0:
@@ -478,40 +593,118 @@ def _text_block(text, style, size, max_w=900, align_center=True, color=None):
 
 
 class Title:
-    """Texto da tela (onScreen) de cada cena, com animação de entrada."""
+    """Texto da tela (onScreen) de cada cena: entrada animada, "respiração" enquanto fica na tela
+    e saída rápida antes do corte."""
 
     def __init__(self, spec):
         self.cfg = spec["title"]
+        self.mo = spec["motion"]
+        self.amp = ENERGY[self.mo["energy"]]
         self.style = TextStyle(self.cfg, spec["palette"])
         self._cache = {}
+        self._words = {}
 
-    def draw(self, fr, text, local_t):
+    def _kinetic_layout(self, text):
+        """Palavras soltas com a posição de cada uma no bloco (para entrarem uma a uma)."""
+        if text in self._words:
+            return self._words[text]
+        size = int(self.cfg["size"])
+        txt = self.style.text(text.strip())
+        while True:
+            f = font(self.style.path, size)
+            lines = _wrap(txt, f, 900)
+            if len(lines) <= 4 or size <= 40:
+                break
+            size = int(size * 0.88)
+        lh = int(size * 1.18)
+        sw = self.style.stroke_w if self.style.stroke else 0
+        items = []
+        for li, ln in enumerate(lines):
+            parts = ln.split()
+            widths = [f.getlength(w) for w in parts]
+            space = f.getlength(" ")
+            x = (W - (sum(widths) + space * (len(parts) - 1))) / 2
+            for w, wd in zip(parts, widths):
+                bb = f.getbbox(w, stroke_width=sw)
+                im = Image.new("RGBA", (int(wd) + 2 * sw + 8, lh + 2 * sw), (0, 0, 0, 0))
+                ImageDraw.Draw(im).text((sw + 4, sw), w, font=f, fill=self.style.color, stroke_width=sw,
+                                        stroke_fill=self.style.stroke)
+                items.append((im, x - sw - 4, li * lh, bb))
+                x += wd + space
+        total_h = lh * len(lines)
+        self._words[text] = (items, total_h)
+        return self._words[text]
+
+    def _idle(self, local_t):
+        idle = self.mo["textIdle"]
+        if idle == "float":
+            return math.sin(local_t * 2.4) * 7 * self.amp, 1.0
+        if idle == "pulse":
+            return 0.0, 1.0 + 0.025 * self.amp * math.sin(local_t * 4.2)
+        return 0.0, 1.0
+
+    def draw(self, fr, text, local_t, span=99.0):
         text = _plain(text)
         if not self.cfg["enabled"] or not text.strip():
             return
+        anim = self.cfg["animation"]
+        cy = int(H * self.cfg["y"])
+        idle_dy, idle_s = self._idle(local_t)
+        # saída: some subindo nos últimos 0,18s da cena (só em cenas com tempo para isso)
+        out = 0.0
+        if self.mo["textExit"] and span > 0.9:
+            out = ease(max(0.0, (local_t - (span - 0.18)) / 0.18))
+        exit_alpha, exit_dy = 1 - out, -40 * out
+
+        if anim == "kinetic":
+            items, total_h = self._kinetic_layout(text)
+            top = cy - total_h / 2
+            if self.cfg["box"]:
+                xs = [x for _, x, _, _ in items]
+                x1s = [x + im.width for im, x, _, _ in items]
+                _box(fr, min(xs) - 30, top - 22, max(x1s) + 30, top + total_h + 22, rgb(self.cfg["boxColor"]),
+                     0.9 * min(1, local_t / 0.15) * exit_alpha)
+            for i, (im, x, y, _) in enumerate(items):
+                k = (local_t - i * 0.07) / 0.28
+                if k <= 0:
+                    continue
+                e = ease(k)
+                sc = 0.6 + 0.4 * e + 0.08 * math.sin(min(k, 1) * math.pi) * self.amp
+                d = im.resize((max(1, int(im.width * sc)), max(1, int(im.height * sc)))) if abs(sc - 1) > 0.01 else im
+                _paste_rgba(fr, d, x + (im.width - d.width) / 2,
+                            top + y + (im.height - d.height) / 2 + (1 - e) * 50 + idle_dy + exit_dy,
+                            min(1.0, k * 2) * exit_alpha)
+            return
+
         if text not in self._cache:
             self._cache[text] = _text_block(text, self.style, int(self.cfg["size"]))
-        im = self._cache[text]
-        anim = self.cfg["animation"]
+        full = self._cache[text]
+        im = full
         k = ease(local_t / 0.45)
         alpha, dy, scale = 1.0, 0, 1.0
         if anim == "slide_up":
-            alpha, dy = k, (1 - k) * 60
+            alpha, dy = k, (1 - k) * 90 * self.amp
         elif anim == "fade":
             alpha = k
         elif anim == "pop":
-            alpha, scale = min(1, local_t / 0.12), 0.7 + 0.3 * k + 0.06 * math.sin(min(local_t / 0.3, 1) * math.pi)
+            alpha, scale = min(1, local_t / 0.12), 0.6 + 0.4 * k + 0.1 * self.amp * math.sin(min(local_t / 0.3, 1) * math.pi)
+        elif anim == "blur_in":
+            alpha, scale = k, 1.12 - 0.12 * k
+            blur = (1 - k) * 14
+            if blur > 0.4:
+                im = im.filter(ImageFilter.GaussianBlur(blur))
         elif anim == "typewriter":
             frac = min(1.0, local_t / 0.8)
             im = im.crop((0, 0, max(1, int(im.width * frac)), im.height)) if frac < 1 else im
-        cy = int(H * self.cfg["y"])
-        draw_im = im if scale == 1.0 else im.resize((max(1, int(im.width * scale)), max(1, int(im.height * scale))))
-        x = (W - (self._cache[text].width if anim == "typewriter" else draw_im.width)) / 2
+        scale *= idle_s
+        dy += idle_dy + exit_dy
+        alpha *= exit_alpha
+        draw_im = im if abs(scale - 1.0) < 0.005 else im.resize((max(1, int(im.width * scale)), max(1, int(im.height * scale))))
+        x = (W - (full.width if anim == "typewriter" else draw_im.width)) / 2
         y = cy - draw_im.height / 2 + dy
         if self.cfg["box"]:
-            full = self._cache[text]
-            _box(fr, (W - full.width) / 2 - 30, cy - full.height / 2 - 22, (W + full.width) / 2 + 30,
-                 cy + full.height / 2 + 22, rgb(self.cfg["boxColor"]), 0.9 * alpha)
+            _box(fr, (W - full.width) / 2 - 30, cy - full.height / 2 - 22 + dy, (W + full.width) / 2 + 30,
+                 cy + full.height / 2 + 22 + dy, rgb(self.cfg["boxColor"]), 0.9 * alpha)
         _paste_rgba(fr, draw_im, x, y, alpha)
 
 
@@ -576,6 +769,46 @@ def _transition(prev, cur, k, kind):
     if kind == "flash":
         w = (1 - k) ** 2
         return (cur.astype(np.float32) * (1 - w) + 255 * w).astype(np.uint8)
+    if kind == "whip_pan":  # chicote: desliza rápido com rastro de movimento
+        off = int(W * (1 - ease(k)))
+        if not off:
+            return cur
+        out = np.empty_like(cur)
+        out[:, :W - off] = prev[:, off:]
+        out[:, W - off:] = cur[:, :off]
+        strength = math.sin(k * math.pi)
+        if strength > 0.05:
+            step = max(1, int(26 * strength))
+            acc = out.astype(np.float32)
+            for j in (1, 2, 3, 4):
+                acc += np.roll(out, j * step, axis=1)
+            out = (acc / 5).astype(np.uint8)
+        return out
+    if kind == "zoom_in":  # mergulha na cena anterior e sai já na nova
+        if k < 0.5:
+            src, z, blur = prev, 1.0 + 0.5 * ease(k * 2), 16 * k * 2
+        else:
+            src, z, blur = cur, 1.0 + 0.3 * (1 - ease((k - 0.5) * 2)), 16 * (1 - (k - 0.5) * 2)
+        im = Image.fromarray(src)
+        cw, ch = int(W / z), int(H / z)
+        im = im.crop(((W - cw) // 2, (H - ch) // 2, (W - cw) // 2 + cw, (H - ch) // 2 + ch)).resize((W, H), Image.BILINEAR)
+        if blur > 0.5:
+            im = im.filter(ImageFilter.GaussianBlur(blur))
+        return np.asarray(im)
+    if kind == "glitch":  # canais de cor separados e faixas deslocadas, sumindo
+        w = (1 - k) ** 1.5
+        src = prev if k < 0.35 else cur
+        out = src.copy()
+        sh = int(30 * w)
+        if sh:
+            out[..., 0] = np.roll(src[..., 0], sh, axis=1)
+            out[..., 2] = np.roll(src[..., 2], -sh, axis=1)
+        rnd = np.random.default_rng(int(k * 1000))
+        for _ in range(int(8 * w)):
+            y0 = int(rnd.integers(0, H - 40))
+            hh = int(rnd.integers(10, 90))
+            out[y0:y0 + hh] = np.roll(out[y0:y0 + hh], int(rnd.integers(-120, 120) * w), axis=1)
+        return out
     return cur
 
 
@@ -638,8 +871,23 @@ def render(job, assets, out_path, on_progress=None):
     captions = Captions(spec, tl.words, keys, tl.cta_start)
     title = Title(spec)
     finisher = Finisher(spec)
+    particles = Particles(spec)
+    mo = spec["motion"]
+    # batidas: começo de cada cena e cada palavra-chave falada (dão o "tranco" de zoom/câmera)
+    beats = sorted({sc.start for sc in tl.scenes[1:]} |
+                   {w[1] for w in tl.words if norm(w[0]) in keys and w[1] < tl.cta_start})
+
+    def beat_at(t):
+        b = 0.0
+        for s0 in beats:
+            if s0 > t:
+                break
+            if t - s0 < 0.3:
+                b = max(b, (1 - (t - s0) / 0.3) ** 2)
+        return b
+
     last_visual = visuals[tl.scenes[-1].index] if tl.scenes else None
-    cta_base = last_visual.frame(1.0) if last_visual is not None else None
+    cta_base = last_visual.frame(1.0, 99.0) if last_visual is not None else None
     if cta_base is not None and spec["cta"]["style"] != "fullscreen":
         cta_base = np.asarray(Image.fromarray(cta_base).filter(ImageFilter.GaussianBlur(18)))
     cta_card = CtaCard(spec, cta.get("onScreen") or " ".join(w[0] for w in cta_words), cta_base)
@@ -655,20 +903,24 @@ def render(job, assets, out_path, on_progress=None):
                 local = t - tl.cta_start
                 fr = cta_card.frame(local)
                 if local < tdur and tl.scenes:
-                    prev = visuals[tl.scenes[-1].index].frame(1.0)
+                    prev = visuals[tl.scenes[-1].index].frame(1.0, 99.0, t)
                     fr = _transition(prev, fr, local / tdur, trans["kind"])
+                fr = np.array(fr, copy=True)
+                particles.draw(fr, t)
             else:
                 i = next(k for k, s in enumerate(tl.scenes) if t < s.end or k == len(tl.scenes) - 1)
                 sc = tl.scenes[i]
                 span = max(sc.end - sc.start, 0.01)
                 local = t - sc.start
-                fr = visuals[sc.index].frame(local / span)
+                b = beat_at(t)
+                fr = visuals[sc.index].frame(local / span, local, t, b if mo["beatPulse"] else 0.0, b)
                 if i > 0 and local < tdur:
                     prev_sc = tl.scenes[i - 1]
-                    prev = visuals[prev_sc.index].frame(1.0)
+                    prev = visuals[prev_sc.index].frame(1.0, prev_sc.end - prev_sc.start, t)
                     fr = _transition(prev, fr, local / tdur, trans["kind"])
                 fr = np.array(fr, copy=True)
-                title.draw(fr, sc.data.get("onScreen") or "", local)
+                particles.draw(fr, t)
+                title.draw(fr, sc.data.get("onScreen") or "", local, span)
                 captions.draw(fr, t)
             fr = finisher.apply(np.ascontiguousarray(fr), n)
             writer.write(fr)

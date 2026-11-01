@@ -105,8 +105,15 @@ Formato da ficha "spec" (todas as cores em "#RRGGBB"; números dentro das faixas
   "title": {{"enabled": true/false, "font": ..., "size": 40-200, "uppercase": true/false, "color": ..., "stroke": cor do contorno ou "", "strokeWidth": 0-14, "y": 0.04-0.96, "animation": ..., "box": true/false, "boxColor": ...}},
   "transition": {{"kind": ..., "durationS": 0.05-0.9}},
   "overlay": {{"grain": 0-1, "vignette": 0-1, "tint": cor ou "", "tintStrength": 0-0.6, "letterbox": true/false}},
-  "cta": {{"style": ..., "background": ..., "color": ..., "font": ...}}
+  "cta": {{"style": ..., "background": ..., "color": ..., "font": ...}},
+  "motion": {{"energy": quanto tudo se mexe (calm = lento e elegante, medium, high = frenético), "camera": none | handheld (tremida de mão contínua) | shake_on_beat (tranco a cada corte e palavra-chave), "particles": none | dust (poeira clara) | bokeh (círculos desfocados na cor de destaque) | sparks (faíscas subindo), "beatPulse": true/false (zoom rápido a cada corte e palavra-chave), "textIdle": none | float (texto flutua) | pulse (texto respira), "textExit": true/false (texto sai antes do corte)}}
 }}
+
+Movimento é o que mais diferencia um Reels de um slideshow. Observe nos quadros e nas medidas como
+a referência se mexe: zoom constante, câmera tremida, textos que entram palavra por palavra (title
+"kinetic"), cortes com chicote (whip_pan), mergulho (zoom_in) ou glitch. Na dúvida, prefira mais
+movimento a menos: só escolha "static", energy "calm" e camera "none" se a referência for
+claramente parada e contemplativa. Varie as escolhas conforme o vídeo, não use sempre as mesmas.
 
 Texto sobre foto precisa ser legível: use contorno, caixa de fundo ou posicione fora da imagem.
 No "sample", escreva o texto puro, sem markdown (nada de *asteriscos*).

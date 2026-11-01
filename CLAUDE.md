@@ -262,7 +262,8 @@ reais encontradas ao construir o projeto, não só a estrutura.
   modelo com visão (`VIDEOGEN_VISION_MODEL`) e recebe uma **ficha de estilo** (`spec`) que o **motor
   genérico** `worker/render/template_engine.py` sabe renderizar (fundo, tratamento/movimento da imagem,
   legenda, título, transição, sobreposições, CTA — `normalize_spec()` é a fonte da verdade do formato e
-  corrige qualquer valor inválido), mais um guia pro roteirista (`guide`) e um exemplo de 5s (`sampleUrl`).
+  corrige qualquer valor inválido). O grupo `motion` da ficha (energia, câmera, partículas, pulso na batida, texto flutuando/
+  saindo) tem padrões que já dão movimento a fichas antigas que não o têm, mais um guia pro roteirista (`guide`) e um exemplo de 5s (`sampleUrl`).
   Decisão do Rodrigo: motor único configurável, **nunca** código gerado por IA rodando na VPS. O seletor
   de estilo sempre mostra o exemplo de 5s do estilo escolhido. Depois de
   editar/adicionar um padrão, rode `node scripts/videogen-patterns.mjs` pra regenerar
