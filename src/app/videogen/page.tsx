@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { BriefingImages } from "@/components/videogen/BriefingImages";
+import { ScriptLoader } from "@/components/videogen/ScriptLoader";
 import { formatUsd } from "@/components/videogen/CostPanel";
 import { FlowSteps, Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, sectionTitle } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
@@ -15,7 +16,6 @@ import { useProfiles } from "@/lib/videogen/useProfiles";
 import { DEFAULT_VOICE_ID, DURATION_OPTIONS, WORDS_PER_SECOND, type BriefingImage, type VideoProfileDTO } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
-const STAGES = ["Lendo o guia do padrão…", "Escrevendo o roteiro…", "Desenhando as cenas…", "Quase lá…"];
 const MAX_TOPIC = 2000;
 const noopSubscribe = () => () => {};
 
@@ -50,7 +50,6 @@ export default function VideoGenPage() {
   const [durationS, setDurationS] = useState(15);
   const [extraInstructions, setExtraInstructions] = useState("");
   const [loading, setLoading] = useState(false);
-  const [stage, setStage] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<VideoJobDTO[] | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -75,12 +74,6 @@ export default function VideoGenPage() {
     return () => clearInterval(t);
   }, [anyRendering]);
 
-  useEffect(() => {
-    if (!loading) return;
-    const id = setInterval(() => setStage((s) => Math.min(s + 1, STAGES.length - 1)), 6000);
-    return () => clearInterval(id);
-  }, [loading]);
-
   const pattern = getStyle(patternId);
 
   async function handleSubmit(event: FormEvent) {
@@ -95,7 +88,6 @@ export default function VideoGenPage() {
       return;
     }
     setLoading(true);
-    setStage(0);
     setError(null);
     try {
       const res = await fetch("/api/videogen/jobs", {
@@ -412,14 +404,15 @@ export default function VideoGenPage() {
               </div>
             )}
 
-            <button type="submit" disabled={loading} className={`w-full py-3.5 ${primaryButton}`}>
-              {loading && <Spinner className="h-4 w-4" />}
-              {loading ? STAGES[stage] : (
-                <>
-                  Gerar roteiro <Icon name="arrow" className="h-4 w-4" />
-                </>
-              )}
-            </button>
+            {loading ? (
+              <div className="rounded-2xl border border-accent-yellow/40 bg-accent-yellow/5 px-4 py-4">
+                <ScriptLoader />
+              </div>
+            ) : (
+              <button type="submit" className={`w-full py-3.5 ${primaryButton}`}>
+                Gerar roteiro <Icon name="arrow" className="h-4 w-4" />
+              </button>
+            )}
             {!loading && (
               <p className="text-center text-xs text-text-secondary">
                 Próximo: você revisa o roteiro, depois gera a narração e manda para o render.
