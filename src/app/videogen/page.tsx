@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
+import { BriefingImages } from "@/components/videogen/BriefingImages";
 import { formatUsd } from "@/components/videogen/CostPanel";
 import { FlowSteps, Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, sectionTitle } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
 import { VIDEO_PATTERNS, type VideoPattern } from "@/lib/videogen/patterns";
 import { useStyles } from "@/lib/videogen/useStyles";
-import { DEFAULT_VOICE_ID, DURATION_OPTIONS, WORDS_PER_SECOND } from "@/lib/videogen/types";
+import { useProfiles } from "@/lib/videogen/useProfiles";
+import { DEFAULT_VOICE_ID, DURATION_OPTIONS, WORDS_PER_SECOND, type BriefingImage, type VideoProfileDTO } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
 const STAGES = ["Lendo o guia do padrão…", "Escrevendo o roteiro…", "Desenhando as cenas…", "Quase lá…"];
@@ -32,8 +34,19 @@ export default function VideoGenPage() {
   );
   const patternId =
     chosenPattern ?? (wantedPattern && styles.some((s) => s.id === wantedPattern) ? wantedPattern : VIDEO_PATTERNS[0]?.id ?? "");
-  const [voiceId, setVoiceId] = useState(DEFAULT_VOICE_ID);
-  const [voiceName, setVoiceName] = useState("Macena");
+  const { people, companies, loaded: profilesLoaded } = useProfiles();
+  // null = ainda não escolheu (usa o perfil padrão); "" = nenhum
+  const [chosenPerson, setChosenPerson] = useState<string | null>(null);
+  const [chosenCompany, setChosenCompany] = useState<string | null>(null);
+  const personId = chosenPerson ?? people.find((p) => p.isDefault)?.id ?? people[0]?.id ?? "";
+  const companyId = chosenCompany ?? companies.find((p) => p.isDefault)?.id ?? companies[0]?.id ?? "";
+  const person = people.find((p) => p.id === personId);
+  // A voz segue a da pessoa até o usuário trocar à mão.
+  const [chosenVoice, setChosenVoice] = useState<{ id: string; name: string } | null>(null);
+  const voiceId = chosenVoice?.id ?? person?.voiceId ?? DEFAULT_VOICE_ID;
+  const voiceName = chosenVoice?.name ?? (person?.voiceId ? person.voiceName || person.name : "Macena");
+  const [briefingImages, setBriefingImages] = useState<BriefingImage[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [durationS, setDurationS] = useState(15);
   const [extraInstructions, setExtraInstructions] = useState("");
   const [loading, setLoading] = useState(false);
@@ -77,6 +90,10 @@ export default function VideoGenPage() {
       document.getElementById("topic")?.focus();
       return;
     }
+    if (uploadingImages) {
+      setError("Espere as imagens terminarem de enviar.");
+      return;
+    }
     setLoading(true);
     setStage(0);
     setError(null);
@@ -84,7 +101,17 @@ export default function VideoGenPage() {
       const res = await fetch("/api/videogen/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, patternId, voiceId, voiceName, durationS, extraInstructions }),
+        body: JSON.stringify({
+          topic,
+          patternId,
+          voiceId,
+          voiceName,
+          durationS,
+          extraInstructions,
+          personId: personId || null,
+          companyId: companyId || null,
+          briefingImages,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Não foi possível gerar o roteiro. Tente de novo.");
@@ -162,6 +189,61 @@ export default function VideoGenPage() {
               <p id="topic-help" className="mt-1.5 text-xs text-text-secondary">
                 Uma frase basta. Quanto mais específico (público, ângulo, exemplo), melhor o roteiro.
               </p>
+            </section>
+
+            <fieldset className={cardClass} disabled={loading}>
+              <legend className="sr-only">Quem fala e para qual empresa</legend>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className={sectionTitle} aria-hidden>
+                  Quem fala e para quem
+                </h2>
+                <Link
+                  href="/videogen/perfis"
+                  className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-accent-yellow hover:underline"
+                >
+                  <Icon name="edit" className="h-4 w-4" /> Gerenciar perfis
+                </Link>
+              </div>
+              <div className="mt-3 grid gap-5 sm:grid-cols-2">
+                <ProfileSelect
+                  id="person"
+                  label="Quem fala no vídeo"
+                  icon="user"
+                  noneLabel="Narrador neutro (sem perfil)"
+                  profiles={people}
+                  value={personId}
+                  loaded={profilesLoaded}
+                  onChange={(id) => {
+                    setChosenPerson(id);
+                    setChosenVoice(null);
+                  }}
+                />
+                <ProfileSelect
+                  id="company"
+                  label="Para qual empresa"
+                  icon="building"
+                  noneLabel="Nenhuma (sem marca, site ou @)"
+                  profiles={companies}
+                  value={companyId}
+                  loaded={profilesLoaded}
+                  onChange={setChosenCompany}
+                />
+              </div>
+            </fieldset>
+
+            <section className={cardClass} aria-labelledby="briefing-images-title">
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 id="briefing-images-title" className={sectionTitle}>
+                  Imagens do briefing
+                </h2>
+                <span className="text-xs text-text-secondary">opcional</span>
+              </div>
+              <p className="mt-1 text-xs text-text-secondary">
+                Fotos do produto, do cliente, prints… A IA olha as imagens para escrever o roteiro e usa elas nas cenas em vez de gerar.
+              </p>
+              <div className="mt-3">
+                <BriefingImages images={briefingImages} onChange={setBriefingImages} disabled={loading} onBusyChange={setUploadingImages} />
+              </div>
             </section>
 
             <fieldset className={cardClass} disabled={loading}>
@@ -257,16 +339,17 @@ export default function VideoGenPage() {
                       id="voice"
                       voices={voices}
                       value={voiceId}
-                      onChange={(v) => {
-                        setVoiceId(v.id);
-                        setVoiceName(v.name);
-                      }}
+                      onChange={(v) => setChosenVoice({ id: v.id, name: v.name })}
                       disabled={loading || pattern?.semNarracao}
                       loading={loadingVoices}
                       error={voicesError}
                     />
                   </div>
-                  {pattern?.semNarracao && <p className="mt-1 text-xs text-text-secondary">Este estilo não usa narração.</p>}
+                  {pattern?.semNarracao ? (
+                    <p className="mt-1 text-xs text-text-secondary">Este estilo não usa narração.</p>
+                  ) : (
+                    person?.voiceId && !chosenVoice && <p className="mt-1 text-xs text-text-secondary">Voz do perfil {person.name}.</p>
+                  )}
                 </div>
                 <div>
                   <span id="duration-label" className="block text-sm font-medium">
@@ -411,6 +494,58 @@ export default function VideoGenPage() {
           </aside>
         </div>
       </main>
+    </div>
+  );
+}
+
+function ProfileSelect({
+  id,
+  label,
+  icon,
+  noneLabel,
+  profiles,
+  value,
+  loaded,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  icon: string;
+  noneLabel: string;
+  profiles: VideoProfileDTO[];
+  value: string;
+  loaded: boolean;
+  onChange: (id: string) => void;
+}) {
+  const selected = profiles.find((p) => p.id === value);
+  const summary = selected ? [selected.tone, selected.site, selected.instagram].filter(Boolean).join(" · ") : "";
+  return (
+    <div>
+      <label htmlFor={id} className="flex items-center gap-1.5 text-sm font-medium">
+        <Icon name={icon} className="h-4 w-4 text-text-secondary" /> {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={!loaded}
+        className={`mt-2 bg-background text-foreground ${fieldClass}`}
+      >
+        {!loaded && <option className="bg-background text-foreground">Carregando…</option>}
+        {loaded &&
+          profiles.map((p) => (
+            <option key={p.id} value={p.id} className="bg-background text-foreground">
+              {p.name}
+              {p.isDefault ? " (padrão)" : ""}
+            </option>
+          ))}
+        {loaded && (
+          <option value="" className="bg-background text-foreground">
+            {noneLabel}
+          </option>
+        )}
+      </select>
+      {summary && <p className="mt-1.5 line-clamp-2 text-xs text-text-secondary">{summary}</p>}
     </div>
   );
 }

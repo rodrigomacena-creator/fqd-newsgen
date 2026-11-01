@@ -82,6 +82,39 @@ def mix(video, narration, music, duration, out, music_vol=0.55):
     )
 
 
+def overlay_logo(video, logo_path, start, duration, out, max_w=420, max_h=200, top=150):
+    """Põe o logo da empresa no topo do vídeo a partir de `start` (o CTA), com fade.
+
+    O logo vai sobre um cartão branco arredondado: funciona com logo escuro ou claro e com
+    qualquer fundo de estilo. Reencoda só o vídeo (o áudio é mixado depois).
+    """
+    from PIL import ImageDraw
+
+    logo = Image.open(logo_path)
+    logo = logo.convert("RGBA")
+    bbox = logo.getbbox()
+    if bbox:
+        logo = logo.crop(bbox)
+    s = min(max_w / logo.width, max_h / logo.height)
+    logo = logo.resize((max(1, round(logo.width * s)), max(1, round(logo.height * s))), Image.LANCZOS)
+    pad = 36
+    card = Image.new("RGBA", (logo.width + pad * 2, logo.height + pad * 2), (0, 0, 0, 0))
+    ImageDraw.Draw(card).rounded_rectangle((0, 0, card.width - 1, card.height - 1), radius=28, fill=(255, 255, 255, 240))
+    card.alpha_composite(logo, (pad, pad))
+    card_path = os.path.splitext(out)[0] + "_logo.png"
+    card.save(card_path)
+    start = max(0.0, min(start, duration - 0.5))
+    fc = (f"[1:v]format=rgba,fade=t=in:st={start:.2f}:d=0.35:alpha=1[l];"
+          f"[0:v][l]overlay=x=(W-w)/2:y={top}:enable='gte(t,{start:.2f})'[v]")
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-i", video, "-loop", "1", "-t", f"{duration:.2f}", "-i", card_path,
+         "-filter_complex", fc, "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+         "-pix_fmt", "yuv420p", "-r", str(FPS), "-t", f"{duration:.2f}", out],
+        check=True,
+    )
+    return out
+
+
 def vignette(strength=0.55):
     yy, xx = np.mgrid[0:H, 0:W]
     r = np.sqrt(((xx - W / 2) / (W / 2)) ** 2 + ((yy - H / 2) / (H / 2)) ** 2)

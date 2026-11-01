@@ -295,6 +295,22 @@ reais encontradas ao construir o projeto, não só a estrutura.
   `ELEVENLABS_USD_PER_CREDIT` (padrão US$ 22 / 100 mil, plano Creator). O worker manda os gastos
   dele somados por etapa junto do `done`/`failed`. Jobs com `costs` nulo são anteriores a isso.
   Excluir um job apaga a pasta `videogen/<id>/` no Blob; não é permitido enquanto `rendering`.
+  **Perfis de comunicação** (`/videogen/perfis`, tabela `VideoProfile`, `src/lib/videogen/profiles.ts`,
+  `/api/videogen/profiles*`): `kind` = `person` (quem fala: tom, jeito de falar, voz) ou `company` (para
+  quem é o conteúdo: tom da marca, site, @, CTA, logo, cores). Cada vídeo guarda `personId`/`companyId`
+  (sem FK de propósito: perfil apagado = roteiro genérico). O prompt do roteiro (`generateScript.ts`)
+  monta as seções PESSOA/EMPRESA a partir deles — **nada de marca fixa no código** (o "Oxyn" hardcoded
+  foi removido; Macena e Oxyn Group viraram perfis padrão via migration). CTA só usa site/@ cadastrados,
+  nunca inventa. Pronúncias = `DEFAULT_PRONUNCIATIONS` (só termos genéricos) + pessoa + empresa + roteiro,
+  nessa ordem (`mergePronunciations(...listas)`). Um padrão por tipo (`makeDefault`).
+  **Imagens do briefing** (`VideoJob.briefingImages`, JSON `{url, note?}[]`, máx. 8): sobem do navegador
+  direto pro Blob (`uploadImage()` → `/api/videogen/uploads`, prefixos `videogen/briefing/` e
+  `videogen/perfis/` pra logos). Vão pro modelo do roteiro como visão (reduzidas com sharp, base64), que
+  devolve `userImage` (número) por cena → vira `scene.imageUrl`. No worker, cena com `imageUrl` usa a foto
+  (`prepare_user_image`: vertical = corte central; horizontal = foto inteira sobre fundo desfocado) em vez
+  de gerar. Toda imagem usada numa cena precisa estar em `briefingImages` (o editor garante) — é por essa
+  lista que o PATCH/DELETE do job apaga os blobs. O `claim` manda `brand.logoUrl` da empresa e o worker
+  põe o logo num cartão branco no topo durante o CTA (`overlay_logo` em `render/common.py`), em todos os estilos.
 
 `Article.sources` e `Article.sections` são JSON-em-string (não tabelas relacionais) — decisão
 deliberada de simplicidade, mantida assim de propósito.

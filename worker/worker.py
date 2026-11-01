@@ -27,9 +27,9 @@ from pathlib import Path
 
 import requests
 
-from providers import download, generate_image, generate_music, silent_audio
+from providers import download, generate_image, generate_music, prepare_user_image, silent_audio
 from render import RENDERERS, template_engine
-from render.common import mix
+from render.common import mix, overlay_logo
 from render.timeline import build_timeline
 
 HERE = Path(__file__).resolve().parent
@@ -157,10 +157,22 @@ def produce(job, workdir, report=lambda p: None, costs=None):
     def cached(fn, path, *a):
         return path if REUSE_ASSETS and path.exists() else fn(*a, path, costs=costs)
 
+    def scene_image(i, sc):
+        """Foto do usuário (briefing) quando a cena tem imageUrl; senão gera com IA."""
+        path = workdir / f"cena_{i:02d}.jpg"
+        if sc.get("imageUrl"):
+            try:
+                return prepare_user_image(sc["imageUrl"], path)
+            except Exception as e:
+                if not (sc.get("imagePrompt") or sc.get("visual")):
+                    raise
+                log(f"cena {i + 1}: foto do usuário falhou ({e}); gerando com IA")
+        return cached(generate_image, path, sc.get("imagePrompt") or sc.get("visual") or "")
+
     with ThreadPoolExecutor(5) as ex:
         music_f = ex.submit(cached, generate_music, workdir / "trilha.mp3", script.get("musicPrompt"), tl.duration)
         futs = {
-            i: ex.submit(cached, generate_image, workdir / f"cena_{i:02d}.jpg", sc.get("imagePrompt") or sc.get("visual") or "")
+            i: ex.submit(scene_image, i, sc)
             for i, sc in enumerate(scenes) if i in used
         }
         done_count = 0
@@ -188,7 +200,19 @@ def produce(job, workdir, report=lambda p: None, costs=None):
         if texture_url:
             extra["texture"] = download(texture_url, workdir / "textura.jpg")
     duration = module.render(job, {"images": images, **extra}, str(video_only), on_progress=lambda p: report(50 + 40 * p))
-    report(92)
+    report(91)
+
+    logo_url = (job.get("brand") or {}).get("logoUrl")
+    if logo_url:
+        try:
+            ext = Path(logo_url.split("?")[0]).suffix.lower() or ".png"
+            logo = download(logo_url, workdir / f"logo{ext}")
+            branded = workdir / "video_logo.mp4"
+            overlay_logo(str(video_only), str(logo), tl.cta_start, duration, str(branded))
+            video_only = branded
+        except Exception as e:
+            log(f"logo da empresa: {e} (segue sem logo)")
+    report(93)
 
     final = workdir / "video.mp4"
     mix(str(video_only), str(narration) if narration else None, str(music), duration, str(final))

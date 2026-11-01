@@ -79,6 +79,9 @@ model VideoJob {
   videoUrl           String? // mp4 final no Vercel Blob (escrito pelo worker)
   progress           Int? // 0-100, atualizado pelo worker
   costs              String? // JSON string: CostEntry[] (gastos de OpenRouter e ElevenLabs, ver src/lib/videogen/costs.ts)
+  personId           String? // VideoProfile (kind person) que fala no vídeo; sem FK de propósito (perfil apagado = genérico)
+  companyId          String? // VideoProfile (kind company) para quem é o conteúdo
+  briefingImages     String? // JSON string: BriefingImage[] (imagens enviadas pelo usuário, usadas nas cenas sem gerar)
   error              String?
   startedAt          DateTime?
   finishedAt         DateTime?
@@ -110,4 +113,28 @@ model VideoTemplate {
   updatedAt    DateTime  @updatedAt
 
   @@index([status, createdAt])
+}
+
+// Perfis de comunicação do VideoGen: quem fala no vídeo (pessoa) e para quem é o conteúdo (empresa).
+// Entram no prompt do roteiro, na voz da narração e nas pronúncias.
+model VideoProfile {
+  id             String   @id @default(cuid())
+  kind           String // person | company
+  name           String
+  description    String? // quem é / sobre a empresa
+  tone           String? // tom de voz, humor
+  speech         String? // jeito de falar: vocabulário, bordões, o que evitar
+  voiceId        String? // pessoa: voz do ElevenLabs
+  voiceName      String?
+  site           String? // empresa
+  instagram      String? // @perfil (sem inventar quando vazio)
+  cta            String? // CTA padrão
+  logoUrl        String? // empresa: logo no Vercel Blob
+  colors         String? // empresa: cores da marca (texto livre, ex.: "#E10600, preto")
+  pronunciations String? // JSON: Pronunciation[] (ex.: nome da marca falado)
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([kind, name])
 }

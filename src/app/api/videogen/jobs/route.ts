@@ -5,6 +5,7 @@ import { generateVideoScript, VIDEOGEN_TEXT_MODEL } from "@/lib/videogen/generat
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { DEFAULT_VOICE_ID } from "@/lib/videogen/types";
+import { cleanBriefingImages, getProfile } from "@/lib/videogen/profiles";
 
 export const maxDuration = 300;
 
@@ -25,6 +26,9 @@ export async function POST(request: Request) {
     durationS?: number;
     extraInstructions?: string;
     textModel?: string;
+    personId?: string;
+    companyId?: string;
+    briefingImages?: unknown;
   };
   try {
     body = await request.json();
@@ -40,13 +44,22 @@ export async function POST(request: Request) {
   const durationS = Math.min(90, Math.max(5, Math.round(Number(body.durationS) || 15)));
   const textModel = body.textModel?.trim() || VIDEOGEN_TEXT_MODEL;
   const extraInstructions = body.extraInstructions?.trim().slice(0, 2000) || null;
+  const person = await getProfile(body.personId?.trim(), "person");
+  const company = await getProfile(body.companyId?.trim(), "company");
+  const briefingImages = cleanBriefingImages(body.briefingImages);
+  // Voz: a escolhida no formulário; senão a da pessoa; senão a padrão.
+  const voiceId = body.voiceId?.trim() || person?.voiceId || DEFAULT_VOICE_ID;
+  const voiceName = body.voiceId?.trim() ? body.voiceName?.trim() || voiceId : person?.voiceId ? person.voiceName || person.name : "Macena";
 
   const job = await prisma.videoJob.create({
     data: {
       topic,
       patternId: pattern.id,
-      voiceId: body.voiceId?.trim() || DEFAULT_VOICE_ID,
-      voiceName: body.voiceName?.trim() || "Macena",
+      voiceId,
+      voiceName,
+      personId: person?.id ?? null,
+      companyId: company?.id ?? null,
+      briefingImages: briefingImages.length ? JSON.stringify(briefingImages) : null,
       durationS,
       textModel,
       extraInstructions,
@@ -55,7 +68,17 @@ export async function POST(request: Request) {
   });
 
   try {
-    const { script, usd } = await generateVideoScript({ pattern, guide, topic, durationS, extraInstructions, model: textModel });
+    const { script, usd } = await generateVideoScript({
+      pattern,
+      guide,
+      topic,
+      durationS,
+      extraInstructions,
+      model: textModel,
+      person,
+      company,
+      briefingImages,
+    });
     await appendCosts(job.id, [costEntry("script", "openrouter", { usd })]);
     const updated = await prisma.videoJob.update({
       where: { id: job.id },

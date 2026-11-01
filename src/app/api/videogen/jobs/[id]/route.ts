@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { deleteBlobsByPrefix } from "@/lib/blobStorage";
+import { deleteBlobIfOwned, deleteBlobsByPrefix } from "@/lib/blobStorage";
+import { cleanBriefingImages, parseBriefingImages } from "@/lib/videogen/profiles";
 import { normalizeScript } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { fullNarration } from "@/lib/videogen/types";
@@ -12,10 +13,13 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/videogen/jo
   return NextResponse.json({ job: serializeVideoJob(job) });
 }
 
-/** Salva a edição do roteiro. Se a narração mudou, a narração gerada antes deixa de valer. */
+/**
+ * Salva a edição do roteiro (e das imagens do briefing). Se a narração mudou, a narração
+ * gerada antes deixa de valer. Imagem tirada do briefing e que nenhuma cena usa é apagada do Blob.
+ */
 export async function PATCH(request: Request, ctx: RouteContext<"/api/videogen/jobs/[id]">) {
   const { id } = await ctx.params;
-  let body: { script?: unknown; voiceId?: string; voiceName?: string };
+  let body: { script?: unknown; voiceId?: string; voiceName?: string; briefingImages?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -46,6 +50,14 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/videogen/j
     data.voiceName = body.voiceName?.trim() || body.voiceId.trim();
     narrationChanged = true;
   }
+  let removedImages: string[] = [];
+  if (body.briefingImages !== undefined) {
+    const next = cleanBriefingImages(body.briefingImages);
+    const finalScript = data.script ? (JSON.parse(data.script as string) as { scenes: { imageUrl?: string }[] }) : job.script ? JSON.parse(job.script) : { scenes: [] };
+    const inUse = new Set<string>([...next.map((i) => i.url), ...(finalScript.scenes ?? []).map((s: { imageUrl?: string }) => s.imageUrl).filter(Boolean)]);
+    removedImages = parseBriefingImages(job.briefingImages).map((i) => i.url).filter((u) => !inUse.has(u));
+    data.briefingImages = next.length ? JSON.stringify(next) : null;
+  }
   if (narrationChanged) {
     data.narrationUrl = null;
     data.narrationWords = null;
@@ -53,6 +65,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/videogen/j
   }
 
   const updated = await prisma.videoJob.update({ where: { id }, data });
+  await Promise.all(removedImages.map((u) => deleteBlobIfOwned(u)));
   return NextResponse.json({ job: serializeVideoJob(updated) });
 }
 
@@ -67,6 +80,8 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/videogen
     );
   }
   await deleteBlobsByPrefix(`videogen/${id}/`);
+  // imagens do briefing sobem antes do job existir (outra pasta); a cena usa as mesmas URLs
+  await Promise.all(parseBriefingImages(job.briefingImages).map((i) => deleteBlobIfOwned(i.url)));
   await prisma.videoJob.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

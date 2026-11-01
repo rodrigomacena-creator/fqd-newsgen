@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { CostPanel } from "@/components/videogen/CostPanel";
+import { BriefingImages } from "@/components/videogen/BriefingImages";
 import {
   FlowSteps,
   FLOW_STEPS,
@@ -24,8 +25,18 @@ import {
 } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
 import { useStyles } from "@/lib/videogen/useStyles";
-import { DEFAULT_PRONUNCIATIONS } from "@/lib/videogen/pronunciation";
-import { WORDS_PER_SECOND, fullNarration, type VideoScene, type VideoScript } from "@/lib/videogen/types";
+import { useProfiles } from "@/lib/videogen/useProfiles";
+import { mergePronunciations } from "@/lib/videogen/pronunciation";
+import { uploadImage } from "@/lib/videogen/uploadImage";
+import {
+  MAX_BRIEFING_IMAGES,
+  WORDS_PER_SECOND,
+  fullNarration,
+  type BriefingImage,
+  type Pronunciation,
+  type VideoScene,
+  type VideoScript,
+} from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
 const EMPTY_SCENE: VideoScene = { narration: "", onScreen: "", visual: "", imagePrompt: "", durationS: 2 };
@@ -36,8 +47,10 @@ export function VideoJobEditor({ id }: { id: string }) {
   const router = useRouter();
   const { voices, loading: loadingVoices, error: voicesError } = useVoices();
   const { loaded: stylesLoaded, getStyle } = useStyles();
+  const { profiles, loaded: profilesLoaded } = useProfiles();
   const [job, setJob] = useState<VideoJobDTO | null>(null);
   const [script, setScript] = useState<VideoScript | null>(null);
+  const [briefing, setBriefing] = useState<BriefingImage[]>([]);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +60,7 @@ export function VideoJobEditor({ id }: { id: string }) {
   const applyJob = useCallback((next: VideoJobDTO) => {
     setJob(next);
     setScript(next.script);
+    setBriefing(next.briefingImages ?? []);
     setDirty(false);
   }, []);
 
@@ -109,7 +123,7 @@ export function VideoJobEditor({ id }: { id: string }) {
     const data = await call("save", `/api/videogen/jobs/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ script }),
+      body: JSON.stringify({ script, briefingImages: briefing }),
     });
     if (data) {
       applyJob(data.job);
@@ -122,7 +136,7 @@ export function VideoJobEditor({ id }: { id: string }) {
     const data = await call("save", `/api/videogen/jobs/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ voiceId, voiceName, ...(dirty && script ? { script } : {}) }),
+      body: JSON.stringify({ voiceId, voiceName, ...(dirty && script ? { script, briefingImages: briefing } : {}) }),
     });
     if (data) applyJob(data.job);
   }
@@ -132,6 +146,15 @@ export function VideoJobEditor({ id }: { id: string }) {
       ? "Gerar o roteiro de novo descarta suas edições e a narração atual. Continuar?"
       : "Gerar o roteiro de novo substitui o atual e descarta a narração. Continuar?";
     if (script && !window.confirm(msg)) return;
+    // imagens do briefing mudadas entram no roteiro novo (as edições do roteiro são descartadas)
+    if (dirty && JSON.stringify(briefing) !== JSON.stringify(job?.briefingImages ?? [])) {
+      const saved = await call("save", `/api/videogen/jobs/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ briefingImages: briefing }),
+      });
+      if (!saved) return;
+    }
     const data = await call("script", `/api/videogen/jobs/${id}/script`, { method: "POST" });
     if (data) applyJob(data.job);
   }
@@ -157,6 +180,7 @@ export function VideoJobEditor({ id }: { id: string }) {
   function discard() {
     if (!job) return;
     setScript(job.script);
+    setBriefing(job.briefingImages ?? []);
     setDirty(false);
   }
 
@@ -179,6 +203,18 @@ export function VideoJobEditor({ id }: { id: string }) {
       [scenes[index], scenes[target]] = [scenes[target], scenes[index]];
       return { ...s, scenes };
     });
+    setDirty(true);
+  }
+
+  /** Atualiza as imagens do briefing; cena que usava uma imagem removida volta para a imagem da IA. */
+  function changeBriefing(next: BriefingImage[]) {
+    setBriefing(next);
+    const keep = new Set(next.map((i) => i.url));
+    setScript((s) =>
+      s && s.scenes.some((sc) => sc.imageUrl && !keep.has(sc.imageUrl))
+        ? { ...s, scenes: s.scenes.map((sc) => (sc.imageUrl && !keep.has(sc.imageUrl) ? { ...sc, imageUrl: undefined } : sc)) }
+        : s
+    );
     setDirty(true);
   }
 
@@ -221,6 +257,12 @@ export function VideoJobEditor({ id }: { id: string }) {
   }
 
   const pattern = getStyle(job.patternId);
+  const person = profiles.find((p) => p.id === job.personId);
+  const company = profiles.find((p) => p.id === job.companyId);
+  const profileLine = profilesLoaded
+    ? `${person?.name ?? (job.personId ? "Pessoa removida" : "Narrador neutro")} para ${company?.name ?? (job.companyId ? "empresa removida" : "nenhuma empresa")}`
+    : "…";
+  const fixedPronunciations = mergePronunciations(person?.pronunciations ?? [], company?.pronunciations ?? []);
   const noNarration = Boolean(pattern?.semNarracao);
   const locked = job.status === "queued" || job.status === "rendering";
   const disabled = locked || busy !== null;
@@ -262,7 +304,7 @@ export function VideoJobEditor({ id }: { id: string }) {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight text-balance sm:text-3xl">{script?.title || job.topic}</h1>
           <p className="mt-2 text-sm text-text-secondary">
-            {pattern ? pattern.nome : stylesLoaded ? "Estilo removido" : "…"} · alvo {job.durationS}s
+            {profileLine} · {pattern ? pattern.nome : stylesLoaded ? "Estilo removido" : "…"} · alvo {job.durationS}s
           </p>
         </div>
         <StatusBadge status={job.status} progress={job.progress} />
@@ -334,6 +376,8 @@ export function VideoJobEditor({ id }: { id: string }) {
                       scene={scene}
                       noNarration={noNarration}
                       disabled={disabled}
+                      briefing={briefing}
+                      onAddImage={(url) => changeBriefing([...briefing, { url }])}
                       onChange={(patch) => updateScene(i, patch)}
                       onMove={(d) => moveScene(i, d)}
                       onRemove={() => removeScene(i)}
@@ -348,6 +392,20 @@ export function VideoJobEditor({ id }: { id: string }) {
                 >
                   <Icon name="plus" className="h-4 w-4" /> Adicionar cena
                 </button>
+              </section>
+
+              <section className={cardClass} aria-labelledby="briefing-title">
+                <h2 id="briefing-title" className={sectionTitle}>
+                  Imagens do briefing
+                </h2>
+                <p className="mt-1 text-xs text-text-secondary">
+                  {briefing.length
+                    ? `${script.scenes.filter((sc) => sc.imageUrl).length} de ${script.scenes.length} cenas usam suas fotos; as outras têm imagem gerada pela IA. Escolha a imagem de cada cena acima.`
+                    : "Sem fotos suas: todas as cenas usam imagem gerada pela IA. Envie fotos para usar nas cenas (e no roteiro, se gerar de novo)."}
+                </p>
+                <div className="mt-3">
+                  <BriefingImages images={briefing} onChange={changeBriefing} disabled={disabled} />
+                </div>
               </section>
 
               <section className={cardClass} aria-labelledby="fecho-title">
@@ -471,7 +529,12 @@ export function VideoJobEditor({ id }: { id: string }) {
                   Siglas em inglês e o site viram a pronúncia certa automaticamente. Ajuste abaixo, se precisar.
                 </p>
               )}
-              <PronunciationEditor script={script} disabled={disabled} onChange={(p) => update({ pronunciations: p })} />
+              <PronunciationEditor
+                script={script}
+                fixed={fixedPronunciations}
+                disabled={disabled}
+                onChange={(p) => update({ pronunciations: p })}
+              />
             </section>
           )}
 
@@ -691,6 +754,8 @@ function SceneCard({
   scene,
   noNarration,
   disabled,
+  briefing,
+  onAddImage,
   onChange,
   onMove,
   onRemove,
@@ -700,6 +765,8 @@ function SceneCard({
   scene: VideoScene;
   noNarration: boolean;
   disabled: boolean;
+  briefing: BriefingImage[];
+  onAddImage: (url: string) => void;
   onChange: (patch: Partial<VideoScene>) => void;
   onMove: (delta: number) => void;
   onRemove: () => void;
@@ -790,7 +857,15 @@ function SceneCard({
           />
         </div>
       </div>
-      <details className="group mt-3">
+      <SceneImage
+        index={index}
+        scene={scene}
+        briefing={briefing}
+        disabled={disabled}
+        onPick={(url) => onChange({ imageUrl: url })}
+        onAddImage={onAddImage}
+      />
+      <details className="group mt-1" hidden={Boolean(scene.imageUrl)}>
         <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-foreground">
           <span aria-hidden className="transition group-open:rotate-90">›</span> Prompt da imagem (inglês)
         </summary>
@@ -804,6 +879,135 @@ function SceneCard({
         />
       </details>
     </li>
+  );
+}
+
+/** Imagem da cena: gerada pela IA (prompt) ou uma foto do briefing / enviada agora. */
+function SceneImage({
+  index,
+  scene,
+  briefing,
+  disabled,
+  onPick,
+  onAddImage,
+}: {
+  index: number;
+  scene: VideoScene;
+  briefing: BriefingImage[];
+  disabled: boolean;
+  onPick: (url: string | undefined) => void;
+  onAddImage: (url: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const n = index + 1;
+  const full = briefing.length >= MAX_BRIEFING_IMAGES;
+
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const url = await uploadImage(file, "briefing");
+      onAddImage(url);
+      onPick(url);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao enviar a imagem.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-border p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        {scene.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={scene.imageUrl} alt={`Foto usada na cena ${n}`} className="h-16 w-9 shrink-0 rounded-md object-cover ring-1 ring-border" />
+        ) : (
+          <span aria-hidden className="flex h-16 w-9 shrink-0 items-center justify-center rounded-md bg-surface-2 text-text-secondary">
+            <Icon name="image" className="h-4 w-4" />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold">{scene.imageUrl ? "Sua foto" : "Imagem gerada pela IA"}</p>
+          <p className="text-xs text-text-secondary">
+            {scene.imageUrl ? "Entra na cena no lugar da imagem gerada." : "Criada no render a partir do prompt abaixo."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            disabled={disabled}
+            aria-expanded={open}
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-medium text-accent-yellow transition hover:bg-accent-yellow/10 disabled:opacity-50"
+          >
+            <Icon name="image" /> {scene.imageUrl ? "Trocar foto" : "Usar foto sua"}
+          </button>
+          {scene.imageUrl && (
+            <button
+              type="button"
+              onClick={() => onPick(undefined)}
+              disabled={disabled}
+              className="inline-flex min-h-9 items-center rounded-lg px-2 text-xs font-medium text-text-secondary transition hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
+            >
+              Usar imagem da IA
+            </button>
+          )}
+        </div>
+      </div>
+      {open && (
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={`Escolher foto da cena ${n}`}>
+          {briefing.map((img, i) => (
+            <button
+              key={img.url}
+              type="button"
+              onClick={() => {
+                onPick(img.url);
+                setOpen(false);
+              }}
+              disabled={disabled}
+              aria-pressed={scene.imageUrl === img.url}
+              title={img.note || `Imagem ${i + 1}`}
+              className={`overflow-hidden rounded-md ring-2 transition ${scene.imageUrl === img.url ? "ring-accent-yellow" : "ring-transparent hover:ring-border-hover"}`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img.url} alt={img.note || `Imagem ${i + 1} do briefing`} className="h-20 w-[45px] object-cover" />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={disabled || uploading || full}
+            title={full ? `Limite de ${MAX_BRIEFING_IMAGES} imagens` : "Enviar uma foto nova"}
+            className="flex h-20 w-[45px] items-center justify-center rounded-md border-2 border-dashed border-border text-text-secondary transition hover:border-accent-yellow hover:text-accent-yellow disabled:opacity-50"
+          >
+            {uploading ? <Spinner className="h-4 w-4" /> : <Icon name="plus" className="h-4 w-4" />}
+            <span className="sr-only">Enviar foto nova</span>
+          </button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            tabIndex={-1}
+            onChange={(e) => {
+              void upload(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="mt-2 text-xs text-accent-red">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -831,10 +1035,13 @@ function CopyButton({ text }: { text: string }) {
 
 function PronunciationEditor({
   script,
+  fixed,
   disabled,
   onChange,
 }: {
   script: VideoScript;
+  /** Dicionário fixo + pronúncias da pessoa e da empresa deste vídeo. */
+  fixed: Pronunciation[];
   disabled: boolean;
   onChange: (p: VideoScript["pronunciations"]) => void;
 }) {
@@ -843,10 +1050,10 @@ function PronunciationEditor({
     <details className="group mt-4">
       <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-foreground">
         <span aria-hidden className="transition group-open:rotate-90">›</span>
-        Pronúncias ({DEFAULT_PRONUNCIATIONS.length} fixas + {list.length} deste vídeo)
+        Pronúncias ({fixed.length} fixas e dos perfis + {list.length} deste vídeo)
       </summary>
       <p className="mt-1 text-xs text-text-secondary">
-        Fixas: {DEFAULT_PRONUNCIATIONS.map((p) => `${p.display} → ${p.spoken}`).join(" · ")}
+        Fixas e dos perfis: {fixed.map((p) => `${p.display} → ${p.spoken}`).join(" · ")}
       </p>
       <div className="mt-3 space-y-2">
         {list.map((p, i) => (

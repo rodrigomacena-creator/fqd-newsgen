@@ -7,6 +7,7 @@ import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { alignDisplayWords, mergePronunciations, spokenText } from "@/lib/videogen/pronunciation";
 import { fullNarration, type VideoScript } from "@/lib/videogen/types";
+import { jobProfiles } from "@/lib/videogen/profiles";
 
 export const maxDuration = 120;
 
@@ -25,7 +26,8 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
   if (!display) return NextResponse.json({ error: "Este roteiro não tem narração." }, { status: 400 });
 
   try {
-    const pronunciations = mergePronunciations(script.pronunciations);
+    const { person, company } = await jobProfiles(job);
+    const pronunciations = mergePronunciations(person?.pronunciations ?? [], company?.pronunciations ?? [], script.pronunciations ?? []);
     const { audio, alignment, credits } = await textToSpeechWithTimestamps(job.voiceId, spokenText(display, pronunciations));
     if (credits !== null) await appendCosts(id, [costEntry("narration", "elevenlabs", { credits })]);
     const words = alignDisplayWords(display, pronunciations, alignment);

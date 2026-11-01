@@ -12,6 +12,41 @@ export interface VideoScene {
   imagePrompt: string;
   /** Duração sugerida em segundos (usada quando não há narração; com narração o corte segue as palavras). */
   durationS: number;
+  /** Imagem enviada pelo usuário (briefing) usada nesta cena no lugar da imagem gerada por IA. */
+  imageUrl?: string;
+}
+
+/** Imagem que o usuário subiu no briefing do vídeo (vai pra IA ver e pode ser usada nas cenas). */
+export interface BriefingImage {
+  url: string;
+  /** Observação opcional do usuário sobre a imagem (ex.: "logo do cliente", "foto do produto"). */
+  note?: string;
+}
+
+export const MAX_BRIEFING_IMAGES = 8;
+
+// ---------- perfis (quem fala e para qual empresa) ----------
+
+export type VideoProfileKind = "person" | "company";
+
+export interface VideoProfileDTO {
+  id: string;
+  kind: VideoProfileKind;
+  name: string;
+  description: string | null;
+  tone: string | null;
+  speech: string | null;
+  voiceId: string | null;
+  voiceName: string | null;
+  site: string | null;
+  instagram: string | null;
+  cta: string | null;
+  logoUrl: string | null;
+  colors: string | null;
+  pronunciations: Pronunciation[];
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Pronunciation {

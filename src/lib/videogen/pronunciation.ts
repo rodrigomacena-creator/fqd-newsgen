@@ -1,12 +1,10 @@
 import type { NarrationWord, Pronunciation } from "./types";
 
-// Regras fixas do Rodrigo: siglas em inglês são faladas letra por letra em inglês, e o
-// site é oxyngroup.com.br (marca "Oxyn Group"). O ElevenLabs em pt-BR erra esses termos,
-// então o texto enviado pro TTS usa uma grafia fonética e a legenda volta pra grafia real.
-// Ordem importa: termos mais longos primeiro (o site antes da marca).
+// Regra fixa do Rodrigo: siglas e termos em inglês são falados como em inglês (SEO e GEO
+// letra por letra). O ElevenLabs em pt-BR erra esses termos, então o texto enviado pro TTS
+// usa uma grafia fonética e a legenda volta pra grafia real. Nomes de marca e sites ficam nas
+// pronúncias de cada perfil (ex.: "Oxyn Group" no perfil da empresa), não aqui.
 export const DEFAULT_PRONUNCIATIONS: Pronunciation[] = [
-  { display: "oxyngroup.com.br", spoken: "óxin grúp ponto com ponto bê érre" },
-  { display: "Oxyn Group", spoken: "Óxin Grúp" },
   { display: "ChatGPT", spoken: "Chat Gê Pê Tê" },
   { display: "Perplexity", spoken: "Perpléxiti" },
   { display: "Gemini", spoken: "Djêmini" },
@@ -25,10 +23,13 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Junta o dicionário padrão com as pronúncias do roteiro (as do roteiro vencem). */
-export function mergePronunciations(extra: Pronunciation[] = []): Pronunciation[] {
+/**
+ * Junta o dicionário padrão com as listas extras, na ordem (a última vence): normalmente
+ * pessoa, empresa e por fim as pronúncias do próprio roteiro.
+ */
+export function mergePronunciations(...extras: Pronunciation[][]): Pronunciation[] {
   const map = new Map<string, Pronunciation>();
-  for (const p of [...DEFAULT_PRONUNCIATIONS, ...extra]) {
+  for (const p of [...DEFAULT_PRONUNCIATIONS, ...extras.flat()]) {
     if (p.display.trim() && p.spoken.trim()) map.set(p.display.trim(), { display: p.display.trim(), spoken: p.spoken.trim() });
   }
   return [...map.values()].sort((a, b) => b.display.length - a.display.length);
