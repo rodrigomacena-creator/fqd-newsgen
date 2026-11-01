@@ -303,8 +303,8 @@ reais encontradas ao construir o projeto, não só a estrutura.
   **Editor de cenas em timeline** (`SceneStudio.tsx`): blocos por cena (largura = tempo, `sceneTiming.ts`
   espelha `worker/render/timeline.py`: tempos reais da narração se ela ainda bate com o roteiro, senão
   estimativa), arrastáveis (mouse no bloco todo; no toque só pela alça, pra não brigar com a rolagem),
-  clique abre os detalhes no painel à direita; o bloco do fecho edita o CTA. Visual "estúdio" sempre escuro
-  (wrapper com `data-theme="dark"`, que escurece os tokens só ali dentro): palco com número grande + frase + prévia 9:16,
+  clique abre os detalhes no painel à direita; o bloco do fecho edita o CTA. Visual "estúdio" que segue o tema do
+  app (claro por padrão, a pedido do Rodrigo; só a prévia 9:16 fica sempre escura): palco com número grande + frase + prévia 9:16,
   inspetor de 392px com rolagem própria e a timeline embaixo (no celular: palco, timeline, detalhes).
   **Perfis de comunicação** (`/videogen/perfis`, tabela `VideoProfile`, `src/lib/videogen/profiles.ts`,
   `/api/videogen/profiles*`): `kind` = `person` (quem fala: tom, jeito de falar, voz) ou `company` (para

@@ -274,17 +274,16 @@ export function SceneStudio({
 
   return (
     <div
-      data-theme="dark"
-      className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-3xl border border-[#222228] bg-[#0C0C0E] text-foreground shadow-[0_30px_80px_-40px_rgba(0,0,0,.6)] lg:grid-cols-[minmax(0,1fr)_392px] lg:grid-rows-[540px_auto]"
+      className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-3xl border border-border bg-surface text-foreground shadow-[0_30px_80px_-50px_rgba(0,0,0,.35)] lg:grid-cols-[minmax(0,1fr)_392px] lg:grid-rows-[540px_auto]"
     >
       {useAudio && <audio ref={audioRef} src={narrationUrl!} preload="auto" onEnded={() => setPlaying(false)} className="hidden" />}
 
       {/* palco: número grande, frase e prévia 9:16 */}
       <section
         aria-label={shown === "cta" ? "Prévia do fecho" : `Prévia da cena ${shown + 1}`}
-        className="relative order-1 flex items-center gap-4 overflow-hidden px-4 py-5 sm:gap-8 sm:px-8 sm:py-8 lg:border-r lg:border-[#222228]"
+        className="relative order-1 flex items-center gap-4 overflow-hidden px-4 py-5 sm:gap-8 sm:px-8 sm:py-8 lg:border-r lg:border-border"
       >
-        <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#E10600]/10 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#E10600]/[0.06] blur-3xl" />
         <div className="relative min-w-0 flex-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#FF3B3B]">{shown === "cta" ? "Fecho · CTA" : "Cena"}</p>
           <p className="mt-1 font-bold leading-none tracking-tight tabular-nums">
@@ -293,11 +292,11 @@ export function SceneStudio({
             ) : (
               <>
                 <span className="text-5xl sm:text-[88px]">{String(shown + 1).padStart(2, "0")}</span>
-                <span className="ml-2 text-xl text-[#5A5A63] sm:text-3xl">/ {String(count).padStart(2, "0")}</span>
+                <span className="ml-2 text-xl text-text-secondary/70 sm:text-3xl">/ {String(count).padStart(2, "0")}</span>
               </>
             )}
           </p>
-          <p className="mt-3 line-clamp-4 text-base font-semibold leading-snug text-[#F4F2EE] sm:mt-5 sm:text-[26px] sm:leading-[1.25]">
+          <p className="mt-3 line-clamp-4 text-base font-semibold leading-snug text-foreground sm:mt-5 sm:text-[26px] sm:leading-[1.25]">
             {phrase ? <>&ldquo;{phrase}&rdquo;</> : <em className="font-normal text-text-secondary">Sem frase ainda</em>}
           </p>
           <div className="mt-3 flex flex-wrap gap-1.5 sm:mt-5 sm:gap-2">
@@ -362,9 +361,9 @@ export function SceneStudio({
       {/* detalhes */}
       <aside
         aria-label="Detalhes"
-        className="relative order-3 border-t border-[#222228] bg-[#141418] px-4 pb-5 pt-6 max-lg:rounded-t-3xl sm:px-6 lg:order-2 lg:overflow-y-auto lg:overscroll-contain lg:border-t-0 lg:pt-5 [scrollbar-color:#2A2A31_transparent] [scrollbar-width:thin]"
+        className="relative order-3 border-t border-border bg-background px-4 pb-5 pt-6 max-lg:rounded-t-3xl sm:px-6 lg:order-2 lg:overflow-y-auto lg:overscroll-contain lg:border-t-0 lg:pt-5 [scrollbar-color:var(--border-hover)_transparent] [scrollbar-width:thin]"
       >
-        <span aria-hidden className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-[#2A2A31] lg:hidden" />
+        <span aria-hidden className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-border-hover lg:hidden" />
         {selected === "cta" ? (
           <CtaInspector script={script} noNarration={noNarration} disabled={disabled} block={timing.cta} onChange={onCta} onPrev={() => select(count - 1)} />
         ) : script.scenes[selected] ? (
@@ -399,8 +398,8 @@ export function SceneStudio({
       </aside>
 
       {/* timeline */}
-      <section aria-label="Timeline das cenas" className="order-2 border-t border-[#222228] bg-[#101013] lg:order-3 lg:col-span-2">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[#222228] px-3 py-3 sm:px-5">
+      <section aria-label="Timeline das cenas" className="order-2 border-t border-border bg-surface-2 lg:order-3 lg:col-span-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 sm:px-5">
           <div className="flex items-center gap-1.5">
             <button type="button" aria-label="Cena anterior" onClick={() => step(-1)} className={darkIconButton}>
               <Icon name="prev" className="h-4 w-4" />
@@ -417,11 +416,11 @@ export function SceneStudio({
               <Icon name="next" className="h-4 w-4" />
             </button>
           </div>
-          <p className="rounded-lg bg-[#0C0C0E] px-2.5 py-1.5 font-mono text-[13px] tabular-nums text-text-secondary">
-            <span className="font-semibold text-[#F4F2EE]">{clock(time)}</span> / {clock(timing.total)}
+          <p className="rounded-lg bg-surface px-2.5 py-1.5 font-mono text-[13px] tabular-nums text-text-secondary">
+            <span className="font-semibold text-foreground">{clock(time)}</span> / {clock(timing.total)}
           </p>
           <p className="text-xs text-text-secondary">
-            <span className="font-semibold text-[#F4F2EE]">
+            <span className="font-semibold text-foreground">
               {count} {count === 1 ? "cena" : "cenas"} + fecho
             </span>{" "}
             · {fmt(timing.total)} s de {targetS} s{!timing.measured && !noNarration && " · estimado"}
@@ -444,7 +443,7 @@ export function SceneStudio({
             onClick={addAtEnd}
             disabled={disabled}
             aria-label="Adicionar cena"
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#2A2A31] px-3 text-xs font-semibold text-[#F4F2EE] transition hover:border-[#FF3B3B] hover:text-[#FF3B3B] disabled:opacity-40"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold text-foreground transition hover:border-[#FF3B3B] hover:text-[#FF3B3B] disabled:opacity-40"
           >
             <Icon name="plus" className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Adicionar cena</span>
           </button>
@@ -454,10 +453,10 @@ export function SceneStudio({
           <div className="relative" style={{ width: width + LABEL_W }}>
             {/* nomes das trilhas (fixos ao rolar) */}
             <div
-              className="sticky left-0 z-40 float-left border-r border-[#222228] bg-[#101013] text-[11px] font-semibold uppercase tracking-[0.1em] text-text-secondary"
+              className="sticky left-0 z-40 float-left border-r border-border bg-surface-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-text-secondary"
               style={{ width: LABEL_W }}
             >
-              <div className="h-7 border-b border-[#222228]" />
+              <div className="h-7 border-b border-border" />
               <div className="flex h-[88px] items-center gap-1.5 px-3">
                 <Icon name="scenes" className="h-4 w-4 shrink-0" />
                 {!narrow && <span>Cenas</span>}
@@ -479,23 +478,23 @@ export function SceneStudio({
             <div className="relative" style={{ marginLeft: LABEL_W, width, paddingLeft: PAD }}>
               <div className="relative">
                 {/* régua */}
-                <div className="relative h-7 cursor-pointer border-b border-[#222228]" onPointerDown={(e) => seek(laneX(e.clientX) / px)} aria-hidden>
+                <div className="relative h-7 cursor-pointer border-b border-border" onPointerDown={(e) => seek(laneX(e.clientX) / px)} aria-hidden>
                   {ticks.map((s) => (
                     <span key={s} className="absolute bottom-0" style={{ left: s * px }}>
-                      <span className={`block w-px ${s % majorEvery === 0 ? "h-2.5 bg-[#5A5A63]" : "h-1.5 bg-[#2A2A31]"}`} />
+                      <span className={`block w-px ${s % majorEvery === 0 ? "h-2.5 bg-text-secondary/60" : "h-1.5 bg-border-hover"}`} />
                       {s % majorEvery === 0 && (
-                        <span className="absolute bottom-3 -translate-x-1/2 font-mono text-[10px] tabular-nums text-[#6E6E78]">{s}s</span>
+                        <span className="absolute bottom-3 -translate-x-1/2 font-mono text-[10px] tabular-nums text-text-secondary">{s}s</span>
                       )}
                     </span>
                   ))}
                 </div>
 
                 {/* cenas */}
-                <div className="relative h-[88px] border-b border-[#1C1C21]" role="listbox" aria-label="Cenas" aria-orientation="horizontal">
+                <div className="relative h-[88px] border-b border-border" role="listbox" aria-label="Cenas" aria-orientation="horizontal">
                   {drag?.started && (
                     <>
                       <div
-                        className="absolute top-2.5 bottom-2.5 rounded-xl border-[1.5px] border-dashed border-[#3A3A42] bg-white/[0.02]"
+                        className="absolute top-2.5 bottom-2.5 rounded-xl border-[1.5px] border-dashed border-border-hover bg-surface-2/60"
                         style={{ left: slotStart * px + 2, width: durations[drag.from] * px - 4 }}
                       />
                       <div
@@ -529,12 +528,12 @@ export function SceneStudio({
                         title="Clique para ver os detalhes · arraste para mudar a ordem (Alt+← → no teclado)"
                         className={`absolute top-2.5 bottom-2.5 select-none overflow-hidden rounded-xl border py-1.5 pl-5 pr-2 text-left outline-none transition-[box-shadow,background-color,border-color] focus-visible:ring-2 focus-visible:ring-[#FF3B3B] ${
                           isDrag
-                            ? "z-30 -translate-y-3 -rotate-2 cursor-grabbing border-[#FF3B3B] bg-[#2A1416] shadow-[0_18px_40px_-8px_rgba(0,0,0,.8),0_0_0_1px_rgba(255,59,59,.4)]"
+                            ? "z-30 -translate-y-3 -rotate-2 cursor-grabbing border-[#FF3B3B] bg-accent-yellow/[0.07] shadow-[0_18px_40px_-8px_rgba(0,0,0,.3),0_0_0_1px_rgba(255,59,59,.4)]"
                             : isSel
-                              ? "z-10 border-[#FF3B3B] bg-[#2A1416] shadow-[0_0_0_3px_rgba(255,59,59,.18),0_0_24px_-4px_rgba(255,59,59,.45)]"
+                              ? "z-10 border-[#FF3B3B] bg-accent-yellow/[0.07] shadow-[0_0_0_3px_rgba(255,59,59,.18),0_0_24px_-4px_rgba(255,59,59,.45)]"
                               : isPlaying
-                                ? "border-[#4A4A52] bg-[#25252C]"
-                                : "border-[#2A2A31] bg-[#1F1F25] hover:border-[#3A3A42] hover:bg-[#23232A]"
+                                ? "border-border-hover bg-surface-2"
+                                : "border-border bg-surface hover:border-border-hover hover:bg-surface-2"
                         } ${disabled ? "cursor-default" : isDrag ? "" : "cursor-grab"} ${drag?.started && !isDrag ? "duration-200 [transition-property:left]" : ""}`}
                         style={{ left: left + 2, width: Math.max(durations[i] * px - 4, 18) }}
                       >
@@ -544,15 +543,15 @@ export function SceneStudio({
                             e.stopPropagation();
                             onBlockPointerDown(e, i, true);
                           }}
-                          className={`absolute inset-y-0 left-0 flex w-5 touch-none items-center justify-center ${isSel || isDrag ? "text-[#FF3B3B]/70" : "text-[#4A4A52]"}`}
+                          className={`absolute inset-y-0 left-0 flex w-5 touch-none items-center justify-center ${isSel || isDrag ? "text-[#FF3B3B]/70" : "text-text-secondary/50"}`}
                         >
                           <Icon name="grip" className="h-4 w-4" />
                         </span>
-                        <span className={`flex justify-between gap-1 font-mono text-[10px] font-semibold tabular-nums ${isSel || isDrag ? "text-[#FF6B66]" : "text-[#7A7A84]"}`}>
+                        <span className={`flex justify-between gap-1 font-mono text-[10px] font-semibold tabular-nums ${isSel || isDrag ? "text-[#E10600] [[data-theme=dark]_&]:text-[#FF6B66]" : "text-text-secondary"}`}>
                           <span className="truncate">{String(i + 1).padStart(2, "0")}</span>
                           {durations[i] * px >= 72 && <span>{fmt(durations[i])}s</span>}
                         </span>
-                        <span className={`mt-1 line-clamp-2 text-xs font-medium leading-snug ${isSel || isDrag ? "text-white" : "text-[#D8D6D0]"}`}>
+                        <span className={`mt-1 line-clamp-2 text-xs font-medium leading-snug ${isSel || isDrag ? "text-foreground" : "text-foreground/85"}`}>
                           {(noNarration ? sc.onScreen : sc.narration) || <em className="font-normal text-text-secondary">Sem frase</em>}
                         </span>
                       </div>
@@ -563,16 +562,16 @@ export function SceneStudio({
                     type="button"
                     onClick={() => select("cta")}
                     aria-pressed={selected === "cta"}
-                    className={`absolute top-2.5 bottom-2.5 overflow-hidden rounded-xl border px-2.5 py-1.5 text-left text-[#141418] transition ${
+                    className={`absolute top-2.5 bottom-2.5 overflow-hidden rounded-xl border px-2.5 py-1.5 text-left text-background transition ${
                       selected === "cta"
-                        ? "border-[#FF3B3B] bg-[#F4F2EE] shadow-[0_0_0_3px_rgba(255,59,59,.3),0_0_24px_-4px_rgba(255,59,59,.45)]"
-                        : "border-[#F4F2EE] bg-[#E9E6DF] hover:bg-[#F4F2EE]"
+                        ? "border-[#FF3B3B] bg-foreground shadow-[0_0_0_3px_rgba(255,59,59,.3),0_0_24px_-4px_rgba(255,59,59,.45)]"
+                        : "border-foreground bg-foreground hover:opacity-90"
                     }`}
                     style={{ left: timing.cta.start * px + 2, width: Math.max((timing.cta.end - timing.cta.start) * px - 4, 18) }}
                   >
-                    <span className="flex justify-between gap-1 font-mono text-[10px] font-bold uppercase tabular-nums text-[#E10600]">
+                    <span className="flex justify-between gap-1 font-mono text-[10px] font-bold uppercase tabular-nums text-[#E10600] [[data-theme=dark]_&]:text-[#FF6B66]">
                       <span className="truncate">Fecho</span>
-                      <span className="text-[#6E6E78]">{fmt(timing.cta.end - timing.cta.start)}s</span>
+                      <span className="opacity-60">{fmt(timing.cta.end - timing.cta.start)}s</span>
                     </span>
                     <span className="mt-1 line-clamp-2 text-xs font-semibold leading-snug">{script.cta.narration || script.cta.onScreen}</span>
                   </button>
@@ -581,7 +580,7 @@ export function SceneStudio({
                     onClick={addAtEnd}
                     disabled={disabled}
                     aria-label="Adicionar cena no fim"
-                    className="absolute top-2.5 bottom-2.5 flex w-11 items-center justify-center rounded-xl border border-dashed border-[#2A2A31] text-[#6E6E78] transition hover:border-[#FF3B3B] hover:text-[#FF3B3B] disabled:opacity-40"
+                    className="absolute top-2.5 bottom-2.5 flex w-11 items-center justify-center rounded-xl border border-dashed border-border text-text-secondary transition hover:border-[#FF3B3B] hover:text-[#FF3B3B] disabled:opacity-40"
                     style={{ left: timing.total * px + 8 }}
                   >
                     <Icon name="plus" className="h-4 w-4" />
@@ -590,13 +589,13 @@ export function SceneStudio({
 
                 {/* voz: uma barrinha por palavra, no tempo dela (vermelha até o cursor) */}
                 {!noNarration && (
-                  <div className="relative h-14 border-b border-[#1C1C21]" aria-hidden>
+                  <div className="relative h-14 border-b border-border" aria-hidden>
                     {timing.words.map((w, k) => {
                       const h = 8 + ((w[0].length * 7 + k * 13) % 28);
                       return (
                         <span
                           key={k}
-                          className={`absolute top-1/2 -translate-y-1/2 rounded-sm ${w[1] <= time ? "bg-[#FF3B3B]" : "bg-[#3A3A44]"}`}
+                          className={`absolute top-1/2 -translate-y-1/2 rounded-sm ${w[1] <= time ? "bg-[#FF3B3B]" : "bg-border-hover"}`}
                           style={{ left: w[1] * px, width: Math.max(2, (w[2] - w[1]) * px - 2), height: h }}
                         />
                       );
@@ -608,7 +607,7 @@ export function SceneStudio({
                 {script.musicPrompt && (
                   <div className="relative h-11" aria-hidden>
                     <div
-                      className="absolute top-2 bottom-2 flex items-center overflow-hidden rounded-lg border border-[#3A3428] bg-[repeating-linear-gradient(90deg,#2A251C_0_3px,#1E1B15_3px_7px)] px-2.5 text-[11px] font-semibold text-[#CBB98F]"
+                      className="absolute top-2 bottom-2 flex items-center overflow-hidden rounded-lg border border-[#e0d4bc] bg-[repeating-linear-gradient(90deg,#efe6d4_0_3px,#e9dec8_3px_7px)] px-2.5 text-[11px] font-semibold text-[#8a7a5c] [[data-theme=dark]_&]:border-[#3A3428] [[data-theme=dark]_&]:bg-[repeating-linear-gradient(90deg,#2A251C_0_3px,#1E1B15_3px_7px)] [[data-theme=dark]_&]:text-[#CBB98F]"
                       style={{ left: 0, width: timing.total * px }}
                     >
                       <span className="truncate">♪ {script.musicPrompt}</span>
@@ -626,7 +625,7 @@ export function SceneStudio({
             </div>
           </div>
         </div>
-        <p className="px-4 pb-3 pt-1 text-[11px] text-[#6E6E78] sm:px-5">
+        <p className="px-4 pb-3 pt-1 text-[11px] text-text-secondary sm:px-5">
           {drag?.started
             ? `Solte para colocar a cena ${drag.from + 1} na linha vermelha.`
             : "Clique num bloco para ver e editar tudo da cena. Arraste para mudar a ordem (no celular, pela alça à esquerda do bloco)."}
@@ -647,9 +646,9 @@ export function SceneStudio({
 const EMPTY: VideoScene = { narration: "", onScreen: "", visual: "", imagePrompt: "", durationS: 2 };
 
 const darkIconButton =
-  "inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition hover:bg-white/5 hover:text-[#F4F2EE] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent";
+  "inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition hover:bg-surface-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent";
 const studioField =
-  "w-full rounded-xl border border-[#222228] bg-[#0C0C0E] px-3 py-2.5 text-sm text-[#F4F2EE] outline-none transition placeholder:text-[#5A5A63] focus:border-[#FF3B3B] focus-visible:ring-2 focus-visible:ring-[#FF3B3B]/25 disabled:cursor-not-allowed disabled:opacity-50";
+  "w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none transition placeholder:text-text-secondary/70 focus:border-[#FF3B3B] focus-visible:ring-2 focus-visible:ring-[#FF3B3B]/25 disabled:cursor-not-allowed disabled:opacity-50";
 const studioLabel = "block text-[11px] font-semibold uppercase tracking-[0.12em] text-text-secondary";
 
 const norm = (w: string) =>
@@ -663,7 +662,7 @@ function Chip({ children, strong }: { children: ReactNode; strong?: boolean }) {
   return (
     <span
       className={`rounded-full border px-2.5 py-1 font-mono text-[11px] tabular-nums sm:text-xs ${
-        strong ? "border-[#FF3B3B]/40 bg-[#FF3B3B]/10 text-[#FF8A85]" : "border-[#2A2A31] bg-[#141418] text-text-secondary"
+        strong ? "border-[#FF3B3B]/40 bg-[#FF3B3B]/10 text-[#E10600] [[data-theme=dark]_&]:text-[#FF6B66]" : "border-border bg-surface text-text-secondary"
       }`}
     >
       {children}
@@ -686,14 +685,14 @@ function InspectorHead({ title, meta, onPrev, onNext }: { title: ReactNode; meta
   return (
     <div className="mb-5 flex items-center gap-2">
       <div className="min-w-0">
-        <h3 className="text-base font-semibold text-[#F4F2EE]">{title}</h3>
+        <h3 className="text-base font-semibold text-foreground">{title}</h3>
         <p className="font-mono text-[11px] tabular-nums text-text-secondary">{meta}</p>
       </div>
       <span className="flex-1" />
-      <button type="button" aria-label="Anterior" onClick={onPrev} disabled={!onPrev} className={`${darkIconButton} border border-[#222228]`}>
+      <button type="button" aria-label="Anterior" onClick={onPrev} disabled={!onPrev} className={`${darkIconButton} border border-border`}>
         <Icon name="prev" className="h-4 w-4" />
       </button>
-      <button type="button" aria-label="Próxima" onClick={onNext} disabled={!onNext} className={`${darkIconButton} border border-[#222228]`}>
+      <button type="button" aria-label="Próxima" onClick={onNext} disabled={!onNext} className={`${darkIconButton} border border-border`}>
         <Icon name="next" className="h-4 w-4" />
       </button>
     </div>
@@ -738,7 +737,7 @@ function SceneInspector({
   const n = index + 1;
   const ids = (k: string) => `scene-${index}-${k}`;
   const footButton =
-    "inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#2A2A31] px-3 text-xs font-semibold text-[#F4F2EE] transition hover:border-[#FF3B3B] hover:text-[#FF3B3B] disabled:opacity-40";
+    "inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold text-foreground transition hover:border-[#FF3B3B] hover:text-[#FF3B3B] disabled:opacity-40";
   return (
     <div>
       <InspectorHead
@@ -784,12 +783,12 @@ function SceneInspector({
                 value={scene.durationS}
                 onChange={(e) => onChange({ durationS: Number(e.target.value) })}
                 disabled={disabled}
-                className="h-10 w-20 rounded-lg border border-[#222228] bg-[#0C0C0E] px-2 text-sm text-[#F4F2EE] outline-none focus:border-[#FF3B3B]"
+                className="h-10 w-20 rounded-lg border border-border bg-surface px-2 text-sm text-foreground outline-none focus:border-[#FF3B3B]"
               />
               s
             </label>
           ) : (
-            <p className="mt-1.5 text-[11px] text-[#6E6E78]">Com narração, a duração da cena segue a fala.</p>
+            <p className="mt-1.5 text-[11px] text-text-secondary">Com narração, a duração da cena segue a fala.</p>
           )}
         </div>
 
@@ -801,8 +800,8 @@ function SceneInspector({
           onPick={(url) => onChange({ imageUrl: url })}
           onAddImage={onAddImage}
           prompt={
-            <div className="rounded-xl border border-[#222228] bg-[#0C0C0E] focus-within:border-[#FF3B3B]">
-              <div className="flex items-center justify-between gap-2 border-b border-[#1C1C21] py-1 pl-3 pr-1">
+            <div className="rounded-xl border border-border bg-surface focus-within:border-[#FF3B3B]">
+              <div className="flex items-center justify-between gap-2 border-b border-border py-1 pl-3 pr-1">
                 <label htmlFor={ids("prompt")} className="text-[11px] font-medium text-text-secondary">
                   Prompt da imagem (inglês)
                 </label>
@@ -814,7 +813,7 @@ function SceneInspector({
                 value={scene.imagePrompt}
                 onChange={(e) => onChange({ imagePrompt: e.target.value })}
                 disabled={disabled}
-                className="block w-full resize-none bg-transparent px-3 py-2.5 font-mono text-xs leading-relaxed text-[#D8D6D0] outline-none disabled:opacity-50"
+                className="block w-full resize-none bg-transparent px-3 py-2.5 font-mono text-xs leading-relaxed text-foreground/85 outline-none disabled:opacity-50"
               />
             </div>
           }
@@ -828,7 +827,7 @@ function SceneInspector({
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-[#222228] pt-4">
+      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-border pt-4">
         <button type="button" onClick={() => onMove(-1)} disabled={disabled || index === 0} aria-label="Mover para a esquerda" title="Mover para a esquerda" className={darkIconButton}>
           <Icon name="prev" className="h-4 w-4" />
         </button>
@@ -846,7 +845,7 @@ function SceneInspector({
           type="button"
           onClick={onRemove}
           disabled={disabled || total <= 1}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-[#FF5A55] transition hover:bg-[#FF3B3B]/10 disabled:opacity-40"
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-accent-red transition hover:bg-[#FF3B3B]/10 disabled:opacity-40"
         >
           <Icon name="trash" /> Excluir
         </button>

@@ -53,13 +53,13 @@ export function SceneImage({
 
   const segment = (active: boolean) =>
     `flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50 ${
-      active ? "bg-[#2A2A31] text-foreground shadow-sm" : "text-text-secondary hover:text-foreground"
+      active ? "bg-surface text-foreground shadow-sm" : "text-text-secondary hover:text-foreground"
     }`;
 
   return (
     <div>
       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-text-secondary">Imagem da cena</p>
-      <div role="radiogroup" aria-label={`Imagem da cena ${n}`} className="mt-2 flex gap-1 rounded-xl border border-[#222228] bg-[#0C0C0E] p-1">
+      <div role="radiogroup" aria-label={`Imagem da cena ${n}`} className="mt-2 flex gap-1 rounded-xl border border-border bg-surface-2 p-1">
         <button
           type="button"
           role="radio"
@@ -105,7 +105,7 @@ export function SceneImage({
               onClick={() => inputRef.current?.click()}
               disabled={disabled || uploading || full}
               title={full ? `Limite de ${MAX_BRIEFING_IMAGES} imagens` : "Enviar uma foto nova"}
-              className="flex h-20 w-[45px] items-center justify-center rounded-lg border-2 border-dashed border-[#2A2A31] text-text-secondary transition hover:border-[#FF3B3B] hover:text-[#FF3B3B] disabled:opacity-50"
+              className="flex h-20 w-[45px] items-center justify-center rounded-lg border-2 border-dashed border-border text-text-secondary transition hover:border-[#FF3B3B] hover:text-[#FF3B3B] disabled:opacity-50"
             >
               {uploading ? <Spinner className="h-4 w-4" /> : <Icon name="plus" className="h-4 w-4" />}
               <span className="sr-only">Enviar foto nova</span>
