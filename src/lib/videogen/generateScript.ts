@@ -134,6 +134,7 @@ Regras do roteiro:
       : `A narração inteira (cenas + CTA) deve ter cerca de ${words} palavras (≈${WORDS_PER_SECOND} palavras/s). Português do Brasil, falado, frases curtas, sem jargão desnecessário.`
   }
 - Cerca de ${sceneCount} cenas (ritmo do padrão: ${pattern.ritmo || `${pattern.cenaS[0]}–${pattern.cenaS[1]}s por cena`}). A primeira cena é o gancho: em 1–2s precisa prender quem está rolando o feed.
+- "hooks": escreva 3 aberturas bem diferentes entre si para a cena 1 (ex.: uma pergunta que cutuca, um dado ou fato surpreendente, uma afirmação polêmica ou contraintuitiva), cada uma com "narration" (até 9 palavras) e "onScreen" (até 4 palavras). A primeira delas deve ser exatamente a narração e o onScreen da cena 1. As três precisam emendar com a cena 2.
 - "narration" de cada cena é o trecho falado naquela cena, com a grafia normal (é também a legenda). Não repita o texto entre cenas.
 - "onScreen" é o texto grande na tela quando o padrão usa (palavra-chave, número, título curto); pode ser vazio.
 - "imagePrompt" é em INGLÊS, para um modelo de imagem (Gemini/nano banana), formato vertical 9:16. Descreva só a imagem estática da cena no estilo do padrão (fundo, materiais, luz, composição, paleta). NUNCA peça texto, letras, logotipos ou números dentro da imagem: o texto é colocado depois pelo render. Mantenha o mesmo estilo visual em todas as cenas para o vídeo parecer uma peça só.
@@ -150,9 +151,10 @@ Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
 {
   "title": "título interno curto do vídeo",
   "scenes": [
-    { "narration": "...", "onScreen": "...", "visual": "...", "imagePrompt": "...", "durationS": 2${free ? ', "layout": "..."' : ""}${ctx.imageCount ? ', "userImage": null' : ""}, "direction": { "cut": "...", "camera": "...", "object": "...", "mark": "...", "emphasis": "..." } }
+    { "narration": "...", "onScreen": "...", "visual": "...", "imagePrompt": "...", "durationS": 2${free ? ', "layout": "...", "stockQuery": "... (opcional)"' : ""}${ctx.imageCount ? ', "userImage": null' : ""}, "direction": { "cut": "...", "camera": "...", "object": "...", "mark": "...", "emphasis": "..." } }
   ],
   "cta": { "narration": "...", "onScreen": "..." },
+  "hooks": [{ "narration": "...", "onScreen": "..." }],
   "keywords": ["..."],
   "musicPrompt": "...",
   "postCaption": "...",
@@ -182,11 +184,25 @@ export function normalizeScript(input: unknown): VideoScript {
     if (imageUrl && isAllowedImageUrl(imageUrl)) scene.imageUrl = imageUrl;
     const direction = normalizeDirection(o.direction, i);
     if (direction) scene.direction = direction;
+    const pv = (o.preview ?? null) as { url?: unknown; prompt?: unknown } | null;
+    if (pv && typeof pv.url === "string" && isAllowedImageUrl(pv.url) && typeof pv.prompt === "string") {
+      scene.preview = { url: pv.url, prompt: pv.prompt };
+    }
     const layout = str(o.layout);
     if (SCENE_LAYOUTS.includes(layout)) scene.layout = layout;
+    const stockQuery = str(o.stockQuery).slice(0, 80);
+    if (stockQuery) scene.stockQuery = stockQuery;
+    const st = (o.stock ?? null) as Record<string, unknown> | null;
+    if (st && typeof st.url === "string" && /^https:\/\/[a-z0-9.-]*pexels\.com\//i.test(st.url)) {
+      scene.stock = { url: st.url, thumb: str(st.thumb), id: Number(st.id) || 0, query: str(st.query), pick: Number(st.pick) || 0 };
+    }
     return scene;
   });
   const cta = (d.cta ?? {}) as Record<string, unknown>;
+  const hooks = (Array.isArray(d.hooks) ? d.hooks : [])
+    .map((h) => ({ narration: str((h as Record<string, unknown>)?.narration), onScreen: str((h as Record<string, unknown>)?.onScreen) }))
+    .filter((h) => h.narration)
+    .slice(0, 3);
   const pronunciations: Pronunciation[] = (Array.isArray(d.pronunciations) ? d.pronunciations : [])
     .map((p) => ({ display: str((p as Pronunciation)?.display), spoken: str((p as Pronunciation)?.spoken) }))
     .filter((p) => p.display && p.spoken);
@@ -195,6 +211,7 @@ export function normalizeScript(input: unknown): VideoScript {
     scenes,
     cta: { narration: str(cta.narration), onScreen: str(cta.onScreen) },
     keywords: (Array.isArray(d.keywords) ? d.keywords : []).map(str).filter(Boolean),
+    ...(hooks.length > 1 ? { hooks } : {}),
     musicPrompt: str(d.musicPrompt),
     postCaption: str(d.postCaption),
     pronunciations,

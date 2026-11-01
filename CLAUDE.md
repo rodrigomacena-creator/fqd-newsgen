@@ -310,6 +310,17 @@ reais encontradas ao construir o projeto, não só a estrutura.
   `ELEVENLABS_USD_PER_CREDIT` (padrão US$ 22 / 100 mil, plano Creator). O worker manda os gastos
   dele somados por etapa junto do `done`/`failed`. Jobs com `costs` nulo são anteriores a isso.
   Excluir um job apaga a pasta `videogen/<id>/` no Blob; não é permitido enquanto `rendering`.
+  **Acabamento automático (todos os estilos)**: `worker/render/audio_fx.py` acha as batidas da trilha
+  (`detect_beats`, vai em `script["_beats"]` e `timeline.py` encaixa o começo das cenas e o CTA na batida mais
+  próxima) e monta uma faixa de efeitos (whoosh nos cortes, impacto na abertura/palavras-chave/CTA, riser antes do
+  CTA) com os mp3 fixos de `worker/assets/sfx/` (gerados uma vez no ElevenLabs), mixada em `mix(..., sfx=)`.
+  **Gancho**: o roteiro traz `script.hooks` (3 aberturas; a 1ª = cena 1) e o editor deixa trocar (`HookPicker`);
+  o motor genérico abre com soco de zoom + clarão (`HOOK_LEN`). **Storyboard** (`storyboard.ts`, POST
+  `.../storyboard`): gera a imagem de cada cena antes do render e salva em `scene.preview = {url, prompt}`; o worker
+  usa a prévia só se `preview.prompt` ainda é o `imagePrompt` da cena. **Vídeo de banco** (`pexels.ts`, só estilo
+  livre com `image.photo`): a IA escreve `scene.stockQuery` (inglês); o app (storyboard ou `claim`, nunca o worker:
+  a chave `PEXELS_API_KEY` fica só na Vercel) acha o clipe vertical e grava `scene.stock`. No worker, cena com
+  `stock.url` vira tela cheia tocando o clipe (`extract_clip_frames` + `StockClip` no motor genérico); falhou, usa a imagem.
   **Editor de cenas em timeline** (`SceneStudio.tsx`): blocos por cena (largura = tempo, `sceneTiming.ts`
   espelha `worker/render/timeline.py`: tempos reais da narração se ela ainda bate com o roteiro, senão
   estimativa), arrastáveis (mouse no bloco todo; no toque só pela alça, pra não brigar com a rolagem),
@@ -378,4 +389,4 @@ Portal" aparece mas dá erro ao tentar enviar. `WORDPRESS_APP_PASSWORD` é a Sen
 `YOUTUBE_API_KEY` (YouTube Data API v3) é necessária só pra listar vídeos de canal/playlist;
 sem ela o resto do app funciona normalmente. `ELEVENLABS_API_KEY` é necessária só pro VideoGen
 (vozes e narração). `VIDEOGEN_WORKER_TOKEN` é o segredo compartilhado com o worker
-de render (sem ele as rotas `/api/videogen/worker/*` respondem 503).
+de render (sem ele as rotas `/api/videogen/worker/*` respondem 503). `PEXELS_API_KEY` (opcional) liga os vídeos de banco do estilo livre.

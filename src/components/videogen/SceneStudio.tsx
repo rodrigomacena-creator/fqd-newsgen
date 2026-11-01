@@ -262,6 +262,7 @@ export function SceneStudio({
   // ---------- render ----------
   const shownBlock = shown === "cta" ? timing.cta : timing.scenes[shown];
   const shownScene = shown === "cta" ? null : script.scenes[shown];
+  const shownPreview = shownScene?.preview && shownScene.preview.prompt === shownScene.imagePrompt ? shownScene.preview.url : undefined;
   const caption = captionAt(timing.words, playing ? time : (shownBlock?.start ?? 0) + 0.01, shownBlock);
   const keywords = new Set((script.keywords ?? []).flatMap((k) => k.split(/\s+/)).map(norm).filter(Boolean));
   const tickStep = px >= 40 ? 1 : px >= 20 ? 2 : 5;
@@ -312,7 +313,7 @@ export function SceneStudio({
                 </Chip>
               </>
             )}
-            {shown !== "cta" && <Chip>{shownScene?.imageUrl ? "Sua foto" : "Imagem por IA"}</Chip>}
+            {shown !== "cta" && <Chip>{shownScene?.imageUrl ? "Sua foto" : shownPreview ? "Storyboard" : "Imagem por IA"}</Chip>}
             {!timing.measured && !noNarration && <Chip>estimado</Chip>}
           </div>
           <p className="mt-4 hidden max-w-md text-xs leading-relaxed text-text-secondary sm:block">
@@ -322,9 +323,9 @@ export function SceneStudio({
         </div>
 
         <div className="relative aspect-[9/16] w-[118px] shrink-0 overflow-hidden rounded-[22px] border-[3px] border-[#26262C] bg-[#18181C] shadow-[0_24px_60px_-20px_rgba(0,0,0,.8)] sm:w-[210px] sm:rounded-[30px] sm:border-4">
-          {shownScene?.imageUrl ? (
+          {shownScene?.imageUrl || shownPreview ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={shownScene.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            <img src={shownScene?.imageUrl || shownPreview} alt="" className="absolute inset-0 h-full w-full object-cover" />
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[radial-gradient(circle_at_30%_70%,#4a2a28_0,#221a1c_45%,#111113_100%)] px-3 text-center text-[10px] text-white/50 sm:text-[11px]">
               {shown !== "cta" && (

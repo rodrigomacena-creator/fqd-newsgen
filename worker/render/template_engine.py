@@ -16,6 +16,7 @@ destaque e a palavra-chave da legenda ganha a ênfase. Sem direção, tudo segue
 """
 import math
 import re
+from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
@@ -94,6 +95,8 @@ DEFAULT_SPEC = {
 }
 
 ENERGY = {"calm": 0.6, "medium": 1.0, "high": 1.6}
+
+HOOK_LEN = 0.45  # duração do impacto de abertura (s)
 
 # layouts que uma cena pode pedir sozinha (scene["layout"], estilo livre)
 SCENE_LAYOUTS = ("fullbleed", "card", "circle", "top_half", "polaroid", "split", "text_only")
@@ -240,9 +243,12 @@ class SceneVisual:
     impacto e flutua) e, se a ficha pedir, a câmera (tremida de mão ou tranco na batida).
     """
 
-    def __init__(self, spec, img, texture, seed, layout=None):
+    def __init__(self, spec, img, texture, seed, layout=None, clip=None):
         self.spec = spec
         lay = spec["image"]
+        self.clip = clip  # vídeo de banco: a cena vira tela cheia e cada quadro vem do vídeo
+        if clip is not None:
+            layout = "fullbleed"
         mo = spec["motion"]
         # layout da cena (estilo livre pode variar por cena) ou o da ficha
         self.layout = (layout or lay["layout"]) if img is not None else ("text_only" if layout == "text_only" else "none")
@@ -361,10 +367,12 @@ class SceneVisual:
             fr = self.bg_big.crop((int(ox), int(oy), int(ox) + W, int(oy) + H))
         else:
             fr = self.bg.copy()
+        if self.clip is not None:
+            self.big = _filter(self.clip.at(local_t), self.spec["image"]["filter"], self.spec)
         if self.big is not None:
             bw, bh = self.big.size
             tw, th = (W, H) if self.layout == "fullbleed" else (W, int(H * 0.58))
-            f = 1.3 if self.layout == "fullbleed" else 1.25
+            f = self.clip.zoom if self.clip is not None else (1.3 if self.layout == "fullbleed" else 1.25)
             r = min(bw / tw, bh / th)
             cw, ch = min(bw, int(tw * r / (f * z))), min(bh, int(th * r / (f * z)))
             cx = (bw - cw) / 2 + panx * (bw - cw) / 2 - sx
@@ -410,6 +418,29 @@ class SceneVisual:
                 fr.paste((0, 0, 0), (int(x + (card.width - sh.width) / 2), int(y + (card.height - sh.height) / 2 + 20 * s)), sh)
             fr.paste(card, (int(x), int(y)), card)
         return np.asarray(fr, dtype=np.uint8)
+
+
+class StockClip:
+    """Quadros (jpg) de um vídeo de banco extraídos pelo worker. Vídeo curto vai e volta (sem pulo)."""
+
+    def __init__(self, folder):
+        self.files = sorted(Path(folder).glob("*.jpg"))
+        if not self.files:
+            raise ValueError("vídeo sem quadros")
+        self.zoom = Image.open(self.files[0]).width / W
+        self._last = (None, None)
+
+    def at(self, local_t):
+        n = len(self.files)
+        k = int(max(local_t, 0) * FPS)
+        if k >= n and n > 1:
+            period = 2 * (n - 1)
+            k %= period
+            k = k if k < n else period - k
+        k = min(k, n - 1)
+        if self._last[0] != k:
+            self._last = (k, Image.open(self.files[k]).convert("RGB"))
+        return self._last[1]
 
 
 class Particles:
@@ -942,7 +973,13 @@ def render(job, assets, out_path, on_progress=None):
         path = assets.get("images", {}).get(sc.index)
         img = Image.open(path).convert("RGB") if path else None
         layout = sc.data.get("layout") if sc.data.get("layout") in SCENE_LAYOUTS else None
-        visuals[sc.index] = SceneVisual(spec, img, texture, seed=n, layout=layout)
+        clip = None
+        if assets.get("clips", {}).get(sc.index) and img is not None:
+            try:
+                clip = StockClip(assets["clips"][sc.index])
+            except Exception:
+                clip = None
+        visuals[sc.index] = SceneVisual(spec, img, texture, seed=n, layout=layout, clip=clip)
         visuals[sc.index].direction = dirs.get(sc.index)
 
     def emphasis_at(t):
@@ -1022,6 +1059,16 @@ def render(job, assets, out_path, on_progress=None):
                     prev_sc = tl.scenes[i - 1]
                     prev = visuals[prev_sc.index].frame(1.0, prev_sc.end - prev_sc.start, t)
                     fr = _transition(prev, fr, local / tdur, trans["kind"])
+                if i == 0 and local < HOOK_LEN:
+                    # gancho: o vídeo abre com um soco de zoom e um clarão, para segurar quem está rolando
+                    k = ease(local / HOOK_LEN)
+                    z = 1.0 + 0.22 * (1 - k)
+                    if z > 1.005:
+                        cw, ch = int(W / z), int(H / z)
+                        x0, y0 = (W - cw) // 2, (H - ch) // 2
+                        fr = np.asarray(Image.fromarray(np.ascontiguousarray(fr))
+                                        .crop((x0, y0, x0 + cw, y0 + ch)).resize((W, H), Image.BILINEAR))
+                    flash = max(flash, 0.9 * (1 - k) ** 2)
                 fr = np.array(fr, copy=True)
                 if flash > 0:
                     fr = np.clip(fr.astype(np.float32) + 60 * flash, 0, 255).astype(np.uint8)

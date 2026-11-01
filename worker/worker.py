@@ -29,6 +29,7 @@ import requests
 
 from providers import download, generate_image, generate_music, prepare_user_image, silent_audio
 from render import RENDERERS, template_engine
+from render.audio_fx import build_sfx_track, detect_beats, sfx_cues
 from render.common import mix, overlay_logo
 from render.timeline import build_timeline
 
@@ -131,6 +132,24 @@ class App:
 REUSE_ASSETS = False  # --reuse: em teste local, reaproveita imagens/trilha já geradas no workdir
 
 
+def extract_clip_frames(mp4, out_dir, seconds):
+    """Quadros do vídeo de banco em jpg, já no tamanho do quadro (com folga para o zoom), no FPS do render."""
+    from render.common import FPS, H, W
+    out_dir = Path(out_dir)
+    shutil.rmtree(out_dir, ignore_errors=True)
+    out_dir.mkdir(parents=True)
+    w, h = int(W * CLIP_ZOOM) // 2 * 2, int(H * CLIP_ZOOM) // 2 * 2
+    vf = f"fps={FPS},scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-t", f"{seconds:.2f}", "-i", str(mp4), "-an",
+                    "-vf", vf, "-q:v", "4", str(out_dir / "%04d.jpg")], check=True, timeout=300)
+    if not (out_dir / "0001.jpg").exists():
+        raise RuntimeError("ffmpeg não extraiu quadros do vídeo")
+    return out_dir
+
+
+CLIP_ZOOM = 1.12  # folga do quadro do vídeo para o movimento de câmera
+
+
 def produce(job, workdir, report=lambda p: None, costs=None):
     """Gera assets, renderiza e mixa. Devolve o caminho do mp4 final."""
     module = RENDERERS.get(job["patternId"])
@@ -169,13 +188,39 @@ def produce(job, workdir, report=lambda p: None, costs=None):
                 if not (sc.get("imagePrompt") or sc.get("visual")):
                     raise
                 log(f"cena {i + 1}: foto do usuário falhou ({e}); gerando com IA")
+        pv = sc.get("preview") or {}
+        if pv.get("url") and pv.get("prompt") == sc.get("imagePrompt"):
+            try:  # storyboard: imagem já aprovada no editor
+                return download(pv["url"], path)
+            except Exception as e:
+                log(f"cena {i + 1}: prévia do storyboard falhou ({e}); gerando com IA")
         return cached(generate_image, path, sc.get("imagePrompt") or sc.get("visual") or "")
+
+    # vídeo de banco (Pexels) por cena: só o motor genérico sabe tocar; falha = volta para a imagem
+    clips = {}
+    spans = {s.index: s.end - s.start for s in tl.scenes}
+    def scene_clip(i, sc):
+        clip_dir = workdir / f"cena_{i:02d}_video"
+        if not (REUSE_ASSETS and (clip_dir / "0001.jpg").exists()):
+            mp4 = download(sc["stock"]["url"], workdir / f"cena_{i:02d}.mp4")
+            extract_clip_frames(mp4, clip_dir, spans.get(i, 3.0) + 1.5)
+        shutil.copyfile(clip_dir / "0001.jpg", workdir / f"cena_{i:02d}.jpg")
+        return clip_dir
+
+    if module is template_engine:
+        for i, sc in enumerate(scenes):
+            if i in used and (sc.get("stock") or {}).get("url") and not sc.get("imageUrl"):
+                try:
+                    clips[i] = scene_clip(i, sc)
+                    images[i] = workdir / f"cena_{i:02d}.jpg"
+                except Exception as e:
+                    log(f"cena {i + 1}: vídeo de banco falhou ({e}); usando imagem")
 
     with ThreadPoolExecutor(5) as ex:
         music_f = ex.submit(cached, generate_music, workdir / "trilha.mp3", script.get("musicPrompt"), tl.duration)
         futs = {
             i: ex.submit(scene_image, i, sc)
-            for i, sc in enumerate(scenes) if i in used
+            for i, sc in enumerate(scenes) if i in used and i not in clips
         }
         done_count = 0
         for i, f in futs.items():
@@ -185,7 +230,7 @@ def produce(job, workdir, report=lambda p: None, costs=None):
                 log(f"cena {i + 1}: {e} (vai com fundo liso)")
             done_count += 1
             report(5 + 40 * done_count / max(len(futs), 1))
-        if not images and futs:
+        if not images and futs and not clips:
             raise RuntimeError("Nenhuma imagem de cena foi gerada (OpenRouter).")
         try:
             music = music_f.result()
@@ -194,6 +239,13 @@ def produce(job, workdir, report=lambda p: None, costs=None):
             music = silent_audio(tl.duration + 1, workdir / "trilha.mp3")
     report(50)
 
+    # cortes na batida: as batidas da trilha vão no roteiro e todo renderizador as usa na linha do tempo
+    beats = detect_beats(music, tl.duration + 2) if music else []
+    if beats:
+        script["_beats"] = beats
+        tl = build_timeline(script, job.get("narrationWords"))
+        log(f"trilha: {len(beats)} batidas, cortes ajustados")
+
     video_only = workdir / "video_only.mp4"
     extra = {}
     if module is template_engine:
@@ -201,6 +253,7 @@ def produce(job, workdir, report=lambda p: None, costs=None):
         texture_url = ((job["templateSpec"] or {}).get("background") or {}).get("textureUrl")
         if texture_url:
             extra["texture"] = download(texture_url, workdir / "textura.jpg")
+        extra["clips"] = clips
     duration = module.render(job, {"images": images, **extra}, str(video_only), on_progress=lambda p: report(50 + 40 * p))
     report(91)
 
@@ -216,8 +269,13 @@ def produce(job, workdir, report=lambda p: None, costs=None):
             log(f"logo da empresa: {e} (segue sem logo)")
     report(93)
 
+    sfx = None
+    try:
+        sfx = build_sfx_track(sfx_cues(tl, script), duration, workdir / "efeitos.wav")
+    except Exception as e:
+        log(f"efeitos sonoros: {e} (segue sem)")
     final = workdir / "video.mp4"
-    mix(str(video_only), str(narration) if narration else None, str(music), duration, str(final))
+    mix(str(video_only), str(narration) if narration else None, str(music), duration, str(final), sfx=sfx)
     return final
 
 

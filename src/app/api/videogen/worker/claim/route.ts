@@ -6,6 +6,7 @@ import { checkWorkerAuth } from "@/lib/videogen/workerAuth";
 import { getProfile } from "@/lib/videogen/profiles";
 import { FREE_STYLE_FALLBACK_SPEC } from "@/lib/videogen/freeStyle";
 import type { VideoScript } from "@/lib/videogen/types";
+import { attachStockVideos } from "@/lib/videogen/pexels";
 
 // Um job "rendering" sem notícia do worker há esse tempo é considerado abandonado
 // (worker caiu ou reiniciou) e volta pra fila.
@@ -49,6 +50,15 @@ export async function POST(request: Request) {
           script = job.script ? (JSON.parse(job.script) as VideoScript) : null;
         } catch {}
         templateSpec = script?.styleSpec ?? FREE_STYLE_FALLBACK_SPEC;
+        // vídeos de banco das cenas que pediram e ainda não têm (quem não abriu o storyboard)
+        if (script) {
+          const { scenes, changed } = await attachStockVideos(script.scenes);
+          if (changed) {
+            script.scenes = scenes;
+            await prisma.videoJob.update({ where: { id: job.id }, data: { script: JSON.stringify(script) } });
+            job.script = JSON.stringify(script);
+          }
+        }
       }
       // templateSpec: ficha do motor genérico quando o estilo é um template ou o estilo livre
       // brand: logo da empresa, que o worker põe no fim do vídeo (junto do CTA)

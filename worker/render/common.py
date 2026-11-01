@@ -57,23 +57,29 @@ class FrameWriter:
             raise RuntimeError("ffmpeg falhou ao codificar o vídeo")
 
 
-def mix(video, narration, music, duration, out, music_vol=0.55):
-    """Narração + trilha com ducking (sidechain) + loudnorm -14 LUFS, igual ao pipeline Python."""
+def mix(video, narration, music, duration, out, music_vol=0.55, sfx=None):
+    """Narração + trilha com ducking (sidechain) + efeitos sonoros (opcional) + loudnorm -14 LUFS."""
     ins = ["-i", video]
     if narration:
         ins += ["-i", narration]
     ins += ["-stream_loop", "-1", "-i", music]
     mi = 2 if narration else 1
+    if sfx:
+        ins += ["-i", str(sfx)]
+    si = mi + 1
     fo = max(0.1, duration - 0.8)
+    # efeitos entram depois do ducking (não abaixam com a voz) e antes do loudnorm
+    fx_in = f"[{si}:a]aresample=44100,atrim=0:{duration}[fx];" if sfx else ""
     if narration:
-        fc = (f"[1:a]aresample=44100,apad,atrim=0:{duration},asplit=2[v][sc];"
+        n_in = 3 if sfx else 2
+        fc = (f"{fx_in}[1:a]aresample=44100,apad,atrim=0:{duration},asplit=2[v][sc];"
               f"[{mi}:a]aresample=44100,atrim=0:{duration},volume={music_vol},afade=t=in:d=0.2,"
               f"afade=t=out:st={fo}:d=0.8[m];"
               f"[m][sc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=400[md];"
-              f"[v][md]amix=inputs=2:normalize=0,loudnorm=I=-14:TP=-1.5[a]")
+              f"[v][md]{'[fx]' if sfx else ''}amix=inputs={n_in}:normalize=0,loudnorm=I=-14:TP=-1.5[a]")
     else:
-        fc = (f"[{mi}:a]aresample=44100,atrim=0:{duration},afade=t=in:d=0.1,afade=t=out:st={fo}:d=0.8,"
-              f"loudnorm=I=-14:TP=-1.5[a]")
+        fc = (f"{fx_in}[{mi}:a]aresample=44100,atrim=0:{duration},afade=t=in:d=0.1,afade=t=out:st={fo}:d=0.8[m];"
+              f"[m]{'[fx]' if sfx else ''}amix=inputs={2 if sfx else 1}:normalize=0,loudnorm=I=-14:TP=-1.5[a]")
     subprocess.run(
         ["ffmpeg", "-v", "error", "-y", *ins, "-filter_complex", fc, "-map", "0:v", "-map", "[a]",
          "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",

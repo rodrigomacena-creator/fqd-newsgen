@@ -17,8 +17,14 @@ export interface VideoScene {
   imageUrl?: string;
   /** Direção de movimento da cena (todos os estilos; roteiro antigo sem direção renderiza como antes). Ver direction.ts. */
   direction?: SceneDirection;
+  /** Storyboard: imagem já gerada antes do render e o prompt que a gerou (vale enquanto o prompt for o mesmo). */
+  preview?: { url: string; prompt: string };
   /** Só no estilo livre: formato de montagem desta cena (ver SCENE_LAYOUTS em freeStyle.ts). */
   layout?: string;
+  /** Só no estilo livre: busca em inglês de um vídeo de banco (Pexels) para esta cena. */
+  stockQuery?: string;
+  /** Clipe do Pexels escolhido para a cena (o worker usa no lugar da imagem). */
+  stock?: { url: string; thumb: string; id: number; query: string; pick?: number };
 }
 
 /** Imagem que o usuário subiu no briefing do vídeo (vai pra IA ver e pode ser usada nas cenas). */
@@ -69,6 +75,8 @@ export interface VideoScript {
   cta: { onScreen: string; narration: string };
   /** Palavras que o render destaca (caixa vermelha, cor de destaque etc.). */
   keywords: string[];
+  /** Opções de abertura (gancho) que a IA escreveu; a cena 1 usa uma delas e o editor deixa trocar. */
+  hooks?: { narration: string; onScreen: string }[];
   /** Prompt em inglês pra trilha (ElevenLabs Music). */
   musicPrompt: string;
   /** Legenda do post (Instagram/YouTube) com hashtags. */

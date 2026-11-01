@@ -38,7 +38,7 @@ import {
 } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
-type Busy = null | "save" | "script" | "narration" | "queue" | "delete";
+type Busy = null | "save" | "script" | "narration" | "queue" | "delete" | "storyboard";
 
 export function VideoJobEditor({ id }: { id: string }) {
   const router = useRouter();
@@ -160,6 +160,20 @@ export function VideoJobEditor({ id }: { id: string }) {
     if (dirty && !(await save())) return;
     const data = await call("narration", `/api/videogen/jobs/${id}/narration`, { method: "POST" });
     if (data) applyJob(data.job);
+  }
+
+  const [boardScene, setBoardScene] = useState<number | null>(null);
+  async function generateStoryboard(scene?: number, action?: "next_video" | "use_image") {
+    if (dirty && !(await save())) return;
+    setBoardScene(scene ?? null);
+    const data = await call("storyboard", `/api/videogen/jobs/${id}/storyboard`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(scene === undefined ? {} : { scene, action }),
+    });
+    setBoardScene(null);
+    if (data?.job) applyJob(data.job);
+    if (data?.error) setError(data.error);
   }
 
   async function queue(remove = false) {
@@ -327,6 +341,25 @@ export function VideoJobEditor({ id }: { id: string }) {
         </div>
       )}
 
+
+      {script && (
+        <Storyboard
+          scenes={script.scenes}
+          disabled={disabled}
+          busy={busy === "storyboard"}
+          busyScene={boardScene}
+          onGenerate={generateStoryboard}
+        />
+      )}
+
+      {script?.hooks && script.hooks.length > 1 && script.scenes[0] && (
+        <HookPicker
+          hooks={script.hooks}
+          current={script.scenes[0]}
+          disabled={disabled}
+          onPick={(h) => updateScene(0, { narration: h.narration, onScreen: h.onScreen })}
+        />
+      )}
 
       {script && (
         <div className="mt-6">
@@ -903,5 +936,167 @@ function FreeStyleSummary({ spec, notes }: { spec: Record<string, unknown> | und
         </span>
       )}
     </div>
+  );
+}
+
+/** Gancho: as aberturas que a IA escreveu; escolher uma troca a fala e o texto da cena 1. */
+function HookPicker({
+  hooks,
+  current,
+  disabled,
+  onPick,
+}: {
+  hooks: { narration: string; onScreen: string }[];
+  current: VideoScene;
+  disabled: boolean;
+  onPick: (h: { narration: string; onScreen: string }) => void;
+}) {
+  return (
+    <section className="mt-6 rounded-2xl border border-border bg-surface p-4 sm:p-5" aria-labelledby="hooks-title">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="hooks-title" className="flex items-center gap-1.5 text-sm font-semibold">
+          <Icon name="sparkles" className="h-4 w-4 text-accent-yellow" /> Gancho: escolha a abertura
+        </h2>
+        <p className="text-xs text-text-secondary">Os 2 primeiros segundos decidem se a pessoa fica. Trocar aqui muda a cena 1.</p>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-3" role="radiogroup" aria-label="Aberturas">
+        {hooks.map((h, i) => {
+          const active = h.narration === current.narration;
+          return (
+            <button
+              key={i}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={disabled}
+              onClick={() => onPick(h)}
+              className={`min-h-11 rounded-xl border p-3 text-left transition disabled:opacity-60 ${
+                active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"
+              }`}
+            >
+              <span className="block text-sm font-medium">&ldquo;{h.narration}&rdquo;</span>
+              {h.onScreen && <span className="mt-1 block text-xs text-text-secondary">Na tela: {h.onScreen}</span>}
+              {active && <span className="mt-1.5 inline-block text-[11px] font-semibold uppercase tracking-wide text-accent-yellow">em uso</span>}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** Storyboard: a imagem de cada cena antes do render, com "gerar de novo" por cena. */
+function Storyboard({
+  scenes,
+  disabled,
+  busy,
+  busyScene,
+  onGenerate,
+}: {
+  scenes: VideoScene[];
+  disabled: boolean;
+  busy: boolean;
+  busyScene: number | null;
+  onGenerate: (scene?: number, action?: "next_video" | "use_image") => void;
+}) {
+  const needs = scenes.filter((sc) => !sc.imageUrl && !sc.stock && sc.layout !== "text_only" && sc.imagePrompt.trim());
+  const missing = needs.filter((sc) => !(sc.preview && sc.preview.prompt === sc.imagePrompt)).length;
+  const pendingStock = scenes.filter((sc) => sc.stockQuery && !sc.stock && !sc.imageUrl).length;
+  return (
+    <section className="mt-6 rounded-2xl border border-border bg-surface p-4 sm:p-5" aria-labelledby="board-title">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id="board-title" className="flex items-center gap-1.5 text-sm font-semibold">
+            <Icon name="image" className="h-4 w-4 text-accent-yellow" /> Storyboard
+            <span className="font-normal text-text-secondary">(opcional)</span>
+          </h2>
+          <p className="mt-0.5 text-xs text-text-secondary">
+            Veja as imagens antes do render e gere de novo só as que não gostou. O render usa estas imagens.
+          </p>
+        </div>
+        {(missing > 0 || pendingStock > 0) && (
+          <button type="button" onClick={() => onGenerate()} disabled={disabled} className={secondaryButton}>
+            {busy && busyScene === null ? <Spinner /> : <Icon name="sparkles" className="h-4 w-4" />}
+            {busy && busyScene === null
+              ? "Gerando imagens…"
+              : missing === 0
+                ? "Buscar vídeos de banco"
+                : `${missing === needs.length ? "Gerar storyboard" : `Gerar ${missing} que faltam`} (≈ US$ ${(missing * 0.04).toFixed(2).replace(".", ",")})`}
+          </button>
+        )}
+      </div>
+      <ol className="mt-4 flex snap-x gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
+        {scenes.map((sc, i) => {
+          const fresh = Boolean(sc.preview && sc.preview.prompt === sc.imagePrompt);
+          const src = sc.imageUrl || sc.stock?.thumb || sc.preview?.url;
+          const generated = !sc.imageUrl && !sc.stock && sc.layout !== "text_only" && Boolean(sc.imagePrompt.trim());
+          const working = busy && (busyScene === i || (busyScene === null && generated && !fresh));
+          return (
+            <li key={i} className="w-[108px] shrink-0 snap-start sm:w-[124px]">
+              <div className="relative aspect-[9/16] overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border">
+                {src && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={src} alt={`Cena ${i + 1}`} className={`h-full w-full object-cover ${!sc.imageUrl && !fresh ? "opacity-40" : ""}`} />
+                )}
+                {!src && (
+                  <span className="absolute inset-0 flex items-center justify-center px-2 text-center text-[11px] text-text-secondary">
+                    {sc.layout === "text_only" ? "Só texto" : "Ainda sem imagem"}
+                  </span>
+                )}
+                {working && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-background/60">
+                    <Spinner />
+                  </span>
+                )}
+                <span className="absolute left-1.5 top-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white">{i + 1}</span>
+                {sc.stock && (
+                  <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-0.5 rounded-md bg-accent-yellow px-1.5 py-0.5 text-[10px] font-semibold text-accent-yellow-ink">
+                    <Icon name="film" className="h-3 w-3" /> vídeo
+                  </span>
+                )}
+                {sc.preview && !fresh && !sc.imageUrl && !sc.stock && (
+                  <span className="absolute inset-x-1.5 bottom-1.5 rounded-md bg-warning/90 px-1 py-0.5 text-center text-[10px] font-medium text-black">
+                    prompt mudou
+                  </span>
+                )}
+              </div>
+              {sc.imageUrl ? (
+                <p className="mt-1 text-center text-[11px] text-text-secondary">Sua foto</p>
+              ) : sc.stock ? (
+                <div className="mt-1 grid gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => onGenerate(i, "next_video")}
+                    disabled={disabled}
+                    className="inline-flex min-h-8 items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-accent-yellow hover:bg-accent-yellow/10 disabled:opacity-50"
+                  >
+                    <Icon name="refresh" className="h-3.5 w-3.5" /> Trocar vídeo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onGenerate(i, "use_image")}
+                    disabled={disabled}
+                    className="min-h-8 rounded-lg text-[11px] text-text-secondary hover:bg-surface-2 disabled:opacity-50"
+                  >
+                    Usar imagem
+                  </button>
+                </div>
+              ) : generated ? (
+                <button
+                  type="button"
+                  onClick={() => onGenerate(i)}
+                  disabled={disabled}
+                  className="mt-1 inline-flex min-h-9 w-full items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-accent-yellow hover:bg-accent-yellow/10 disabled:opacity-50"
+                >
+                  <Icon name="refresh" className="h-3.5 w-3.5" /> {sc.preview ? "Gerar de novo" : "Gerar"}
+                </button>
+              ) : (
+                <p className="mt-1 text-center text-[11px] text-text-secondary">&nbsp;</p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }

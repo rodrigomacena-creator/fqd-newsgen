@@ -8,6 +8,18 @@ o início da primeira palavra dela (um pouco antes, para o corte cair junto da f
 from dataclasses import dataclass, field
 
 LEAD = 0.08  # o corte acontece um pouco antes da palavra
+# cortes na batida: o corte pode adiantar até SNAP_EARLY ou atrasar até SNAP_LATE para cair na batida da trilha
+SNAP_EARLY = 0.22
+SNAP_LATE = 0.10
+
+
+def _snap(t, beats, floor):
+    """Batida mais próxima de t dentro da janela (ou o próprio t). Nunca antes de floor."""
+    best = None
+    for b in beats:
+        if t - SNAP_EARLY <= b <= t + SNAP_LATE and b >= floor and (best is None or abs(b - t) < abs(best - t)):
+            best = b
+    return best if best is not None else t
 CTA_HOLD = 1.8  # tempo mínimo do card de CTA na tela
 TAIL = 0.8  # respiro depois da última palavra
 
@@ -32,6 +44,8 @@ class Timeline:
 
 def build_timeline(script, words):
     words = [list(w) for w in (words or [])]
+    # "_beats": batidas da trilha (s), postas pelo worker depois de gerar a música
+    beats = [float(b) for b in (script.get("_beats") or [])]
     scenes_data = script.get("scenes") or []
     cta = script.get("cta") or {}
     pos = 0
@@ -46,6 +60,8 @@ def build_timeline(script, words):
         else:
             start = t
         start = max(start, t)  # nunca volta no tempo
+        if i > 0 and beats:
+            start = _snap(start, beats, t + 0.35)
         scenes.append(Scene(index=i, start=start, end=start, data=sc, words=own))
         t = start if own else start + float(sc.get("durationS") or 2)
 
@@ -55,6 +71,8 @@ def build_timeline(script, words):
         cta_start = max(t, cta_words[0][1] - LEAD)
     else:
         cta_start = max(t, last_end + 0.2)
+    if beats:
+        cta_start = _snap(cta_start, beats, t + 0.35)
     duration = round(max(last_end + TAIL, cta_start + CTA_HOLD), 2)
 
     for i, sc in enumerate(scenes):
