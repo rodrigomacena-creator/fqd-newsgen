@@ -306,6 +306,15 @@ reais encontradas ao construir o projeto, não só a estrutura.
   clique abre os detalhes no painel à direita; o bloco do fecho edita o CTA. Visual "estúdio" que segue o tema do
   app (claro por padrão, a pedido do Rodrigo; só a prévia 9:16 fica sempre escura): palco com número grande + frase + prévia 9:16,
   inspetor de 392px com rolagem própria e a timeline embaixo (no celular: palco, timeline, detalhes).
+  **Movimento por cena** (`src/lib/videogen/direction.ts` ↔ `worker/render/motion.py`, mesmo cardápio dos dois
+  lados): cada cena tem `direction = {cut, camera, object, mark, emphasis}`, escolhida pelo roteirista (IA) num
+  menu fixo e editável no inspetor da cena ("Movimento"). Vale para TODOS os estilos (embutidos e templates, inclusive
+  os novos: a regra entra no prompt de qualquer estilo, com o sentido de cada campo por estilo em `STYLE_NOTES`).
+  Roteiro sem direção nenhuma (anterior a isto) renderiza exatamente como antes (`has_direction`); o editor oferece
+  "Ativar movimento por cena". O objeto da cena é recortado com U²-Net via onnxruntime (`render/cutout.py`, modelo
+  baixado para `VIDEOGEN_MODELS_DIR`; sem modelo vira cartão). Os traços à mão são desenhados pelo render (na cor de
+  destaque do estilo), por isso os imagePrompts não pedem setas/círculos. Ao criar um renderizador novo, use
+  `motion.py` (corte, câmera, `ObjectLayer`, `Marks`, `emphasis`) guardado por `has_direction`.
   **Perfis de comunicação** (`/videogen/perfis`, tabela `VideoProfile`, `src/lib/videogen/profiles.ts`,
   `/api/videogen/profiles*`): `kind` = `person` (quem fala: tom, jeito de falar, voz) ou `company` (para
   quem é o conteúdo: tom da marca, site, @, CTA, logo, cores). Cada vídeo guarda `personId`/`companyId`

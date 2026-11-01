@@ -5,13 +5,19 @@ imagem por cena). Cada cena vira um bloco de texto central: condensada preta em 
 com a última palavra da frase em script vermelha sobreposta. Letras entram com blur e o bloco
 sai com blur quando a próxima frase começa. Ramos de hera entram por cantos alternados a cada
 cena e arcos finos giram nos cantos. CTA: nome da marca e site sobre o mesmo papel.
+
+Roteiro com direção por cena (render/motion.py): a câmera passeia pelo papel, cada cena entra com
+o corte escolhido, o bloco de texto entra com o movimento de "objeto" (mola, queda, balanço...),
+a palavra em script ganha a ênfase e o traço à mão sai em vermelho em volta do bloco. Sem direção,
+tudo segue como antes.
 """
 import math
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-from .common import FPS, H, W, FrameWriter, asset, ease, font, grain_frames
+from . import motion as mo
+from .common import FPS, H, W, FrameWriter, asset, ease, font, grain_frames, norm
 from .timeline import build_timeline
 
 USES_SCENE_IMAGES = False
@@ -82,11 +88,23 @@ class Block:
         # script sobreposta à linha de cima, levemente à direita
         self.items.append((tail_img, tail[1], W / 2 + (50 if rows else 0), y + tail_img.height * 0.3 - (10 if rows else 0)))
 
-    def draw(self, fr, t):
+    def bbox(self):
+        return (min(cx - im.width / 2 for im, _, cx, _ in self.items), min(cy - im.height / 2 for im, _, _, cy in self.items),
+                max(cx + im.width / 2 for im, _, cx, _ in self.items), max(cy + im.height / 2 for im, _, _, cy in self.items))
+
+    def draw(self, fr, t, d=None):
+        """d = direção da cena (opcional): movimento do bloco como "objeto" e ênfase da palavra em script."""
         if t < self.start - 0.1 or t > self.end + 0.3:
-            return
+            return None
         q = ease((t - self.end) / 0.3) if t > self.end else 0
-        for im, t0, cx, cy in self.items:
+        bx0, by0, bx1, by1 = self.bbox()
+        bcx, bcy = (bx0 + bx1) / 2, (by0 + by1) / 2
+        odx = ody = 0.0
+        osc = 1.0
+        if d:
+            odx, ody, osc, _ = mo.object_motion(d["object"], max(t - self.start, 0))
+            ody *= 0.6
+        for n, (im, t0, cx, cy) in enumerate(self.items):
             p = (t - t0 + 0.05) / 0.32
             if p <= 0:
                 continue
@@ -94,6 +112,16 @@ class Block:
             alpha = pe * (1 - q)
             if alpha <= 0.01:
                 continue
+            if d:
+                cx, cy = bcx + (cx - bcx) * osc + odx, bcy + (cy - bcy) * osc + ody
+                k, rot = osc, 0.0
+                if n == len(self.items) - 1 and t >= t0:  # palavra em script = palavra-chave
+                    e, rot, _, _ = mo.emphasis(d["emphasis"], t - t0)
+                    k *= e
+                if abs(k - 1) > 0.01:
+                    im = im.resize((max(1, int(im.width * k)), max(1, int(im.height * k))), Image.BILINEAR)
+                if abs(rot) > 0.05:
+                    im = im.rotate(rot, Image.BILINEAR, expand=True)
             blur = 10 * (1 - pe) + 12 * q
             out = im
             if blur > 0.5:
@@ -106,9 +134,8 @@ class Block:
                 out.putalpha(out.getchannel("A").point(lambda a, k=alpha: int(a * k)))
             x = int(cx - out.width / 2 - 8 * (1 - pe))
             y = int(cy - out.height / 2)
-            lay = Image.new("RGBA", fr.size, (0, 0, 0, 0))
-            lay.paste(out, (x, y), out)
-            fr.alpha_composite(lay)
+            mo.paste(fr, out, x, y)
+        return (bx0 - bcx) * osc + bcx + odx, (by0 - bcy) * osc + bcy + ody, (bx1 - bcx) * osc + bcx + odx, (by1 - bcy) * osc + bcy + ody
 
 
 def render(job, assets, out_path, on_progress=None):
@@ -118,11 +145,15 @@ def render(job, assets, out_path, on_progress=None):
     s = max(W / paper.width, H / paper.height) * 1.08
     paper = paper.resize((int(paper.width * s), int(paper.height * s)), Image.LANCZOS)
     ivy = _key_white(asset("hera.jpg"))
+    directed = mo.has_direction(script)
+    dirs = {sc.index: mo.direction_of(sc.data, sc.index) for sc in tl.scenes} if directed else {}
+    marks = mo.Marks(tl, {norm(sc.words[-1][0]) for sc in tl.scenes if sc.words}, norm, dirs) if directed else None
+    paper_fill = tuple(int(v) for v in np.asarray(paper).reshape(-1, 3).mean(0))
 
-    blocks = []
+    blocks = []  # (cena, bloco)
     for sc in tl.scenes:
         if sc.words:
-            blocks.append(Block(sc.words, sc.start, sc.end - 0.15))
+            blocks.append((sc, Block(sc.words, sc.start, sc.end - 0.15)))
     cta = script.get("cta") or {}
     cta_text = (cta.get("onScreen") or "").replace("\n", " ").strip()
 
@@ -182,18 +213,32 @@ def render(job, assets, out_path, on_progress=None):
     writer = FrameWriter(out_path)
     for n in range(total):
         t = n / FPS
+        cur = max((sc for sc in tl.scenes if sc.start <= t and t < tl.cta_start), key=lambda sc: sc.start, default=None)
         z = 1.0 + 0.004 * t
-        cw, ch = paper.width / 1.08 / z, paper.height / 1.08 / z
         cx = paper.width / 2 + paper.width * 0.002 * t
         cy = paper.height / 2
+        if directed and cur is not None:
+            z, dx, dy = mo.camera(dirs[cur.index]["camera"], t - cur.start, cur.end - cur.start)
+            k = paper.width / 1.08 / W
+            cx, cy = paper.width / 2 - dx * k, paper.height / 2 - dy * k
+        cw, ch = paper.width / 1.08 / z, paper.height / 1.08 / z
+        cx = min(max(cx, cw / 2), paper.width - cw / 2)
+        cy = min(max(cy, ch / 2), paper.height - ch / 2)
         fr = paper.resize((W, H), Image.BILINEAR, box=(cx - cw / 2, cy - ch / 2, cx + cw / 2, cy + ch / 2)).convert("RGBA")
         ivy_layer(fr, t)
         arcs(fr, 0, 0, t, 1)
         arcs(fr, W, H, t, -1)
-        for b in blocks:
-            b.draw(fr, t)
+        for sc, b in blocks:
+            box = b.draw(fr, t, dirs.get(sc.index))
+            if marks is not None and box is not None and t <= b.end:
+                marks.draw(fr, sc.index, t, box, None, SCRIPT_RED, 12)
         cta_layer(fr, t)
-        a = np.asarray(fr.convert("RGB")).astype(np.float32)
+        flash = 0.0
+        if directed and cur is not None and cur is not tl.scenes[0]:
+            d = dirs[cur.index]
+            fr, _ = mo.apply_cut(fr, d["cut"], t - cur.start, paper_fill)
+            flash = mo.cut_flash(d["cut"], t - cur.start)
+        a = np.asarray(fr.convert("RGB")).astype(np.float32) + 50 * flash
         a += np.repeat(np.repeat(GR[n % len(GR)], 2, 0), 2, 1)[..., None]
         writer.write(np.clip(a, 0, 255).astype(np.uint8))
         if on_progress and n % 30 == 0:

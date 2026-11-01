@@ -65,6 +65,17 @@ ls /usr/share/fonts/opentype/inter/InterDisplay-Black.otf \
 
 Se o caminho for outro na sua distro, ajuste `VIDEOGEN_FONT_SANS` / `VIDEOGEN_FONT_SERIF` no `.env`.
 
+Recorte do objeto (movimento por cena, `render/cutout.py`): usa `onnxruntime` (no
+`requirements.txt`) e o modelo U²-Net (~176 MB), baixado sozinho na primeira vez para
+`VIDEOGEN_MODELS_DIR` (padrão `worker/models`, fora do git). Para não pagar o download no primeiro
+vídeo, baixe antes como o usuário do serviço:
+
+```bash
+sudo -u videogen .venv/bin/python -c "from render.cutout import model_path; print(model_path())"
+```
+
+Sem o modelo (ou sem `onnxruntime`) o render segue sem recorte: a imagem vira um cartão com borda.
+
 ### Testar uma vez e deixar rodando
 
 ```bash

@@ -8,6 +8,11 @@ tinta de cor) e card final de CTA.
 
 normalize_spec() é a fonte da verdade do formato: valores fora da lista viram o padrão, números
 são limitados a faixas seguras. Assim uma ficha estranha nunca derruba o render.
+
+Roteiro com direção por cena (render/motion.py), em qualquer ficha: a câmera da cena substitui o
+movimento da imagem da ficha, o card/círculo entra com o movimento de "objeto", cada cena entra com
+o corte escolhido (a transição da ficha continua só na entrada do CTA), o traço à mão sai na cor de
+destaque e a palavra-chave da legenda ganha a ênfase. Sem direção, tudo segue como antes.
 """
 import math
 import re
@@ -15,6 +20,7 @@ import re
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
+from . import motion as mv
 from .common import FPS, H, W, FrameWriter, asset, cover_resize, ease, font, grain_frames, group_lines, keyword_set, norm, spread_words, vignette
 from .timeline import build_timeline
 
@@ -249,6 +255,8 @@ class SceneVisual:
         self.big = None
         self.card = None
         self.shadow = None
+        self.direction = None  # direção da cena (motion.py), quando o roteiro tem
+        self.box = None  # caixa do card no último quadro (para o traço à mão)
         if self.layout == "fullbleed":
             self.big = cover_resize(img, int(W * 1.3), int(H * 1.3))
         elif self.layout == "top_half":
@@ -276,6 +284,9 @@ class SceneVisual:
     def _zoom(self, p):
         """(zoom, pan_x, pan_y) da imagem em p. Mistura linear + ease para nunca "parar" no meio."""
         a = self.amp
+        if self.direction:  # câmera da direção da cena
+            z, dx, dy = mv.camera(self.direction["camera"], p, 1.0)
+            return 1.0 + (z - 1.0) * 1.5 * a, dx / 45 * 0.7 * a, dy / 60 * 0.6 * a
         q = 0.45 * p + 0.55 * ease(p)
         m = self.motion
         if m == "push_in":
@@ -331,6 +342,21 @@ class SceneVisual:
             cx, cy = min(max(cx, 0), bw - cw), min(max(cy, 0), bh - ch)
             crop = self.big.crop((int(cx), int(cy), int(cx) + cw, int(cy) + ch)).resize((tw, th), Image.BILINEAR)
             fr.paste(crop, (0, 0))
+        elif self.card is not None and self.direction:
+            # card como "objeto" da direção (mola, queda, balanço...) + flutuação leve
+            dx, dy, s, rot = mv.object_motion(self.direction["object"], local_t)
+            s *= 1.0 + 0.5 * (z - 1.0) + 0.03 * pulse
+            bob = math.sin(local_t * 2.2 + self.phase[0]) * 6 * self.amp
+            card = self.card.resize((max(1, int(self.card.width * s)), max(1, int(self.card.height * s))), Image.BILINEAR)
+            if abs(rot) > 0.05:
+                card = card.rotate(rot, resample=Image.BILINEAR, expand=True)
+            x = (W - card.width) / 2 + panx * 60 + dx + sx
+            y = H * self.spec["image"]["y"] - card.height / 2 + bob + dy + sy
+            if self.shadow is not None:
+                sh = self.shadow.resize((max(1, int(self.shadow.width * s)), max(1, int(self.shadow.height * s))))
+                fr.paste((0, 0, 0), (int(x + (card.width - sh.width) / 2), int(y + (card.height - sh.height) / 2 + 20 * s)), sh)
+            fr.paste(card, (int(x), int(y)), card)
+            self.box = (x, y, x + card.width, y + card.height)
         elif self.card is not None:
             # entrada com impacto (sobe e passa um pouco do tamanho) + flutuação contínua
             k = min(local_t / 0.4, 1.0)
@@ -477,7 +503,8 @@ class Captions:
 
     MAX_W = 960
 
-    def __init__(self, spec, words, keys, cta_start):
+    def __init__(self, spec, words, keys, cta_start, emphasis_at=None):
+        self.emphasis_at = emphasis_at  # t -> tipo de ênfase da cena (roteiro com direção) ou None
         self.cfg = spec["caption"]
         self.style = TextStyle(self.cfg, spec["palette"])
         self.keys = keys
@@ -542,7 +569,13 @@ class Captions:
                 alpha = ease((t - w[1]) / 0.12)
             elif anim == "karaoke" and t >= w[1] and self._mode(w[0], False) == "normal":
                 im = self.style.word_img(w[0], size, "spoken")
-            if anim != "typewriter" and w[1] <= t < w[1] + 0.3:  # a palavra falada agora dá um "pulo"
+            rot = 0.0
+            emph = self.emphasis_at(w[1]) if self.emphasis_at and norm(w[0]) in self.keys else None
+            if emph and t >= w[1]:  # palavra-chave com a ênfase da direção da cena
+                e, rot, frac, _ = mv.emphasis(emph, t - w[1])
+                scale, alpha = e, max(alpha, line_alpha)
+                im = mv.reveal_left(im, frac)
+            elif anim != "typewriter" and w[1] <= t < w[1] + 0.3:  # a palavra falada agora dá um "pulo"
                 k = (t - w[1]) / 0.3
                 scale *= 1 + 0.09 * self.amp * math.sin(k * math.pi)
             if typed is not None:
@@ -553,6 +586,8 @@ class Captions:
                     im = im.crop((0, 0, max(1, int(im.width * typed / n)), im.height))
                 typed -= n
             draw_im = im if scale == 1.0 else im.resize((max(1, int(im.width * scale)), max(1, int(im.height * scale))))
+            if abs(rot) > 0.05:
+                draw_im = draw_im.rotate(rot, Image.BILINEAR, expand=True)
             _paste_rgba(fr, draw_im, x + (im.width - draw_im.width) / 2, cy - draw_im.height / 2, alpha)
             x += im.width + gap
 
@@ -860,15 +895,26 @@ def render(job, assets, out_path, on_progress=None):
     keys = keyword_set(script)
     texture = Image.open(assets["texture"]).convert("RGB") if assets.get("texture") else None
 
+    directed = mv.has_direction(script)
+    dirs = {sc.index: mv.direction_of(sc.data, sc.index) for sc in tl.scenes} if directed else {}
+    marks = mv.Marks(tl, keys, norm, dirs) if directed else None
+    accent = rgb(spec["palette"]["accent"])
+    bg_fill = rgb(spec["palette"]["background"])
+
     visuals = {}
     for n, sc in enumerate(tl.scenes):
         path = assets.get("images", {}).get(sc.index)
         img = Image.open(path).convert("RGB") if path else None
         visuals[sc.index] = SceneVisual(spec, img, texture, seed=n)
+        visuals[sc.index].direction = dirs.get(sc.index)
+
+    def emphasis_at(t):
+        sc = max((s for s in tl.scenes if s.start <= t), key=lambda s: s.start, default=None)
+        return dirs[sc.index]["emphasis"] if sc is not None else None
 
     cta = script.get("cta") or {}
     cta_words = tl.cta_words or spread_words(cta.get("onScreen") or "", tl.cta_start + 0.1)
-    captions = Captions(spec, tl.words, keys, tl.cta_start)
+    captions = Captions(spec, tl.words, keys, tl.cta_start, emphasis_at if directed else None)
     title = Title(spec)
     finisher = Finisher(spec)
     particles = Particles(spec)
@@ -913,12 +959,27 @@ def render(job, assets, out_path, on_progress=None):
                 span = max(sc.end - sc.start, 0.01)
                 local = t - sc.start
                 b = beat_at(t)
-                fr = visuals[sc.index].frame(local / span, local, t, b if mo["beatPulse"] else 0.0, b)
-                if i > 0 and local < tdur:
+                vis = visuals[sc.index]
+                fr = vis.frame(local / span, local, t, b if mo["beatPulse"] else 0.0, b)
+                flash = 0.0
+                if directed:
+                    if marks.kind.get(sc.index, "none") != "none" and t >= marks.at[sc.index]:
+                        box = vis.box or (W * 0.22, H * 0.3, W * 0.78, H * 0.54)
+                        im = Image.fromarray(fr).convert("RGBA")
+                        marks.draw(im, sc.index, t, box, None, accent, 14)
+                        fr = np.asarray(im.convert("RGB"))
+                    if i > 0 and local < mv.CUT_LEN:
+                        d = dirs[sc.index]
+                        im, _ = mv.apply_cut(Image.fromarray(fr).convert("RGBA"), d["cut"], local, bg_fill)
+                        fr = np.asarray(im.convert("RGB"))
+                        flash = mv.cut_flash(d["cut"], local)
+                elif i > 0 and local < tdur:
                     prev_sc = tl.scenes[i - 1]
                     prev = visuals[prev_sc.index].frame(1.0, prev_sc.end - prev_sc.start, t)
                     fr = _transition(prev, fr, local / tdur, trans["kind"])
                 fr = np.array(fr, copy=True)
+                if flash > 0:
+                    fr = np.clip(fr.astype(np.float32) + 60 * flash, 0, 255).astype(np.uint8)
                 particles.draw(fr, t)
                 title.draw(fr, sc.data.get("onScreen") or "", local, span)
                 captions.draw(fr, t)

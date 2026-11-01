@@ -52,6 +52,7 @@ O vídeo alterna entre dois "mundos":
 - No estúdio não há corte: o objeto antigo sai com blur e o novo entra com zoom e blur, enquanto as estrelas continuam no lugar.
 - Entre estúdio e vídeo, a passagem é por dissolve curto ou corte suave.
 - O movimento é constante e lento: drift do objeto, rotação das estrelas e Ken Burns no vídeo.
+- Cada cena tem a sua direção de movimento (campo "direction"): o objeto do estúdio é recortado e entra com o movimento escolhido (mola, queda, balanço, flutuação), a câmera da cena cinematográfica segue a direção, cada cena entra com o corte escolhido (prefira os mais suaves aqui: zoom_in, zoom_out, dip), o traço à mão sai em terracota e a linha com a palavra-chave ganha a ênfase.
 
 ## Áudio
 - Narração calma e didática, com cerca de 3 palavras por segundo (por volta de 95 palavras em 32s).

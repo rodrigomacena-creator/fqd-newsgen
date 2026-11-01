@@ -1,5 +1,6 @@
 // Tipos compartilhados do VideoGen (client + servidor + contrato com o worker).
 // Este arquivo é "puro" (sem imports de servidor) de propósito.
+import type { SceneDirection } from "./direction";
 
 export interface VideoScene {
   /** Trecho da narração falado nesta cena, com a grafia de exibição (vira legenda). */
@@ -14,6 +15,8 @@ export interface VideoScene {
   durationS: number;
   /** Imagem enviada pelo usuário (briefing) usada nesta cena no lugar da imagem gerada por IA. */
   imageUrl?: string;
+  /** Direção de movimento da cena (todos os estilos; roteiro antigo sem direção renderiza como antes). Ver direction.ts. */
+  direction?: SceneDirection;
 }
 
 /** Imagem que o usuário subiu no briefing do vídeo (vai pra IA ver e pode ser usada nas cenas). */

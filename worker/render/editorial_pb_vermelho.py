@@ -11,7 +11,9 @@ import re
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-from .common import FONT_SANS, FONT_SERIF, FPS, H, W, FrameWriter, cover_resize, ease, font, grain_frames, norm, vignette
+from . import motion as mo
+from .common import FONT_SANS, FONT_SERIF, FPS, H, W, FrameWriter, asset, cover_resize, ease, font, grain_frames, norm, vignette
+from .cutout import cut_object
 from .timeline import build_timeline
 
 USES_SCENE_IMAGES = True
@@ -102,6 +104,8 @@ def _cta_lines(cta):
 def render(job, assets, out_path, on_progress=None):
     """Renderiza o vídeo sem áudio em out_path. Devolve a duração em segundos."""
     script = job["script"]
+    if mo.has_direction(script):
+        return render_directed(job, assets, out_path, on_progress)
     tl = build_timeline(script, job.get("narrationWords"))
     keys = _keyword_set(script)
     narration_all = " ".join((s.get("narration") or "") for s in script.get("scenes") or [])
@@ -232,6 +236,173 @@ def render(job, assets, out_path, on_progress=None):
         caption(fr, t)
         cta(fr, t)
         writer.write(finish(fr, t, ab))
+        if on_progress and n % 30 == 0:
+            on_progress(n / total)
+    writer.close()
+    return tl.duration
+
+
+# ---------- versão com direção por cena (roteiros novos) ----------
+
+def _scene_object(sc, path):
+    """Objeto da cena: recorte da imagem gerada; foto do usuário (ou recorte que falhou) vira cartão."""
+    im = Image.open(path).convert("RGB")
+    if not sc.data.get("imageUrl"):
+        cut = cut_object(im)
+        if cut is not None:
+            s = W / im.width
+            bbox = cut.getchannel("A").getbbox()
+            cy = min((bbox[1] + bbox[3]) / 2 * s, 1050)
+            return mo.ObjectLayer(cut, ((bbox[0] + bbox[2]) / 2 * s, cy), scale=s * 0.92)
+    return mo.ObjectLayer(mo.photo_card(im, 760, 900), (W / 2, 900), shadow=0.5)
+
+
+def render_directed(job, assets, out_path, on_progress=None):
+    """Objeto recortado sobre o papel (2,5D), corte/câmera/objeto/traço/ênfase por cena, molas."""
+    script = job["script"]
+    tl = build_timeline(script, job.get("narrationWords"))
+    keys = _keyword_set(script)
+    dirs = {sc.index: mo.direction_of(sc.data, sc.index) for sc in tl.scenes}
+
+    plate = cover_resize(Image.open(asset("papel_grade.jpg")).convert("RGB"), int(W * 1.18), int(H * 1.18))
+    PW, PH = plate.size
+    objs = {}
+    for sc in tl.scenes:
+        path = assets.get("images", {}).get(sc.index)
+        objs[sc.index] = _scene_object(sc, path) if path else None
+    marks = mo.Marks(tl, keys, norm, dirs)
+
+    chunks = _chunks(tl.words, tl.cta_start)
+    chunk_imgs = [[_word_img(w[0], keys) for w in c] for c in chunks]
+    cta_lines = _cta_lines(script.get("cta") or {})
+    VIG = vignette(0.55)
+    GR = grain_frames()
+    last = tl.scenes[-1] if tl.scenes else None
+
+    def scene_at(t):
+        return max((s for s in tl.scenes if s.start <= t), key=lambda s: s.start, default=tl.scenes[0])
+
+    def compose(sc, t, cta_mode=False):
+        length = (tl.duration if cta_mode else sc.end) - sc.start
+        u = t - sc.start
+        d = dirs[sc.index]
+        cam = mo.camera(d["camera"], u, length)
+        z, cdx, cdy = cam
+        bw, bh = W / z, H / z
+        bx, by = (PW - bw) / 2 - cdx * 0.5, (PH - bh) / 2 - cdy * 0.5
+        fr = plate.resize((W, H), Image.BILINEAR, box=(bx, by, bx + bw, by + bh)).convert("RGBA")
+        o = objs[sc.index]
+        if o is not None:
+            box = o.draw(fr, d["object"], u, cam)
+            if not cta_mode:
+                marks.draw(fr, sc.index, t, box, o.base_box(), RED)
+        return fr
+
+    def caption(fr, t, shake):
+        for ci, c in enumerate(chunks):
+            cs = c[0][1] - 0.05
+            ce = (chunks[ci + 1][0][1] - 0.05) if ci + 1 < len(chunks) else tl.cta_start
+            if not (cs <= t < ce):
+                continue
+            ims = chunk_imgs[ci]
+            gap = 18
+            tot = sum(i.width for i in ims) + gap * (len(ims) - 1)
+            scl = min(1, MAX_LINE_W / tot)
+            x = (W - tot * scl) / 2
+            for w, im in zip(c, ims):
+                dt = t - (w[1] - 0.04)
+                slot = im.width * scl
+                if dt >= 0:
+                    rot, frac = 0.0, 1.0
+                    if norm(w[0]) in keys:
+                        k, rot, frac, sh = mo.emphasis(dirs[scene_at(w[1]).index]["emphasis"], dt)
+                        shake[0] = max(shake[0], sh)
+                    else:
+                        k = mo.word_pop(dt)
+                    wi = mo.reveal_left(im, frac)
+                    s = scl * k
+                    wi = wi.resize((max(1, int(wi.width * s)), max(1, int(wi.height * s))), Image.BILINEAR)
+                    if rot:
+                        wi = wi.rotate(rot, Image.BILINEAR, expand=True)
+                    if dt < 0.06 and frac >= 1:
+                        wi.putalpha(wi.getchannel("A").point(lambda a, q=dt / 0.06: int(a * q)))
+                    mo.paste(fr, wi, x + slot / 2 - wi.width / 2, CAPTION_Y - wi.height / 2)
+                x += slot + gap * scl
+
+    def cta(fr, t):
+        st = tl.cta_start
+        if t < st or not cta_lines:
+            return
+        a = mo.expo_out((t - st) / 0.3)
+        fr.alpha_composite(Image.new("RGBA", (W, H), (10, 10, 10, int(165 * a))))
+        y = 760 if len(cta_lines) > 1 else 860
+        for i, (kind, txt) in enumerate(cta_lines):
+            dt = t - (st + 0.15 + 0.2 * i)
+            if kind == "serif":
+                f = font(FONT_SERIF, 140)
+            elif kind == "small":
+                f = _fit_font(FONT_SANS, txt, 900, 64)
+            else:
+                f = _fit_font(FONT_SANS, txt, 880, 200 if len(txt) <= 8 else 120)
+            bb = f.getbbox(txt)
+            tw, th = bb[2] - bb[0], bb[3] - bb[1]
+            if dt > 0:
+                if kind == "box":
+                    item = Image.new("RGBA", (tw + 70, th + 54), (0, 0, 0, 0))
+                    d = ImageDraw.Draw(item)
+                    d.rectangle([0, 0, int((tw + 68) * mo.expo_out(dt / 0.22)) + 1, th + 52], fill=RED + (255,))
+                    d.text((34 - bb[0], 26 - bb[1]), txt, font=f, fill=(255, 255, 255, int(255 * mo.clamp(dt / 0.1))))
+                    s, r = 1.35 - 0.35 * mo.spring(dt, 15, 6.5), -3 * (1 - mo.spring(dt, 13, 5))
+                    yy = y - 26
+                else:
+                    item = Image.new("RGBA", (tw + 20, th + 20), (0, 0, 0, 0))
+                    ImageDraw.Draw(item).text((10 - bb[0], 10 - bb[1]), txt, font=f, fill=(255, 255, 255, int(255 * mo.clamp(dt / 0.18))))
+                    s, r = 1.0, 0.0
+                    yy = y - 10 + 30 * (1 - mo.expo_out(dt / 0.3))
+                im = item if s == 1.0 else item.resize((int(item.width * s), int(item.height * s)), Image.BILINEAR)
+                if r:
+                    im = im.rotate(r, Image.BILINEAR, expand=True)
+                mo.paste(fr, im, (W - im.width) / 2, yy - (im.height - item.height) / 2)
+            y += th + (130 if kind == "box" else 80)
+        at = st + 0.9
+        if t > at:  # seta desenhada apontando para os comentários
+            y0 = y - 40
+            shaft = [(W / 2 + 18 * math.sin(i / 5), y0 + 230 * i / 29) for i in range(30)]
+            tip = shaft[-1]
+            bob = 14 * math.sin((t - at) * 6) if t - at > 0.6 else 0
+            paths = [shaft, [tip, (tip[0] - 50, tip[1] - 55)], [tip, (tip[0] + 50, tip[1] - 55)]]
+            mo.draw_paths(fr, [[(px, py + bob) for px, py in p] for p in paths], mo.ease_io((t - at) / 0.5), RED, 14)
+
+    def finish(fr, t, ab, shake, flash):
+        a = np.asarray(fr.convert("RGB")).astype(np.float32)
+        if shake > 0:
+            a = np.roll(a, int(8 * shake * (1 if int(t * FPS) % 2 else -1)), axis=0)
+        sh = int(2 + 14 * ab)
+        a[..., 0] = np.roll(a[..., 0], sh, axis=1)
+        a[..., 2] = np.roll(a[..., 2], -sh, axis=1)
+        g = np.repeat(np.repeat(GR[int(t * FPS) % len(GR)], 2, 0), 2, 1)[..., None]
+        a = a * VIG + g + 40 * ab ** 2 + 70 * flash
+        return np.clip(a, 0, 255).astype(np.uint8)
+
+    total = int(round(tl.duration * FPS))
+    writer = FrameWriter(out_path)
+    for n in range(total):
+        t = n / FPS
+        shake = [0.0]
+        ab = flash = 0.0
+        if t >= tl.cta_start and last is not None:
+            fr = compose(last, t, cta_mode=True)
+            fr = fr.filter(ImageFilter.GaussianBlur(3 * mo.clamp((t - tl.cta_start) / 0.4)))
+        else:
+            sc = scene_at(t)
+            fr = compose(sc, t)
+            if sc is not tl.scenes[0]:
+                kind = dirs[sc.index]["cut"]
+                fr, ab = mo.apply_cut(fr, kind, t - sc.start, PAPER)
+                flash = mo.cut_flash(kind, t - sc.start)
+        caption(fr, t, shake)
+        cta(fr, t)
+        writer.write(finish(fr, t, ab, shake[0], flash))
         if on_progress and n % 30 == 0:
             on_progress(n / total)
     writer.close()

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerE
 import { AutoTextarea, CopyButton, Icon } from "./ui";
 import { SceneImage } from "./SceneImage";
 import { sceneTiming } from "@/lib/videogen/sceneTiming";
+import { DIRECTION_FIELD_LABEL, DIRECTION_FIELDS, DIRECTION_OPTIONS, defaultDirection, type SceneDirection } from "@/lib/videogen/direction";
 import type { BriefingImage, NarrationWord, VideoScene, VideoScript } from "@/lib/videogen/types";
 
 type Selection = number | "cta";
@@ -267,8 +268,11 @@ export function SceneStudio({
   const ticks = Array.from({ length: Math.floor(timing.total / tickStep) + 1 }, (_, k) => k * tickStep);
   const majorEvery = tickStep === 1 ? 5 : 10;
   const phrase = shown === "cta" ? script.cta.narration || script.cta.onScreen : noNarration ? shownScene?.onScreen : shownScene?.narration;
+  // roteiro com direção de movimento: cena nova já nasce com uma (roteiro antigo sem direção fica como está)
+  const directed = script.scenes.some((sc) => sc.direction);
+  const blank = (at: number): VideoScene => (directed ? { ...EMPTY, direction: defaultDirection(at) } : { ...EMPTY });
   const addAtEnd = () => {
-    onInsert(count, { ...EMPTY });
+    onInsert(count, blank(count));
     setSel(count);
   };
 
@@ -388,8 +392,10 @@ export function SceneStudio({
               onInsert(selected + 1, { ...script.scenes[selected] });
               setSel(selected + 1);
             }}
+            directed={directed}
+            onEnableDirection={() => script.scenes.forEach((_, i) => onScene(i, { direction: defaultDirection(i) }))}
             onInsertAfter={() => {
-              onInsert(selected + 1, { ...EMPTY });
+              onInsert(selected + 1, blank(selected + 1));
               setSel(selected + 1);
             }}
             onRemove={() => onRemove(selected)}
@@ -716,7 +722,11 @@ function SceneInspector({
   onDuplicate,
   onInsertAfter,
   onRemove,
+  directed,
+  onEnableDirection,
 }: {
+  directed: boolean;
+  onEnableDirection: () => void;
   index: number;
   total: number;
   scene: VideoScene;
@@ -819,6 +829,8 @@ function SceneInspector({
           }
         />
 
+        <MotionFields index={index} direction={scene.direction} directed={directed} disabled={disabled} onChange={(direction) => onChange({ direction })} onEnable={onEnableDirection} />
+
         <div>
           <label htmlFor={ids("visual")} className={studioLabel}>
             O que aparece <span className="font-normal normal-case tracking-normal">(para você revisar)</span>
@@ -851,6 +863,75 @@ function SceneInspector({
         </button>
       </div>
     </div>
+  );
+}
+
+/** Direção de movimento da cena: corte, câmera, objeto, traço e ênfase (o worker só entende estes valores). */
+function MotionFields({
+  index,
+  direction,
+  directed,
+  disabled,
+  onChange,
+  onEnable,
+}: {
+  index: number;
+  direction?: SceneDirection;
+  directed: boolean;
+  disabled: boolean;
+  onChange: (d: SceneDirection) => void;
+  onEnable: () => void;
+}) {
+  if (!direction) {
+    if (directed) return null;
+    return (
+      <div className="rounded-xl border border-dashed border-border p-3">
+        <p className={studioLabel}>Movimento</p>
+        <p className="mt-1.5 text-xs text-text-secondary">
+          Este roteiro é de antes do movimento por cena e renderiza como antes. Ativar dá a cada cena um corte de entrada, câmera, entrada do objeto, traço à mão e
+          ênfase na palavra-chave, que você pode ajustar.
+        </p>
+        <button
+          type="button"
+          onClick={onEnable}
+          disabled={disabled}
+          className="mt-2.5 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold text-foreground transition hover:border-[#FF3B3B] hover:text-[#FF3B3B] disabled:opacity-40"
+        >
+          <Icon name="sparkles" /> Ativar movimento por cena
+        </button>
+      </div>
+    );
+  }
+  return (
+    <fieldset>
+      <legend className={studioLabel}>Movimento</legend>
+      <div className="mt-1.5 grid grid-cols-2 gap-2">
+        {DIRECTION_FIELDS.map((f) => {
+          const id = `scene-${index}-dir-${f}`;
+          const options = DIRECTION_OPTIONS[f] as Record<string, string>;
+          return (
+            <div key={f} className={f === "cut" ? "col-span-2" : undefined}>
+              <label htmlFor={id} className="text-[11px] font-medium text-text-secondary">
+                {DIRECTION_FIELD_LABEL[f]}
+              </label>
+              <select
+                id={id}
+                value={direction[f]}
+                disabled={disabled}
+                onChange={(e) => onChange({ ...direction, [f]: e.target.value } as SceneDirection)}
+                className={`mt-1 h-10 !py-0 ${studioField.replace("bg-surface", "bg-background").replace("text-sm", "text-[13px]")}`}
+              >
+                {Object.entries(options).map(([value, label]) => (
+                  <option key={value} value={value} className="bg-background text-foreground">
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 

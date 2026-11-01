@@ -21,6 +21,7 @@ import requests
 from providers import download, generate_image, generate_music, silent_audio
 from render import template_engine
 from render.common import mix
+from render.motion import default_direction
 
 FRAMES = 12
 SAMPLE_SECONDS = 5.0
@@ -184,7 +185,9 @@ def sample_job(result, spec):
     script = {
         "title": sample.get("title") or "Exemplo",
         "scenes": [{"narration": str(s.get("narration") or "").strip(), "onScreen": str(s.get("onScreen") or "").strip(),
-                    "imagePrompt": str(s.get("imagePrompt") or "").strip(), "visual": "", "durationS": 1.5} for s in scenes],
+                    "imagePrompt": str(s.get("imagePrompt") or "").strip(), "visual": "", "durationS": 1.5,
+                    # o exemplo já mostra o movimento por cena que os roteiros novos recebem
+                    "direction": default_direction(i)} for i, s in enumerate(scenes)],
         "cta": {"onScreen": str(cta.get("onScreen") or "Siga para mais").strip(), "narration": ""},
         "keywords": [str(k) for k in (sample.get("keywords") or [])][:3],
     }

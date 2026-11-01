@@ -12,6 +12,7 @@ import {
 } from "./types";
 import { mergePronunciations } from "./pronunciation";
 import { isAllowedImageUrl } from "./profiles";
+import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
 
 // Claude via OpenRouter (Rodrigo quer um provedor só pra LLM).
 export const VIDEOGEN_TEXT_MODEL = process.env.VIDEOGEN_TEXT_MODEL || "anthropic/claude-sonnet-5.5";
@@ -116,7 +117,7 @@ Regras do roteiro:
 - "onScreen" é o texto grande na tela quando o padrão usa (palavra-chave, número, título curto); pode ser vazio.
 - "imagePrompt" é em INGLÊS, para um modelo de imagem (Gemini/nano banana), formato vertical 9:16. Descreva só a imagem estática da cena no estilo do padrão (fundo, materiais, luz, composição, paleta). NUNCA peça texto, letras, logotipos ou números dentro da imagem: o texto é colocado depois pelo render. Mantenha o mesmo estilo visual em todas as cenas para o vídeo parecer uma peça só.
 - "visual" é uma descrição curta em português do que aparece, para revisão humana.
-${ctaRule(ctx.person, ctx.company)}${imagesRule}
+${ctaRule(ctx.person, ctx.company)}${imagesRule}${directionPromptRule(pattern.id)}
 - Pronúncia: siglas e nomes em inglês são falados como em inglês (SEO e GEO letra por letra). Escreva na narração a grafia normal; o sistema já converte estes termos: ${dictionary}. Se usar outro termo/marca em inglês que um narrador brasileiro leria errado, adicione em "pronunciations" com uma grafia fonética em português (ex.: {"display": "Claude", "spoken": "Clód"}).
 - "keywords": 3 a 8 palavras da narração/tela que merecem destaque visual.
 - "musicPrompt": em inglês, descreve a trilha instrumental no clima do padrão (sem vocais), para o ElevenLabs Music.
@@ -127,7 +128,7 @@ Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
 {
   "title": "título interno curto do vídeo",
   "scenes": [
-    { "narration": "...", "onScreen": "...", "visual": "...", "imagePrompt": "...", "durationS": 2${ctx.imageCount ? ', "userImage": null' : ""} }
+    { "narration": "...", "onScreen": "...", "visual": "...", "imagePrompt": "...", "durationS": 2${ctx.imageCount ? ', "userImage": null' : ""}, "direction": { "cut": "...", "camera": "...", "object": "...", "mark": "...", "emphasis": "..." } }
   ],
   "cta": { "narration": "...", "onScreen": "..." },
   "keywords": ["..."],
@@ -145,7 +146,7 @@ function str(v: unknown): string {
 export function normalizeScript(input: unknown): VideoScript {
   const d = (input ?? {}) as Record<string, unknown>;
   const scenesRaw = Array.isArray(d.scenes) ? d.scenes : [];
-  const scenes: VideoScene[] = scenesRaw.map((s) => {
+  const scenes: VideoScene[] = scenesRaw.map((s, i) => {
     const o = (s ?? {}) as Record<string, unknown>;
     const dur = Number(o.durationS);
     const scene: VideoScene = {
@@ -157,6 +158,8 @@ export function normalizeScript(input: unknown): VideoScript {
     };
     const imageUrl = str(o.imageUrl);
     if (imageUrl && isAllowedImageUrl(imageUrl)) scene.imageUrl = imageUrl;
+    const direction = normalizeDirection(o.direction, i);
+    if (direction) scene.direction = direction;
     return scene;
   });
   const cta = (d.cta ?? {}) as Record<string, unknown>;
@@ -289,5 +292,7 @@ export async function generateVideoScript(params: {
       console.error("Falha ao encurtar o roteiro, mantendo o original:", err);
     }
   }
+  // toda cena sai com direção (a IA às vezes esquece em alguma)
+  script.scenes = script.scenes.map((sc, i) => (sc.direction ? sc : { ...sc, direction: defaultDirection(i) }));
   return { script, usd };
 }

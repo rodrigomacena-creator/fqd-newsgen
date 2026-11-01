@@ -37,6 +37,7 @@ Referência analisada: [pin no Pinterest](https://br.pinterest.com/pin/924363892
 - Sem cortes: a sensação é de plano único, com só os elementos dos cantos se movendo.
 - Cada frase fica cerca de 2 segundos na tela, com pausa curta de respiro.
 - Transição: O fundo nunca muda: texto sai com blur enquanto heras e arcos entram e saem pelos cantos.
+- Cada cena tem a sua direção de movimento (campo "direction"): a câmera passeia pelo papel, a cena entra com o corte escolhido (prefira zoom_in, zoom_out e dip, que combinam com o tom calmo), o bloco de texto entra com o movimento de "object", a palavra em script recebe a ênfase e o traço à mão sai em vermelho em volta do bloco.
 
 ## Áudio
 - Acústica leve, violão ou piano com percussão suave, sensação de manhã. (Sugestão, não observado na referência.)

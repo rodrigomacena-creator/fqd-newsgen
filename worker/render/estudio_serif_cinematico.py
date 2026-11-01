@@ -6,13 +6,20 @@ O tipo de cada cena é decidido pela própria imagem gerada: fundo claro e liso 
 estúdio; o resto = cinematográfica. Texto em Playfair Display Italic com pesos mistos (linha fina
 + linha black), revelado letra a letra com blur; palavras-chave em terracota. Dissolve curto ao
 entrar/sair de cenas cinematográficas. CTA no estúdio com bolhas verde-limão.
+
+Roteiro com direção por cena (render/motion.py): o objeto do estúdio é recortado e vira camada
+própria com sombra (entra/mexe conforme a direção), a câmera da cena cinematográfica segue a
+direção, cada cena entra com o corte escolhido, o traço à mão sai em terracota e a linha com a
+palavra-chave ganha a ênfase. Sem direção, tudo segue como antes.
 """
 import math
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
+from . import motion as mo
 from .common import FPS, H, W, FrameWriter, asset, ease, font, grain_frames, group_lines, keyword_set, norm, spread_words
+from .cutout import cut_object
 from .timeline import build_timeline
 
 USES_SCENE_IMAGES = True
@@ -91,6 +98,7 @@ class Line:
         d = ImageDraw.Draw(im)
         x = 20
         self.spans = []
+        self.key_t = next((w[1] for w in words if norm(w[0]) in keys), None)
         for w in words:
             c = TERRA if norm(w[0]) in keys else color
             d.text((x, 12), w[0], font=f, fill=c)
@@ -118,7 +126,10 @@ class Line:
             h = max(h, self.spans[-1][1] + (self.w + 120 - self.spans[-1][1]) * min(1, (t - self.spans[-1][3] + 0.1) / 0.15))
         return h
 
-    def draw(self, fr, t, fade=1.0):
+    def box(self):
+        return (self.x + 20, self.y + 8, self.x + self.w - 20, self.y + self.h - 8)
+
+    def draw(self, fr, t, fade=1.0, xform=None):
         hd = self.head(t)
         if hd < -100 or fade <= 0.01:
             return
@@ -129,8 +140,15 @@ class Line:
             im = im * fade + self.bl * (1 - fade)
         a = im[..., 3:] * min(fade, 1) / 255
         rgb = np.where(a > 0, im[..., :3] / np.maximum(im[..., 3:] / 255, 1e-3), 0)
-        out = np.dstack([np.clip(rgb, 0, 255), a * 255]).astype(np.uint8)
-        fr.alpha_composite(Image.fromarray(out, "RGBA"), (self.x, self.y))
+        out = Image.fromarray(np.dstack([np.clip(rgb, 0, 255), a * 255]).astype(np.uint8), "RGBA")
+        if xform:  # ênfase da palavra-chave: escala/rotação em torno do centro da linha
+            s, rot = xform
+            im = out.resize((max(1, int(out.width * s)), max(1, int(out.height * s))), Image.BILINEAR)
+            if abs(rot) > 0.05:
+                im = im.rotate(rot, Image.BILINEAR, expand=True)
+            mo.paste(fr, im, self.x + self.w / 2 - im.width / 2, self.y + self.h / 2 - im.height / 2)
+            return
+        fr.alpha_composite(out, (self.x, self.y))
 
 
 def _blocks(words, start, end, y0, color, keys, shadow):
@@ -157,6 +175,11 @@ def render(job, assets, out_path, on_progress=None):
     script = job["script"]
     tl = build_timeline(script, job.get("narrationWords"))
     keys = keyword_set(script)
+    directed = mo.has_direction(script)
+    marks = None
+    if directed:
+        dirs = {sc.index: mo.direction_of(sc.data, sc.index) for sc in tl.scenes}
+        marks = mo.Marks(tl, keys, norm, dirs)
     STUDIO = _studio_bg()
     star = _star()
     star_cache = {sz: star.resize((sz, sz), Image.BILINEAR) for _, _, sz, *_ in STARS}
@@ -166,9 +189,16 @@ def render(job, assets, out_path, on_progress=None):
         path = assets.get("images", {}).get(sc.index)
         img = Image.open(path).convert("RGB") if path else None
         kind = "studio" if img is None or _is_studio(img) else "cine"
-        seg = {"start": sc.start, "end": sc.end, "kind": kind}
+        seg = {"start": sc.start, "end": sc.end, "kind": kind, "index": sc.index}
+        if directed:
+            seg["dir"] = dirs[sc.index]
         if kind == "studio":
-            seg["obj"] = _load_obj(img) if img is not None else None
+            cut = cut_object(img) if directed and img is not None else None
+            if cut is not None:
+                seg["layer"] = mo.ObjectLayer(cut, (W / 2, 1240), width_frac=0.72, max_h=820, shadow=0.3)
+                seg["obj"] = None
+            else:
+                seg["obj"] = _load_obj(img) if img is not None else None
             seg["blocks"] = _blocks(sc.words, sc.start, sc.end, 290, INK, keys, False)
         else:
             s = max(W / img.width, H / img.height) * 1.12
@@ -215,15 +245,27 @@ def render(job, assets, out_path, on_progress=None):
                 base[ys:ye, xs:xe] *= a[ys - y0:ye - y0, xs - x0:xe - x0]
         fr = Image.fromarray(np.clip(base, 0, 255).astype(np.uint8)).convert("RGBA")
         star_layer(t, fr)
+        layer = seg.get("layer")
+        if layer is not None:
+            d, u = seg["dir"], t - seg["start"]
+            cam = mo.camera(d["camera"], u, seg["end"] - seg["start"])
+            seg["box"] = layer.draw(fr, d["object"], u, cam)
+            seg["base_box"] = layer.base_box()
         return fr
 
     def cine_frame(t, seg):
         im = seg["img"]
         p = (t - seg["start"]) / max(seg["end"] - seg["start"], 0.01)
         z = 1.0 + 0.08 * p
-        cw, ch = im.width / 1.12 / z, im.height / 1.12 / z
         cx = im.width / 2 + im.width * 0.02 * (p - 0.5)
         cy = im.height / 2
+        if "dir" in seg:  # câmera escolhida na direção da cena
+            z, dx, dy = mo.camera(seg["dir"]["camera"], t - seg["start"], seg["end"] - seg["start"])
+            k = im.width / 1.12 / W
+            cx, cy = im.width / 2 - dx * k, im.height / 2 - dy * k
+        cw, ch = im.width / 1.12 / z, im.height / 1.12 / z
+        cx = min(max(cx, cw / 2), im.width - cw / 2)
+        cy = min(max(cy, ch / 2), im.height - ch / 2)
         fr = im.resize((W, H), Image.BILINEAR, box=(cx - cw / 2, cy - ch / 2, cx + cw / 2, cy + ch / 2))
         a = (np.asarray(fr).astype(np.float32) * 0.72).astype(np.uint8)
         return Image.fromarray(a).convert("RGBA")
@@ -248,7 +290,18 @@ def render(job, assets, out_path, on_progress=None):
             final = last and k == len(seg["blocks"]) - 1
             fade = 1.0 if final else ease((b1 - t) / 0.28)
             for ln in lines:
-                ln.draw(fr, t, fade)
+                xform = None
+                if "dir" in seg and ln.key_t is not None and t >= ln.key_t:
+                    s, rot, _, _ = mo.emphasis(seg["dir"]["emphasis"], t - ln.key_t)
+                    xform = (1 + (s - 1) * 0.5, rot)  # serif grande: ênfase mais contida
+                ln.draw(fr, t, fade, xform)
+            if marks is not None and seg["kind"] != "cta":
+                if seg.get("box") is not None:
+                    marks.draw(fr, seg["index"], t, seg["box"], seg.get("base_box"), TERRA, 13)
+                elif lines:
+                    bx = [ln.box() for ln in lines]
+                    tb = (min(b[0] for b in bx), min(b[1] for b in bx), max(b[2] for b in bx), max(b[3] for b in bx))
+                    marks.draw(fr, seg["index"], t, tb, tb, TERRA, 13)
         return fr
 
     GR = grain_frames(sigma=6, seed=2)
@@ -262,8 +315,14 @@ def render(job, assets, out_path, on_progress=None):
     for n in range(total):
         t = n / FPS
         i = max(j for j, s0 in enumerate(starts) if s0 <= t) if t >= starts[0] else 0
-        a = np.asarray(seg_frame(i, t).convert("RGB")).astype(np.float32)
-        if i > 0 and t - segs[i]["start"] < XF and "cine" in (segs[i]["kind"], segs[i - 1]["kind"]):
+        fr = seg_frame(i, t)
+        flash = 0.0
+        if "dir" in segs[i] and i > 0:  # corte de entrada da direção (no lugar do dissolve)
+            u = t - segs[i]["start"]
+            fr, _ = mo.apply_cut(fr, segs[i]["dir"]["cut"], u, (232, 232, 232))
+            flash = mo.cut_flash(segs[i]["dir"]["cut"], u)
+        a = np.asarray(fr.convert("RGB")).astype(np.float32) + 70 * flash
+        if i > 0 and t - segs[i]["start"] < XF and "cine" in (segs[i]["kind"], segs[i - 1]["kind"]) and "dir" not in segs[i]:
             k = (t - segs[i]["start"]) / XF
             b = np.asarray(seg_frame(i - 1, t).convert("RGB")).astype(np.float32)
             a = a * k + b * (1 - k)

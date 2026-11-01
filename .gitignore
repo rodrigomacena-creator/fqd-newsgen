@@ -62,3 +62,5 @@ next-env.d.ts
 /.claude/skills
 /.windsurf/skills
 skills-lock.json
+
+worker/models/
