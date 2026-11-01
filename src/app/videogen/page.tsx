@@ -123,9 +123,10 @@ export default function VideoGenPage() {
     }
   }
 
-  async function removeJob(job: VideoJobDTO) {
+  /** Exclui o vídeo (com confirmação). Devolve true se excluiu. */
+  async function removeJob(job: VideoJobDTO): Promise<boolean> {
     const what = job.videoUrl ? "o vídeo, o roteiro e a narração" : "o roteiro e a narração";
-    if (!window.confirm(`Excluir "${job.script?.title || job.topic}"? Isso apaga ${what} de vez.`)) return;
+    if (!window.confirm(`Excluir "${job.script?.title || job.topic}"? Isso apaga ${what} de vez.`)) return false;
     setDeleting(job.id);
     setError(null);
     try {
@@ -134,8 +135,10 @@ export default function VideoGenPage() {
       if (!res.ok) throw new Error(data.error || "Não foi possível excluir.");
       setJobs((list) => (list ?? []).filter((j) => j.id !== job.id));
       setTotalJobs((n) => Math.max(0, n - 1));
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
+      return false;
     } finally {
       setDeleting(null);
     }
@@ -503,7 +506,14 @@ export default function VideoGenPage() {
                 Ver mais ({totalJobs} vídeos no total)
               </button>
             )}
-            {showAll && <AllVideosModal getStyleName={(id) => getStyle(id)?.nome} onClose={() => setShowAll(false)} />}
+            {showAll && (
+              <AllVideosModal
+                getStyleName={(id) => getStyle(id)?.nome}
+                deleting={deleting}
+                onDelete={removeJob}
+                onClose={() => setShowAll(false)}
+              />
+            )}
           </aside>
         </div>
       </main>
@@ -608,9 +618,20 @@ function formatDate(iso: string, withTime = false) {
 }
 
 /** Todos os vídeos gerados, com paginação e data/hora de criação. */
-function AllVideosModal({ getStyleName, onClose }: { getStyleName: (id: string) => string | undefined; onClose: () => void }) {
+function AllVideosModal({
+  getStyleName,
+  deleting,
+  onDelete,
+  onClose,
+}: {
+  getStyleName: (id: string) => string | undefined;
+  deleting: string | null;
+  onDelete: (job: VideoJobDTO) => Promise<boolean>;
+  onClose: () => void;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
   const [page, setPage] = useState(0);
+  const [reload, setReload] = useState(0);
   const [data, setData] = useState<{ page: number; jobs: VideoJobDTO[]; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -628,7 +649,15 @@ function AllVideosModal({ getStyleName, onClose }: { getStyleName: (id: string) 
     return () => {
       alive = false;
     };
-  }, [page]);
+  }, [page, reload]);
+
+  async function remove(job: VideoJobDTO) {
+    if (!(await onDelete(job))) return;
+    // tira da lista na hora e recarrega a página (o próximo vídeo sobe para o lugar)
+    setData((d) => (d ? { ...d, jobs: d.jobs.filter((j) => j.id !== job.id), total: Math.max(0, d.total - 1) } : d));
+    if (data && data.jobs.length === 1 && page > 0) setPage((p) => p - 1);
+    else setReload((n) => n + 1);
+  }
 
   const pages = data ? Math.max(1, Math.ceil(data.total / MODAL_PAGE)) : 1;
   const loadingPage = !data || data.page !== page;
@@ -665,8 +694,11 @@ function AllVideosModal({ getStyleName, onClose }: { getStyleName: (id: string) 
             {data.jobs.map((job) => {
               const title = job.script?.title || job.topic;
               return (
-                <li key={job.id}>
-                  <Link href={`/videogen/${job.id}`} className="flex flex-col gap-1.5 px-5 py-3 transition hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none">
+                <li key={job.id} className="flex items-center transition hover:bg-surface-2">
+                  <Link
+                    href={`/videogen/${job.id}`}
+                    className="flex min-w-0 flex-1 flex-col gap-1.5 py-3 pl-5 pr-1 focus-visible:bg-surface-2 focus-visible:outline-none"
+                  >
                     <span className="line-clamp-2 text-sm font-medium">{title}</span>
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
                       <StatusBadge status={job.status} progress={job.progress} label={job.error && job.status === "draft" ? "Erro no roteiro" : undefined} />
@@ -677,6 +709,16 @@ function AllVideosModal({ getStyleName, onClose }: { getStyleName: (id: string) 
                       {job.costSummary && job.costSummary.totalUsd > 0 && <span>≈ {formatUsd(job.costSummary.totalUsd)}</span>}
                     </span>
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => remove(job)}
+                    disabled={deleting !== null || job.status === "rendering"}
+                    title={job.status === "rendering" ? "Aguarde o render terminar para excluir" : "Excluir"}
+                    aria-label={`Excluir "${title}"`}
+                    className={`mr-3 shrink-0 hover:bg-accent-red/10 hover:text-accent-red ${iconButton}`}
+                  >
+                    {deleting === job.id ? <Spinner className="h-4 w-4" /> : <Icon name="trash" className="h-4 w-4" />}
+                  </button>
                 </li>
               );
             })}
