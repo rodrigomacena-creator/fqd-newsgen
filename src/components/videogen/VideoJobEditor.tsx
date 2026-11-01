@@ -302,7 +302,8 @@ export function VideoJobEditor({ id }: { id: string }) {
   );
 
   return (
-    <Shell padBottom>
+    <Shell>
+      {stepBar}
       <Link
         href="/videogen"
         className="inline-flex min-h-11 items-center gap-1.5 text-sm text-text-secondary transition hover:text-accent-yellow"
@@ -559,9 +560,8 @@ export function VideoJobEditor({ id }: { id: string }) {
         </aside>
       </div>
 
-      {stepBar}
 
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-40 z-50 lg:bottom-32 flex justify-center px-4">
+      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
         {toast && (
           <span className="inline-flex items-center gap-2 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background shadow-lg">
             <Icon name="check" className="h-4 w-4" /> {toast}
@@ -572,11 +572,11 @@ export function VideoJobEditor({ id }: { id: string }) {
   );
 }
 
-function Shell({ children, padBottom = false }: { children: React.ReactNode; padBottom?: boolean }) {
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-full flex-col">
       <Header wide />
-      <main className={`mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12 ${padBottom ? "pb-60 sm:pb-52 lg:pb-40" : ""}`}>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
         {children}
       </main>
     </div>
@@ -686,11 +686,18 @@ function StepBar({
   const skipped = (i: number) => noNarration && i === 2;
 
   return (
-    <section
-      aria-label="Etapas do vídeo"
-      className="fixed inset-x-0 bottom-0 z-40 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4"
-    >
-      <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-2xl border border-border bg-surface/95 shadow-[0_12px_40px_rgba(0,0,0,0.18)] backdrop-blur">
+    <section aria-label="Etapas do vídeo" className="sticky top-[69px] z-30 -mx-2 mb-6 pt-2 sm:mx-0">
+      {/* faixa por trás tapa o conteúdo que rola por baixo, entre o header e o card */}
+      <span aria-hidden className="absolute inset-x-0 -top-px h-6 bg-background" />
+      <div className="relative w-full overflow-hidden rounded-2xl border-2 border-accent-yellow bg-surface shadow-[0_14px_36px_rgba(0,0,0,0.16)] ring-4 ring-accent-yellow/10">
+      <div className="flex items-center justify-between gap-3 bg-accent-yellow px-4 py-1.5 text-accent-yellow-ink sm:px-5">
+        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em]">
+          <Icon name="scenes" className="h-3.5 w-3.5" /> Controle de etapas
+        </p>
+        <p className="text-[11px] font-medium opacity-90">
+          {done ? "Tudo pronto" : <>Siga na ordem<span className="hidden sm:inline">: termine esta etapa para liberar a próxima</span> →</>}
+        </p>
+      </div>
       {dirty && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-2/60 px-4 py-2 sm:px-5">
           <p className="text-xs font-medium sm:text-sm">
