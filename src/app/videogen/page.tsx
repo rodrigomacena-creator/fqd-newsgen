@@ -405,7 +405,7 @@ export default function VideoGenPage() {
             )}
 
             {loading ? (
-              <div className="rounded-2xl border border-accent-yellow/40 bg-accent-yellow/5 px-4 py-4">
+              <div className="rounded-2xl border border-border bg-surface px-4 py-3">
                 <ScriptLoader />
               </div>
             ) : (
