@@ -37,7 +37,15 @@ Escreva a narração como se fosse ${person.name} falando, com esse tom e esse j
     parts.push(`=== QUEM FALA NO VÍDEO ===
 Narrador neutro e simpático, em primeira pessoa, sem se apresentar por nome.`);
   }
-  if (company) {
+  if (person?.neutral || company?.neutral) {
+    parts.push(`=== CONTEÚDO NEUTRO (regra principal, vale mais que qualquer outra instrução de marca) ===
+Este vídeo é informativo e neutro, como uma matéria jornalística curta. Fale do assunto pedido pelo que ele é: fatos, contexto, curiosidades e opiniões equilibradas.
+- Não cite nem promova nenhuma empresa, marca própria, produto, serviço, site ou @ do narrador.
+- Nada de tom vendedor, promessa, oferta, "fale comigo", "minha consultoria" ou ligação com negócios e marketing quando o tema não for esse.
+- Marcas e produtos que SÃO o assunto (ex.: os jogos da Nintendo) podem e devem ser citados, sempre de forma neutra, sem fazer propaganda.
+- CTA apenas de engajamento ligado ao tema (seguir para mais conteúdo, salvar, comentar a opinião), nunca comercial.`);
+  }
+  if (company && !company.neutral) {
     parts.push(`=== PARA QUAL EMPRESA É O CONTEÚDO (marca dona do vídeo) ===
 - Empresa: ${company.name}
 ${lines([
@@ -50,7 +58,7 @@ ${lines([
   ["Cores da marca (use como referência de paleta nas imagens quando combinar com o estilo)", company.colors],
 ])}
 O vídeo é conteúdo da ${company.name}: o assunto, os exemplos e o CTA servem aos objetivos dessa marca, respeitando o tom dela. Se o tom da pessoa e o da marca conflitarem, a pessoa mantém o jeito de falar, mas sem quebrar as regras da marca.`);
-  } else {
+  } else if (!company) {
     parts.push(`=== EMPRESA ===
 Nenhuma empresa definida: não cite marca, site nem @ no vídeo.`);
   }
@@ -58,6 +66,9 @@ Nenhuma empresa definida: não cite marca, site nem @ no vídeo.`);
 }
 
 function ctaRule(person: VideoProfileDTO | null, company: VideoProfileDTO | null): string {
+  if (person?.neutral || company?.neutral) {
+    return `- CTA: só de engajamento ligado ao tema (seguir para mais, salvar, comentar a opinião), no formato do padrão. Nada de site, @, empresa ou venda. Quando o padrão pede "comenta PALAVRA", escolha uma palavra curta ligada ao tema.`;
+  }
   const site = company?.site?.trim();
   const ig = company?.instagram?.trim() || person?.instagram?.trim();
   const refs = [site && `site ${site}`, ig && `Instagram ${ig}`].filter(Boolean).join(" ou ");

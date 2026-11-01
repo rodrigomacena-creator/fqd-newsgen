@@ -322,7 +322,9 @@ reais encontradas ao construir o projeto, não só a estrutura.
   monta as seções PESSOA/EMPRESA a partir deles — **nada de marca fixa no código** (o "Oxyn" hardcoded
   foi removido; Macena e Oxyn Group viraram perfis padrão via migration). CTA só usa site/@ cadastrados,
   nunca inventa. Pronúncias = `DEFAULT_PRONUNCIATIONS` (só termos genéricos) + pessoa + empresa + roteiro,
-  nessa ordem (`mergePronunciations(...listas)`). Um padrão por tipo (`makeDefault`).
+  nessa ordem (`mergePronunciations(...listas)`). Um padrão por tipo (`makeDefault`). Perfil com `neutral = true` (padrão desde 01/11/2026:
+  "Narrador genérico" + "Neutro (sem empresa)") faz o roteiro ser informativo: sem marca, sem venda, CTA só de engajamento
+  (bloco CONTEÚDO NEUTRO em `generateScript.ts`, que vale mais que as regras de marca).
   **Imagens do briefing** (`VideoJob.briefingImages`, JSON `{url, note?}[]`, máx. 8): sobem do navegador
   direto pro Blob (`uploadImage()` → `/api/videogen/uploads`, prefixos `videogen/briefing/` e
   `videogen/perfis/` pra logos). Vão pro modelo do roteiro como visão (reduzidas com sharp, base64), que

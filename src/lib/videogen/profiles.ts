@@ -115,6 +115,7 @@ export function profileInput(body: Record<string, unknown>, partial: boolean): {
   }
   if (body.pronunciations !== undefined) data.pronunciations = JSON.stringify(cleanPronunciations(body.pronunciations));
   if (body.isDefault !== undefined) data.isDefault = body.isDefault === true;
+  if (body.neutral !== undefined) data.neutral = body.neutral === true;
   return { data };
 }
 

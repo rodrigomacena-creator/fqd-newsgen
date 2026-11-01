@@ -38,6 +38,7 @@ interface Draft {
   colors: string;
   pronunciations: Pronunciation[];
   isDefault: boolean;
+  neutral: boolean;
 }
 
 function toDraft(p: VideoProfileDTO): Draft {
@@ -57,6 +58,7 @@ function toDraft(p: VideoProfileDTO): Draft {
     colors: p.colors ?? "",
     pronunciations: p.pronunciations,
     isDefault: p.isDefault,
+    neutral: p.neutral,
   };
 }
 
@@ -77,6 +79,7 @@ function emptyDraft(kind: VideoProfileKind): Draft {
     colors: "",
     pronunciations: [],
     isDefault: false,
+    neutral: false,
   };
 }
 
@@ -220,6 +223,11 @@ export default function ProfilesPage() {
                             {p.isDefault && (
                               <span className="rounded-full bg-accent-yellow/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-yellow">
                                 padrão
+                              </span>
+                            )}
+                            {p.neutral && (
+                              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                                neutro
                               </span>
                             )}
                           </div>
@@ -472,6 +480,15 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
           <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
             <input type="checkbox" checked={d.isDefault} onChange={(e) => set("isDefault", e.target.checked)} className="h-4 w-4 accent-[var(--accent-yellow)]" />
             Usar como padrão ao criar vídeos
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="checkbox" checked={d.neutral} onChange={(e) => set("neutral", e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--accent-yellow)]" />
+            <span>
+              Conteúdo neutro
+              <span className="block text-xs text-text-secondary">
+                O roteiro fala do assunto de forma informativa, sem citar empresa, sem tom de venda e com CTA só de engajamento.
+              </span>
+            </span>
           </label>
         </div>
       </div>

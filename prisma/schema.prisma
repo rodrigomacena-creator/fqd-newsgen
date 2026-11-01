@@ -134,6 +134,7 @@ model VideoProfile {
   colors         String? // empresa: cores da marca (texto livre, ex.: "#E10600, preto")
   pronunciations String? // JSON: Pronunciation[] (ex.: nome da marca falado)
   isDefault      Boolean  @default(false)
+  neutral        Boolean  @default(false) // conteúdo neutro/informativo: nada de marca, venda ou CTA comercial
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

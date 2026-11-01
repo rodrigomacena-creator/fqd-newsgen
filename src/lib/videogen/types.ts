@@ -48,6 +48,8 @@ export interface VideoProfileDTO {
   colors: string | null;
   pronunciations: Pronunciation[];
   isDefault: boolean;
+  /** Conteúdo neutro e informativo: sem marca, sem venda, CTA só de engajamento. */
+  neutral: boolean;
   createdAt: string;
   updatedAt: string;
 }
