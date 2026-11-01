@@ -24,7 +24,8 @@ export default function VideoGenPage() {
   const { voices, loading: loadingVoices, error: voicesError } = useVoices();
 
   const [topic, setTopic] = useState("");
-  const { styles, loaded: stylesLoaded, getStyle } = useStyles();
+  const { styles, loaded: stylesLoaded, getStyle, removeStyle } = useStyles();
+  const [managingStyles, setManagingStyles] = useState(false);
   const [chosenPattern, setPatternId] = useState<string | null>(null);
   // /videogen?estilo=<id> (link "Criar vídeo neste estilo" da tela de templates)
   const wantedPattern = useSyncExternalStore(
@@ -257,13 +258,32 @@ export default function VideoGenPage() {
                 <h2 className={sectionTitle} aria-hidden>
                   Estilo visual
                 </h2>
-                <Link
-                  href="/videogen/templates"
-                  className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-accent-yellow hover:underline"
-                >
-                  <Icon name="plus" className="h-4 w-4" /> Montar template a partir de um vídeo
-                </Link>
+                <div className="flex flex-wrap items-center gap-x-4">
+                  <button
+                    type="button"
+                    onClick={() => setManagingStyles(true)}
+                    className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-text-secondary hover:text-foreground"
+                  >
+                    <Icon name="edit" className="h-4 w-4" /> Gerenciar estilos
+                  </button>
+                  <Link
+                    href="/videogen/templates"
+                    className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-accent-yellow hover:underline"
+                  >
+                    <Icon name="plus" className="h-4 w-4" /> Montar template a partir de um vídeo
+                  </Link>
+                </div>
               </div>
+              {managingStyles && (
+                <ManageStylesModal
+                  styles={styles}
+                  onDeleted={(id) => {
+                    removeStyle(id);
+                    if (id === patternId) setPatternId(VIDEO_PATTERNS[0]?.id ?? "");
+                  }}
+                  onClose={() => setManagingStyles(false)}
+                />
+              )}
               <div className="mt-4 grid gap-5 sm:grid-cols-[200px_minmax(0,1fr)]">
                 <StylePreview style={pattern} />
                 <div
@@ -615,6 +635,114 @@ function formatDate(iso: string, withTime = false) {
     month: withTime ? "2-digit" : "short",
     ...(withTime ? { year: "numeric", hour: "2-digit", minute: "2-digit" } : {}),
   });
+}
+
+/** Lista os estilos: templates podem ser excluídos; os embutidos fazem parte do código. */
+function ManageStylesModal({ styles, onDeleted, onClose }: { styles: VideoPattern[]; onDeleted: (id: string) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+
+  async function remove(style: VideoPattern) {
+    if (!window.confirm(`Excluir o estilo "${style.nome}"? Vídeos que já usam este estilo não poderão mais ir para o render.`)) return;
+    setDeleting(style.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/videogen/templates/${style.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Não foi possível excluir.");
+      onDeleted(style.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro inesperado.");
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  const templates = styles.filter((s) => s.kind === "template");
+  const builtins = styles.filter((s) => s.kind !== "template");
+
+  return (
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      onClick={(e) => e.target === ref.current && ref.current?.close()}
+      aria-labelledby="manage-styles-title"
+      className="m-auto w-[min(640px,calc(100vw-2rem))] rounded-2xl border border-border bg-surface p-0 text-foreground backdrop:bg-black/50"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <h2 id="manage-styles-title" className="text-lg font-semibold">
+          Gerenciar estilos
+        </h2>
+        <button type="button" onClick={() => ref.current?.close()} aria-label="Fechar" className={iconButton}>
+          <Icon name="x" className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="max-h-[65vh] overflow-y-auto">
+        {error && (
+          <p role="alert" className="mx-5 mt-4 rounded-lg bg-accent-red/10 px-3 py-2 text-sm text-accent-red">
+            {error}
+          </p>
+        )}
+        <p className="px-5 pt-4 text-xs font-semibold uppercase tracking-wide text-text-secondary">Seus templates ({templates.length})</p>
+        {templates.length === 0 ? (
+          <p className="px-5 py-3 text-sm text-text-secondary">Nenhum template ainda.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {templates.map((s) => (
+              <StyleRow key={s.id} style={s}>
+                <button
+                  type="button"
+                  onClick={() => remove(s)}
+                  disabled={deleting !== null}
+                  title="Excluir"
+                  aria-label={`Excluir o estilo ${s.nome}`}
+                  className={`shrink-0 hover:bg-accent-red/10 hover:text-accent-red ${iconButton}`}
+                >
+                  {deleting === s.id ? <Spinner className="h-4 w-4" /> : <Icon name="trash" className="h-4 w-4" />}
+                </button>
+              </StyleRow>
+            ))}
+          </ul>
+        )}
+        <p className="border-t border-border px-5 pt-4 text-xs font-semibold uppercase tracking-wide text-text-secondary">Estilos embutidos ({builtins.length})</p>
+        <ul className="divide-y divide-border pb-2">
+          {builtins.map((s) => (
+            <StyleRow key={s.id} style={s}>
+              <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-text-secondary" title="Faz parte do código do app">
+                Embutido
+              </span>
+            </StyleRow>
+          ))}
+        </ul>
+      </div>
+      <p className="border-t border-border px-5 py-3 text-xs text-text-secondary">
+        Excluir um template não muda os vídeos já prontos. Os estilos embutidos fazem parte do código: para tirar um deles, é só me pedir.
+      </p>
+    </dialog>
+  );
+}
+
+function StyleRow({ style, children }: { style: VideoPattern; children: React.ReactNode }) {
+  return (
+    <li className="flex items-center gap-3 px-5 py-3">
+      <span className="relative h-14 w-8 shrink-0 overflow-hidden rounded-md bg-surface-2">
+        {style.sampleUrl && (
+          <video src={`${style.sampleUrl}#t=1.5`} muted playsInline preload="metadata" aria-hidden className="h-full w-full object-cover" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{style.nome}</span>
+        <span className="line-clamp-1 block text-xs text-text-secondary">{style.tom}</span>
+      </span>
+      {children}
+    </li>
+  );
 }
 
 /** Todos os vídeos gerados, com paginação e data/hora de criação. */

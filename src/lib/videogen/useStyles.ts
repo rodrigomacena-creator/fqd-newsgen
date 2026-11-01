@@ -25,5 +25,11 @@ export function useStyles() {
     };
   }, []);
 
-  return { styles, loaded, getStyle: (id: string) => styles.find((s) => s.id === id) };
+  return {
+    styles,
+    loaded,
+    getStyle: (id: string) => styles.find((s) => s.id === id),
+    /** Tira da lista um estilo excluído (template), sem recarregar. */
+    removeStyle: (id: string) => setStyles((list) => list.filter((s) => s.id !== id)),
+  };
 }
