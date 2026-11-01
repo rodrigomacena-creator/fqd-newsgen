@@ -1,18 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { CostPanel } from "@/components/videogen/CostPanel";
 import { BriefingImages } from "@/components/videogen/BriefingImages";
-import { SceneStudio } from "@/components/videogen/SceneStudio";
 import {
   FlowSteps,
   FLOW_STEPS,
   AutoTextarea,
-  CopyButton,
   Icon,
   Spinner,
   StatusBadge,
@@ -29,7 +27,9 @@ import { useVoices } from "@/lib/videogen/useVoices";
 import { useStyles } from "@/lib/videogen/useStyles";
 import { useProfiles } from "@/lib/videogen/useProfiles";
 import { mergePronunciations } from "@/lib/videogen/pronunciation";
+import { uploadImage } from "@/lib/videogen/uploadImage";
 import {
+  MAX_BRIEFING_IMAGES,
   WORDS_PER_SECOND,
   fullNarration,
   type BriefingImage,
@@ -38,6 +38,8 @@ import {
   type VideoScript,
 } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
+
+const EMPTY_SCENE: VideoScene = { narration: "", onScreen: "", visual: "", imagePrompt: "", durationS: 2 };
 
 type Busy = null | "save" | "script" | "narration" | "queue" | "delete";
 
@@ -192,23 +194,13 @@ export function VideoJobEditor({ id }: { id: string }) {
     setDirty(true);
   }
 
-  /** Tira a cena de `from` e coloca na posição `to` (índices da lista final). */
-  function reorderScene(from: number, to: number) {
-    setScript((s) => {
-      if (!s || from === to || to < 0 || to >= s.scenes.length) return s;
-      const scenes = [...s.scenes];
-      const [moved] = scenes.splice(from, 1);
-      scenes.splice(to, 0, moved);
-      return { ...s, scenes };
-    });
-    setDirty(true);
-  }
-
-  function insertScene(at: number, scene: VideoScene) {
+  function moveScene(index: number, delta: number) {
     setScript((s) => {
       if (!s) return s;
+      const target = index + delta;
+      if (target < 0 || target >= s.scenes.length) return s;
       const scenes = [...s.scenes];
-      scenes.splice(at, 0, scene);
+      [scenes[index], scenes[target]] = [scenes[target], scenes[index]];
       return { ...s, scenes };
     });
     setDirty(true);
@@ -332,26 +324,6 @@ export function VideoJobEditor({ id }: { id: string }) {
       {/* no celular, o próximo passo vem antes do roteiro longo */}
       <div className="mt-6 lg:hidden">{nextStep}</div>
 
-      {script && (
-        <div className="mt-6">
-          <SceneStudio
-            script={script}
-            briefing={briefing}
-            narrationWords={job.narrationWords}
-            narrationUrl={job.narrationUrl}
-            noNarration={noNarration}
-            disabled={disabled}
-            targetS={job.durationS}
-            onScene={updateScene}
-            onCta={(patch) => update({ cta: { ...script.cta, ...patch } })}
-            onReorder={reorderScene}
-            onInsert={insertScene}
-            onRemove={removeScene}
-            onAddImage={(url) => changeBriefing([...briefing, { url }])}
-          />
-        </div>
-      )}
-
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
         <div className="min-w-0 space-y-6">
           {!script ? (
@@ -395,6 +367,31 @@ export function VideoJobEditor({ id }: { id: string }) {
                   className={`mt-1 ${fieldClass}`}
                 />
 
+                <ol className="mt-5 space-y-4">
+                  {script.scenes.map((scene, i) => (
+                    <SceneCard
+                      key={i}
+                      index={i}
+                      total={script.scenes.length}
+                      scene={scene}
+                      noNarration={noNarration}
+                      disabled={disabled}
+                      briefing={briefing}
+                      onAddImage={(url) => changeBriefing([...briefing, { url }])}
+                      onChange={(patch) => updateScene(i, patch)}
+                      onMove={(d) => moveScene(i, d)}
+                      onRemove={() => removeScene(i)}
+                    />
+                  ))}
+                </ol>
+                <button
+                  type="button"
+                  onClick={() => update({ scenes: [...script.scenes, { ...EMPTY_SCENE }] })}
+                  disabled={disabled}
+                  className={`mt-4 w-full border-dashed ${secondaryButton}`}
+                >
+                  <Icon name="plus" className="h-4 w-4" /> Adicionar cena
+                </button>
               </section>
 
               <section className={cardClass} aria-labelledby="briefing-title">
@@ -403,7 +400,7 @@ export function VideoJobEditor({ id }: { id: string }) {
                 </h2>
                 <p className="mt-1 text-xs text-text-secondary">
                   {briefing.length
-                    ? `${script.scenes.filter((sc) => sc.imageUrl).length} de ${script.scenes.length} cenas usam suas fotos; as outras têm imagem gerada pela IA. Escolha a imagem de cada cena clicando nela na timeline.`
+                    ? `${script.scenes.filter((sc) => sc.imageUrl).length} de ${script.scenes.length} cenas usam suas fotos; as outras têm imagem gerada pela IA. Escolha a imagem de cada cena acima.`
                     : "Sem fotos suas: todas as cenas usam imagem gerada pela IA. Envie fotos para usar nas cenas (e no roteiro, se gerar de novo)."}
                 </p>
                 <div className="mt-3">
@@ -413,8 +410,37 @@ export function VideoJobEditor({ id }: { id: string }) {
 
               <section className={cardClass} aria-labelledby="fecho-title">
                 <h2 id="fecho-title" className={sectionTitle}>
-                  Destaques, trilha e post
+                  Fechamento e post
                 </h2>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  {!noNarration && (
+                    <div>
+                      <label htmlFor="cta-narration" className={labelClass}>
+                        CTA falado
+                      </label>
+                      <AutoTextarea
+                        id="cta-narration"
+                        value={script.cta.narration}
+                        onChange={(e) => update({ cta: { ...script.cta, narration: e.target.value } })}
+                        disabled={disabled}
+                        className={`mt-1 ${fieldClass}`}
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label htmlFor="cta-screen" className={labelClass}>
+                      CTA na tela
+                    </label>
+                    <AutoTextarea
+                      id="cta-screen"
+                      value={script.cta.onScreen}
+                      onChange={(e) => update({ cta: { ...script.cta, onScreen: e.target.value } })}
+                      disabled={disabled}
+                      className={`mt-1 ${fieldClass}`}
+                    />
+                  </div>
+                </div>
+
                 <label htmlFor="keywords" className={`mt-4 ${labelClass}`}>
                   Palavras em destaque
                 </label>
@@ -720,7 +746,292 @@ function NextStep({
   );
 }
 
-// ---------- pronúncias ----------
+// ---------- cena ----------
+
+function SceneCard({
+  index,
+  total,
+  scene,
+  noNarration,
+  disabled,
+  briefing,
+  onAddImage,
+  onChange,
+  onMove,
+  onRemove,
+}: {
+  index: number;
+  total: number;
+  scene: VideoScene;
+  noNarration: boolean;
+  disabled: boolean;
+  briefing: BriefingImage[];
+  onAddImage: (url: string) => void;
+  onChange: (patch: Partial<VideoScene>) => void;
+  onMove: (delta: number) => void;
+  onRemove: () => void;
+}) {
+  const n = index + 1;
+  const ids = (k: string) => `scene-${index}-${k}`;
+  return (
+    <li className="rounded-xl border border-border bg-background p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-2 text-sm font-semibold">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-2 text-xs tabular-nums">{n}</span>
+          Cena {n}
+        </span>
+        <div className="flex items-center gap-1">
+          {noNarration && (
+            <label className="mr-1 flex items-center gap-1.5 text-xs text-text-secondary">
+              Duração
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0.5}
+                max={60}
+                step={0.5}
+                value={scene.durationS}
+                onChange={(e) => onChange({ durationS: Number(e.target.value) })}
+                disabled={disabled}
+                className="h-10 w-16 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-accent-yellow"
+              />
+              s
+            </label>
+          )}
+          <button type="button" aria-label={`Mover cena ${n} para cima`} title="Mover para cima" onClick={() => onMove(-1)} disabled={disabled || index === 0} className={iconButton}>
+            <Icon name="up" className="h-4 w-4" />
+          </button>
+          <button type="button" aria-label={`Mover cena ${n} para baixo`} title="Mover para baixo" onClick={() => onMove(1)} disabled={disabled || index === total - 1} className={iconButton}>
+            <Icon name="down" className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Remover cena ${n}`}
+            title="Remover cena"
+            onClick={onRemove}
+            disabled={disabled || total <= 1}
+            className={`${iconButton} hover:bg-accent-red/10 hover:text-accent-red`}
+          >
+            <Icon name="trash" className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      {!noNarration && (
+        <>
+          <label htmlFor={ids("narration")} className={`mt-3 ${labelClass}`}>
+            Narração (vira a legenda)
+          </label>
+          <AutoTextarea
+            id={ids("narration")}
+            minRows={2}
+            value={scene.narration}
+            onChange={(e) => onChange({ narration: e.target.value })}
+            disabled={disabled}
+            className={`mt-1 ${fieldClass}`}
+          />
+        </>
+      )}
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor={ids("screen")} className={labelClass}>
+            Texto na tela
+          </label>
+          <AutoTextarea
+            id={ids("screen")}
+            value={scene.onScreen}
+            onChange={(e) => onChange({ onScreen: e.target.value })}
+            disabled={disabled}
+            className={`mt-1 ${fieldClass}`}
+          />
+        </div>
+        <div>
+          <label htmlFor={ids("visual")} className={labelClass}>
+            O que aparece (descrição)
+          </label>
+          <AutoTextarea
+            id={ids("visual")}
+            value={scene.visual}
+            onChange={(e) => onChange({ visual: e.target.value })}
+            disabled={disabled}
+            className={`mt-1 ${fieldClass}`}
+          />
+        </div>
+      </div>
+      <SceneImage
+        index={index}
+        scene={scene}
+        briefing={briefing}
+        disabled={disabled}
+        onPick={(url) => onChange({ imageUrl: url })}
+        onAddImage={onAddImage}
+      />
+      <details className="group mt-1" hidden={Boolean(scene.imageUrl)}>
+        <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-foreground">
+          <span aria-hidden className="transition group-open:rotate-90">›</span> Prompt da imagem (inglês)
+        </summary>
+        <AutoTextarea
+          aria-label={`Prompt da imagem da cena ${n}`}
+          minRows={3}
+          value={scene.imagePrompt}
+          onChange={(e) => onChange({ imagePrompt: e.target.value })}
+          disabled={disabled}
+          className={`mt-1 font-mono text-xs ${fieldClass}`}
+        />
+      </details>
+    </li>
+  );
+}
+
+/** Imagem da cena: gerada pela IA (prompt) ou uma foto do briefing / enviada agora. */
+function SceneImage({
+  index,
+  scene,
+  briefing,
+  disabled,
+  onPick,
+  onAddImage,
+}: {
+  index: number;
+  scene: VideoScene;
+  briefing: BriefingImage[];
+  disabled: boolean;
+  onPick: (url: string | undefined) => void;
+  onAddImage: (url: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const n = index + 1;
+  const full = briefing.length >= MAX_BRIEFING_IMAGES;
+
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const url = await uploadImage(file, "briefing");
+      onAddImage(url);
+      onPick(url);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao enviar a imagem.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-border p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        {scene.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={scene.imageUrl} alt={`Foto usada na cena ${n}`} className="h-16 w-9 shrink-0 rounded-md object-cover ring-1 ring-border" />
+        ) : (
+          <span aria-hidden className="flex h-16 w-9 shrink-0 items-center justify-center rounded-md bg-surface-2 text-text-secondary">
+            <Icon name="image" className="h-4 w-4" />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold">{scene.imageUrl ? "Sua foto" : "Imagem gerada pela IA"}</p>
+          <p className="text-xs text-text-secondary">
+            {scene.imageUrl ? "Entra na cena no lugar da imagem gerada." : "Criada no render a partir do prompt abaixo."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            disabled={disabled}
+            aria-expanded={open}
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-medium text-accent-yellow transition hover:bg-accent-yellow/10 disabled:opacity-50"
+          >
+            <Icon name="image" /> {scene.imageUrl ? "Trocar foto" : "Usar foto sua"}
+          </button>
+          {scene.imageUrl && (
+            <button
+              type="button"
+              onClick={() => onPick(undefined)}
+              disabled={disabled}
+              className="inline-flex min-h-9 items-center rounded-lg px-2 text-xs font-medium text-text-secondary transition hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
+            >
+              Usar imagem da IA
+            </button>
+          )}
+        </div>
+      </div>
+      {open && (
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={`Escolher foto da cena ${n}`}>
+          {briefing.map((img, i) => (
+            <button
+              key={img.url}
+              type="button"
+              onClick={() => {
+                onPick(img.url);
+                setOpen(false);
+              }}
+              disabled={disabled}
+              aria-pressed={scene.imageUrl === img.url}
+              title={img.note || `Imagem ${i + 1}`}
+              className={`overflow-hidden rounded-md ring-2 transition ${scene.imageUrl === img.url ? "ring-accent-yellow" : "ring-transparent hover:ring-border-hover"}`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img.url} alt={img.note || `Imagem ${i + 1} do briefing`} className="h-20 w-[45px] object-cover" />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={disabled || uploading || full}
+            title={full ? `Limite de ${MAX_BRIEFING_IMAGES} imagens` : "Enviar uma foto nova"}
+            className="flex h-20 w-[45px] items-center justify-center rounded-md border-2 border-dashed border-border text-text-secondary transition hover:border-accent-yellow hover:text-accent-yellow disabled:opacity-50"
+          >
+            {uploading ? <Spinner className="h-4 w-4" /> : <Icon name="plus" className="h-4 w-4" />}
+            <span className="sr-only">Enviar foto nova</span>
+          </button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            tabIndex={-1}
+            onChange={(e) => {
+              void upload(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="mt-2 text-xs text-accent-red">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch {
+          /* sem permissão de área de transferência: o usuário copia à mão */
+        }
+      }}
+      className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-medium text-accent-yellow transition hover:bg-accent-yellow/10"
+    >
+      {copied ? <Icon name="check" /> : null}
+      {copied ? "Copiada" : "Copiar"}
+    </button>
+  );
+}
 
 function PronunciationEditor({
   script,

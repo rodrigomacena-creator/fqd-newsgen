@@ -300,10 +300,6 @@ reais encontradas ao construir o projeto, não só a estrutura.
   `ELEVENLABS_USD_PER_CREDIT` (padrão US$ 22 / 100 mil, plano Creator). O worker manda os gastos
   dele somados por etapa junto do `done`/`failed`. Jobs com `costs` nulo são anteriores a isso.
   Excluir um job apaga a pasta `videogen/<id>/` no Blob; não é permitido enquanto `rendering`.
-  **Editor de cenas em timeline** (`SceneStudio.tsx`): blocos por cena (largura = tempo, `sceneTiming.ts`
-  espelha `worker/render/timeline.py`: tempos reais da narração se ela ainda bate com o roteiro, senão
-  estimativa), arrastáveis (mouse no bloco todo; no toque só pela alça, pra não brigar com a rolagem),
-  clique abre os detalhes ao lado da prévia 9:16; o bloco do fecho edita o CTA.
   **Perfis de comunicação** (`/videogen/perfis`, tabela `VideoProfile`, `src/lib/videogen/profiles.ts`,
   `/api/videogen/profiles*`): `kind` = `person` (quem fala: tom, jeito de falar, voz) ou `company` (para
   quem é o conteúdo: tom da marca, site, @, CTA, logo, cores). Cada vídeo guarda `personId`/`companyId`
