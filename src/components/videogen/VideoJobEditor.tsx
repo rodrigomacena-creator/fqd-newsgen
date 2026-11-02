@@ -667,6 +667,8 @@ function StepBar({
   const done = job.status === "done" && Boolean(job.videoUrl);
   const savingNote = dirty ? " Suas alterações são salvas antes." : "";
   const actionClass = "w-full sm:w-auto";
+  // Botão principal em tinta (preto no claro, claro no escuro): o vermelho sai da faixa.
+  const ink = "!bg-foreground !text-background hover:!bg-foreground/85";
 
   let title: string;
   let hint = "";
@@ -677,7 +679,7 @@ function StepBar({
     title = "Gerar o roteiro";
     hint = "A IA escreve as cenas a partir do tema; depois você revisa.";
     action = (
-      <button type="button" onClick={onGenerateScript} disabled={busy !== null} className={`${actionClass} ${primaryButton}`}>
+      <button type="button" onClick={onGenerateScript} disabled={busy !== null} className={`${actionClass} ${primaryButton} ${ink}`}>
         {busy === "script" ? <Spinner /> : <Icon name="sparkles" className="h-4 w-4" />}
         {busy === "script" ? "Gerando roteiro…" : "Gerar roteiro"}
       </button>
@@ -686,7 +688,7 @@ function StepBar({
     title = "Revise as cenas e gere a narração";
     hint = `Edite o que quiser; a narração usa o texto atual.${savingNote}`;
     action = (
-      <button type="button" onClick={onNarration} disabled={busy !== null} className={`${actionClass} ${primaryButton}`}>
+      <button type="button" onClick={onNarration} disabled={busy !== null} className={`${actionClass} ${primaryButton} ${ink}`}>
         {busy === "narration" ? <Spinner /> : <Icon name="mic" className="h-4 w-4" />}
         {busy === "narration" ? "Gerando narração…" : "Gerar narração"}
       </button>
@@ -707,7 +709,7 @@ function StepBar({
     title = "Vídeo pronto";
     hint = "Assista no card do vídeo. A legenda do post está no roteiro.";
     action = (
-      <a href={job.videoUrl!} download className={`${actionClass} ${primaryButton}`}>
+      <a href={job.videoUrl!} download className={`${actionClass} ${primaryButton} ${ink}`}>
         <Icon name="download" className="h-4 w-4" /> Baixar mp4
       </a>
     );
@@ -718,7 +720,7 @@ function StepBar({
     title = job.status === "failed" ? "O render falhou. Tente de novo" : noNarration ? "Envie para o render" : "Ouça a narração e envie para o render";
     hint = `Se a voz estiver boa, envie: o servidor gera as imagens, a trilha e monta o mp4. Se não, ajuste e gere de novo.${savingNote}`;
     action = (
-      <button type="button" onClick={onQueue} disabled={busy !== null} className={`${actionClass} ${primaryButton} btn-glow`}>
+      <button type="button" onClick={onQueue} disabled={busy !== null} className={`${actionClass} ${primaryButton} ${ink} btn-glow`}>
         {busy === "queue" ? <Spinner /> : <Icon name="arrow" className="h-4 w-4" />}
         {busy === "queue" ? "Enviando…" : "Enviar para render"}
       </button>
@@ -727,108 +729,102 @@ function StepBar({
 
   const stateOf = (i: number) => (done || i < step ? "done" : i === step ? "current" : "todo");
   const skipped = (i: number) => noNarration && i === 2;
+  // Quanto do segmento da etapa atual já foi feito (no render, o progresso real).
+  const currentFill = progress !== null ? Math.max(8, progress) : job.status === "queued" ? 15 : 50;
+
+  // Visual "Areia" (escolhido pelo Rodrigo no Claude Design): faixa bege, quase sem vermelho;
+  // verde quando o vídeo fica pronto. Cores próprias para o tema escuro (classes escritas por
+  // extenso: o Tailwind só gera o que aparece literal no código).
+  const band = done
+    ? `border-[#cfdecd] bg-[#e6efe5] [[data-theme=dark]_&]:border-[#2a3d2e] [[data-theme=dark]_&]:bg-[#17231a]`
+    : `border-[#e2d9c6] bg-[#efe8da] [[data-theme=dark]_&]:border-[#3a3428] [[data-theme=dark]_&]:bg-[#221f19]`;
+  const muted = done ? `text-[#2e5b3d] [[data-theme=dark]_&]:text-[#9fd3ad]` : `text-[#5d5a52] [[data-theme=dark]_&]:text-[#bdb4a2]`;
+  const faint = `text-[#7d786c] [[data-theme=dark]_&]:text-[#9a917f]`;
+  const track = `bg-[#d8cfbc] [[data-theme=dark]_&]:bg-[#4a4335]`;
+  const filled = done ? `bg-[#2f7d4f] [[data-theme=dark]_&]:bg-[#4caf72]` : "bg-foreground";
 
   return (
-    <section
-      aria-label="Etapas do vídeo"
-      className="sticky top-[69px] z-[9] w-full border-b-2 border-accent-yellow bg-surface shadow-[0_10px_28px_rgba(0,0,0,0.12)]"
-    >
-      <div className="bg-accent-yellow text-accent-yellow-ink">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-1.5 sm:px-6">
-        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em]">
-          <Icon name="scenes" className="h-3.5 w-3.5" /> Controle de etapas
-        </p>
-        <p className="text-[11px] font-medium opacity-90">
-          {done ? "Tudo pronto" : <>Siga na ordem<span className="hidden sm:inline">: termine esta etapa para liberar a próxima</span> →</>}
-        </p>
-      </div>
-      </div>
-      <div className="mx-auto w-full max-w-6xl">
+    <section aria-label="Etapas do vídeo" className={`sticky top-[69px] z-[9] w-full border-y ${band} shadow-[0_10px_24px_-14px_rgba(0,0,0,0.25)]`}>
       {dirty && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-2/60 px-4 py-2 sm:px-6">
-          <p className="text-xs font-medium sm:text-sm">
-            <span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full bg-warning align-middle" />
-            Alterações não salvas
-          </p>
-          <div className="flex gap-2">
-            <button type="button" onClick={onDiscard} disabled={busy !== null} className={`!min-h-9 !px-3 !text-xs ${secondaryButton}`}>
-              Descartar
-            </button>
-            <button type="button" onClick={onSave} disabled={busy !== null} className={`!min-h-9 !px-3 !text-xs ${secondaryButton}`}>
-              {busy === "save" && <Spinner />}
-              {busy === "save" ? "Salvando…" : "Salvar"}
-            </button>
+        <div className={`border-b ${done ? "border-[#cfdecd]" : "border-[#e2d9c6]"} [[data-theme=dark]_&]:border-[#3a3428]`}>
+          <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-1.5 sm:px-6">
+            <p className={`flex items-center gap-2 text-xs font-medium text-[#8a5a00] [[data-theme=dark]_&]:text-[#f5c46b]`}>
+              <span aria-hidden className={`h-2 w-2 rounded-full bg-[#d99a12] [[data-theme=dark]_&]:bg-[#f5b941]`} />
+              Alterações não salvas
+            </p>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onDiscard}
+                disabled={busy !== null}
+                className="inline-flex min-h-9 items-center px-2.5 text-xs font-medium text-foreground underline underline-offset-[3px] transition hover:opacity-70 disabled:opacity-40"
+              >
+                Descartar
+              </button>
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={busy !== null}
+                className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-[#d8cfbc] bg-background px-3.5 text-xs font-semibold text-foreground transition hover:border-foreground disabled:opacity-40 [[data-theme=dark]_&]:border-[#4a4335]`}
+              >
+                {busy === "save" && <Spinner />}
+                {busy === "save" ? "Salvando…" : "Salvar"}
+              </button>
+            </div>
           </div>
         </div>
       )}
-      <div className="flex w-full flex-col gap-2.5 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:gap-6">
-        {/* celular: passo + barrinhas */}
-        <div className="flex items-center justify-between gap-3 lg:hidden">
-          <p className="text-xs font-semibold uppercase tracking-wide text-accent-yellow">
-            {done ? "Concluído" : `Passo ${step + 1} de ${FLOW_STEPS.length} · ${FLOW_STEPS[step].label}`}
-          </p>
-          <span aria-hidden className="flex gap-1">
-            {FLOW_STEPS.map((s, i) => (
-              <span
-                key={s.label}
-                className={`h-1.5 w-4 rounded-full ${skipped(i) ? "bg-border" : stateOf(i) === "done" ? "bg-success" : stateOf(i) === "current" ? "bg-accent-yellow" : "bg-border"}`}
-              />
-            ))}
-          </span>
-        </div>
-        {/* desktop: etapas em pílulas */}
-        <ol className="hidden shrink-0 items-center gap-1.5 lg:flex">
-          {FLOW_STEPS.map((s, i) => {
-            const st = stateOf(i);
-            const skip = skipped(i);
-            return (
-              <li key={s.label} className="flex items-center gap-1.5" aria-current={st === "current" && !done ? "step" : undefined}>
-                {i > 0 && <span aria-hidden className={`h-0.5 w-4 ${st === "todo" ? "bg-border" : "bg-success/50"}`} />}
-                <span
-                  className={`flex items-center gap-1.5 text-[13px] ${
-                    st === "current" && !skip
-                      ? "rounded-full border border-accent-yellow/30 bg-accent-yellow/[0.06] py-0.5 pl-0.5 pr-3 font-semibold text-accent-yellow"
-                      : st === "done" && !skip
-                        ? "font-medium text-success"
-                        : "text-text-secondary"
-                  }`}
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-3.5 sm:px-6 lg:flex-row lg:items-center lg:gap-8">
+        {/* trilho de etapas */}
+        <div className="w-full shrink-0 lg:w-[420px]">
+          <div aria-hidden className="grid grid-cols-5 gap-1">
+            {FLOW_STEPS.map((s, i) => {
+              const st = stateOf(i);
+              return (
+                <span key={s.label} className={`relative h-[5px] overflow-hidden rounded-full ${track} ${skipped(i) ? "opacity-40" : ""}`}>
+                  {st === "done" && !skipped(i) && <span className={`absolute inset-0 ${filled}`} />}
+                  {st === "current" && !done && <span className={`absolute inset-y-0 left-0 ${filled} transition-[width] duration-700`} style={{ width: `${currentFill}%` }} />}
+                </span>
+              );
+            })}
+          </div>
+          <ol className="mt-2 grid grid-cols-5 gap-1 text-[11px] sm:text-xs">
+            {FLOW_STEPS.map((s, i) => {
+              const st = stateOf(i);
+              const skip = skipped(i);
+              const current = st === "current" && !done;
+              return (
+                <li
+                  key={s.label}
+                  aria-current={current ? "step" : undefined}
+                  className={`flex min-w-0 items-center gap-1.5 truncate ${
+                    current ? "font-bold text-foreground" : done && i === FLOW_STEPS.length - 1 ? `font-bold ${muted}` : st === "done" ? muted : faint
+                  } ${skip ? "line-through opacity-60" : ""}`}
                 >
-                  <span
-                    aria-hidden
-                    className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold tabular-nums ${
-                      skip
-                        ? "border-2 border-dashed border-border"
-                        : st === "done"
-                          ? "bg-success text-background"
-                          : st === "current"
-                            ? "bg-accent-yellow text-accent-yellow-ink"
-                            : "border-2 border-border-hover"
-                    }`}
-                  >
-                    {st === "done" && !skip ? <Icon name="check" className="h-3.5 w-3.5" /> : i + 1}
-                  </span>
+                  {current && <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-yellow" />}
                   {s.label}
                   <span className="sr-only">
-                    {skip ? " (não se aplica)" : st === "done" ? " (concluída)" : st === "current" ? " (etapa atual)" : " (próxima)"}
+                    {skip ? " (não se aplica)" : st === "done" ? " (concluída)" : current ? " (etapa atual)" : " (próxima)"}
                   </span>
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-        <span aria-hidden className="hidden w-px self-stretch bg-border lg:block" />
+                </li>
+              );
+            })}
+          </ol>
+        </div>
         <div className="min-w-0 flex-1" aria-live="polite">
-          <p className="text-sm font-semibold">{title}</p>
-          {hint && <p className="mt-0.5 hidden text-xs text-text-secondary sm:block">{hint}</p>}
+          <p className={`text-[11px] font-semibold uppercase tracking-[0.1em] ${done ? muted : `text-[#6f6a5e] [[data-theme=dark]_&]:text-[#a89f8c]`}`}>
+            {done ? "Concluído" : `Passo ${step + 1} de ${FLOW_STEPS.length}`}
+          </p>
+          <p className="mt-0.5 text-[15px] font-semibold leading-snug">{title}</p>
+          {hint && <p className={`mt-0.5 hidden text-xs sm:block ${muted}`}>{hint}</p>}
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>
       {progress !== null && (
-        <div className="mx-auto w-full max-w-6xl px-2 sm:px-4">
+        <div className="mx-auto w-full max-w-6xl px-2 pb-2 sm:px-4">
           <ScriptLoader progress={Math.max(3, progress)} label="Progresso do render" height={30} showLabel={false} />
         </div>
       )}
-      </div>
     </section>
   );
 }

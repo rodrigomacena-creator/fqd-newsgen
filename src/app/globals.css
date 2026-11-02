@@ -91,8 +91,9 @@ body {
 
 /* Botão "Enviar para render": brilho pulsando + reflexo passando (VideoGen, controlador de etapas). */
 @keyframes render-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(241, 0, 0, 0.45), 0 6px 18px rgba(241, 0, 0, 0.25); }
-  50% { box-shadow: 0 0 0 7px rgba(241, 0, 0, 0), 0 8px 30px rgba(241, 0, 0, 0.55); }
+  /* Brilho neutro (cor do texto do tema): o botão de render é "tinta", não vermelho. */
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--foreground) 35%, transparent), 0 6px 18px color-mix(in srgb, var(--foreground) 18%, transparent); }
+  50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--foreground) 0%, transparent), 0 8px 30px color-mix(in srgb, var(--foreground) 30%, transparent); }
 }
 @keyframes render-shine {
   0% { transform: translateX(-120%) skewX(-20deg); }
