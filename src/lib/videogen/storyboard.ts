@@ -17,8 +17,20 @@ export function previewIsFresh(sc: VideoScene): boolean {
   return Boolean(sc.preview && sc.preview.prompt === sc.imagePrompt);
 }
 
-/** Gera uma imagem 9:16 na OpenRouter e sobe no Blob. Devolve a URL e o custo em dólar. */
-export async function generateSceneImage(jobId: string, index: number, prompt: string): Promise<{ url: string; usd: number }> {
+/**
+ * Proporção da imagem da cena (espelho de scene_aspect em worker/worker.py). Vertical: 9:16. Horizontal:
+ * tela cheia 16:9; card 4:5; círculo, polaroid, metade e dividida (imagem ao lado do texto) quadrada.
+ */
+export function sceneAspect(format: string, scene: VideoScene, specLayout?: string | null): string {
+  if (format !== "16:9") return "9:16";
+  const layout = scene.layout || specLayout || "fullbleed";
+  if (layout === "card") return "4:5";
+  if (["circle", "polaroid", "split", "top_half"].includes(layout)) return "1:1";
+  return "16:9";
+}
+
+/** Gera a imagem da cena na OpenRouter (9:16 ou a proporção pedida) e sobe no Blob. Devolve a URL e o custo em dólar. */
+export async function generateSceneImage(jobId: string, index: number, prompt: string, aspect = "9:16"): Promise<{ url: string; usd: number }> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error("OPENROUTER_API_KEY não configurada.");
   let lastError = "";
@@ -29,7 +41,7 @@ export async function generateSceneImage(jobId: string, index: number, prompt: s
       body: JSON.stringify({
         model: VIDEOGEN_IMAGE_MODEL,
         modalities: ["image", "text"],
-        image_config: { aspect_ratio: "9:16" },
+        image_config: { aspect_ratio: aspect },
         messages: [{ role: "user", content: prompt }],
         usage: { include: true },
       }),

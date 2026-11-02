@@ -36,6 +36,34 @@ class render_speed:
         PRESET, CRF_ADD = self.saved_preset, self.saved_crf
         return False
 
+
+class render_size:
+    """Troca a resolução (W, H) de todos os renderizadores durante um bloco `with`, como o render_speed
+    faz com o FPS. Usado no formato horizontal (16:9, YouTube): 1920×1080 em vez de 1080×1920.
+    Os módulos leem W e H como globais na hora de renderizar (nunca calcule constantes com eles no import)."""
+
+    def __init__(self, w, h):
+        self.size, self.saved = (w, h), []
+
+    def __enter__(self):
+        import sys
+        for name, mod in list(sys.modules.items()):
+            if (name == "render" or name.startswith("render.")) and mod is not None and hasattr(mod, "W") and hasattr(mod, "H"):
+                self.saved.append((mod, mod.W, mod.H))
+                mod.W, mod.H = self.size
+        return self
+
+    def __exit__(self, *exc):
+        for mod, w, h in self.saved:
+            mod.W, mod.H = w, h
+        return False
+
+
+def landscape():
+    """True quando o render atual é horizontal (16:9)."""
+    return W > H
+
+
 FONT_SANS = os.environ.get("VIDEOGEN_FONT_SANS", "/usr/share/fonts/opentype/inter/InterDisplay-Black.otf")
 FONT_SERIF = os.environ.get(
     "VIDEOGEN_FONT_SERIF", "/usr/share/fonts/truetype/liberation/LiberationSerif-BoldItalic.ttf"
@@ -60,8 +88,9 @@ def norm(word):
     return word.lower().strip(".,;:!?…\"'()“”")
 
 
-def cover_resize(im, w=W, h=H):
-    """Redimensiona tipo 'cover' (preenche w×h mantendo proporção)."""
+def cover_resize(im, w=None, h=None):
+    """Redimensiona tipo 'cover' (preenche w×h mantendo proporção; padrão = tamanho do quadro atual)."""
+    w, h = w or W, h or H
     s = max(w / im.width, h / im.height)
     return im.resize((max(w, round(im.width * s)), max(h, round(im.height * s))), Image.LANCZOS)
 

@@ -28,7 +28,7 @@ export function CoverPreview({ job }: { job: VideoJobDTO }) {
     <div className="mt-5 border-t border-border pt-4">
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-secondary">Capa automática</p>
       <div className="mt-2 grid grid-cols-[minmax(0,0.56fr)_minmax(0,1fr)] items-start gap-3">
-        {job.coverUrl && (
+        {job.coverUrl && job.format !== "16:9" && (
           <a href={job.coverUrl} download className="group block" title="Baixar capa 9:16">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={job.coverUrl} alt="Capa 9:16 do vídeo" className="aspect-[9/16] w-full rounded-lg object-cover ring-1 ring-border" />
@@ -55,7 +55,9 @@ export function PublishPanel({ job }: { job: VideoJobDTO }) {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [pubs, setPubs] = useState<PublicationDTO[]>([]);
   const [want, setWant] = useState<Record<string, boolean>>({});
-  const [title, setTitle] = useState(() => `${(job.script?.title || job.topic).slice(0, 88)} #Shorts`);
+  const landscape = job.format === "16:9";
+  // horizontal = vídeo normal do YouTube (sem #Shorts); vertical vira Shorts
+  const [title, setTitle] = useState(() => (landscape ? (job.script?.title || job.topic).slice(0, 100) : `${(job.script?.title || job.topic).slice(0, 88)} #Shorts`));
   const [caption, setCaption] = useState(() => job.script?.postCaption || "");
   const [privacy, setPrivacy] = useState("public");
   const [schedule, setSchedule] = useState(false);
@@ -81,8 +83,10 @@ export function PublishPanel({ job }: { job: VideoJobDTO }) {
     fetch("/api/videogen/social")
       .then((r) => r.json())
       .then((d: { accounts: Account[] }) => {
-        setAccounts(d.accounts);
-        setWant(Object.fromEntries(d.accounts.map((a) => [a.platform, a.connected])));
+        // Reels é vertical: vídeo horizontal só vai para o YouTube
+        const list = job.format === "16:9" ? d.accounts.filter((a) => a.platform !== "instagram") : d.accounts;
+        setAccounts(list);
+        setWant(Object.fromEntries(list.map((a) => [a.platform, a.connected])));
       })
       .catch(() => setAccounts([]));
     fetch(`/api/videogen/jobs/${job.id}/publications`)
@@ -92,7 +96,7 @@ export function PublishPanel({ job }: { job: VideoJobDTO }) {
     if (window.location.search.includes("conectado=") || window.location.search.includes("erro=")) {
       window.history.replaceState(null, "", window.location.pathname);
     }
-  }, [job.id]);
+  }, [job.id, job.format]);
 
   // acompanha as que estão enviando/processando
   const active = pubs.some((p) => p.status === "pending" && (!p.scheduledAt || new Date(p.scheduledAt) <= new Date())) || pubs.some((p) => p.status === "processing");
@@ -183,6 +187,9 @@ export function PublishPanel({ job }: { job: VideoJobDTO }) {
             )}
           </li>
         ))}
+        {landscape && accounts !== null && (
+          <li className="text-[11px] text-text-secondary">Vídeo horizontal vai só para o YouTube. Para o Instagram, crie a versão vertical.</li>
+        )}
         {accounts === null && (
           <li className="flex items-center gap-2 text-xs text-text-secondary">
             <Spinner /> Carregando contas…

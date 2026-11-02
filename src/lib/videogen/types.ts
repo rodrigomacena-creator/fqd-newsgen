@@ -122,6 +122,12 @@ export function fullNarration(script: VideoScript): string {
 
 export const DEFAULT_VOICE_ID = "UY3oRETjQaraEM058uNo"; // "Macena" (voz clonada do Rodrigo)
 export const DURATION_OPTIONS = [5, 10, 15, 20, 30, 45, 60];
+/** Formato do vídeo: vertical (Reels/Shorts, padrão) ou horizontal (YouTube normal). */
+export type VideoFormat = "9:16" | "16:9";
+export const parseVideoFormat = (v: unknown): VideoFormat => (v === "16:9" ? "16:9" : "9:16");
+/** Horizontal (YouTube) aceita vídeos mais longos. */
+export const LANDSCAPE_DURATION_OPTIONS = [30, 60, 90, 120, 180];
+export const MAX_DURATION_S: Record<VideoFormat, number> = { "9:16": 90, "16:9": 180 };
 
 // Ritmo medido com a voz Macena no eleven_v4 (ele ignora "speed" e adiciona pausas de
 // respiração): ~2,3 palavras/s em pt-BR. Usado pra dimensionar o roteiro e a estimativa na tela.

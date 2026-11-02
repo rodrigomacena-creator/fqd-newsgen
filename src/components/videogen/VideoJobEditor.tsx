@@ -344,7 +344,7 @@ export function VideoJobEditor({ id }: { id: string }) {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight text-balance sm:text-3xl">{script?.title || job.topic}</h1>
           <p className="mt-2 text-sm text-text-secondary">
-            {profileLine} · {pattern ? pattern.nome : stylesLoaded ? "Estilo removido" : "…"} · alvo {job.durationS}s
+            {profileLine} · {pattern ? pattern.nome : stylesLoaded ? "Estilo removido" : "…"} · alvo {job.durationS}s{job.format === "16:9" ? " · horizontal 16:9 (YouTube)" : ""}
           </p>
           {pattern?.kind === "free" && <FreeStyleSummary spec={script?.styleSpec} notes={job.styleNotes} />}
         </div>
@@ -362,6 +362,7 @@ export function VideoJobEditor({ id }: { id: string }) {
       {script && (
         <Storyboard
           scenes={script.scenes}
+          landscape={job.format === "16:9"}
           disabled={disabled}
           busy={busy === "storyboard"}
           busyScene={boardScene}
@@ -388,6 +389,7 @@ export function VideoJobEditor({ id }: { id: string }) {
             noNarration={noNarration}
             disabled={disabled}
             targetS={job.durationS}
+            landscape={job.format === "16:9"}
             onScene={updateScene}
             onCta={(patch) => update({ cta: { ...script.cta, ...patch } })}
             onReorder={reorderScene}
@@ -571,7 +573,7 @@ export function VideoJobEditor({ id }: { id: string }) {
                   controls
                   preload="metadata"
                   src={job.previewUrl}
-                  className="mx-auto aspect-[9/16] max-h-[60dvh] w-full rounded-xl bg-black object-contain"
+                  className={`mx-auto ${job.format === "16:9" ? "aspect-video" : "aspect-[9/16] max-h-[60dvh]"} w-full rounded-xl bg-black object-contain`}
                 />
                 <p className="mt-2 text-xs text-text-secondary">Gostou? Envie para o render final no card de etapas: ele reaproveita as imagens da prévia.</p>
               </div>
@@ -582,7 +584,7 @@ export function VideoJobEditor({ id }: { id: string }) {
                   controls
                   preload="metadata"
                   src={job.videoUrl}
-                  className="mx-auto aspect-[9/16] max-h-[70dvh] w-full rounded-xl bg-black object-contain"
+                  className={`mx-auto ${job.format === "16:9" ? "aspect-video" : "aspect-[9/16] max-h-[70dvh]"} w-full rounded-xl bg-black object-contain`}
                 />
                 <a href={job.videoUrl} download className={`mt-4 w-full ${primaryButton} !bg-foreground !text-background hover:!bg-foreground/85`}>
                   <Icon name="download" className="h-4 w-4" /> Baixar mp4
@@ -1030,12 +1032,14 @@ function HookPicker({
 /** Storyboard: a imagem de cada cena antes do render, com "gerar de novo" por cena. */
 function Storyboard({
   scenes,
+  landscape,
   disabled,
   busy,
   busyScene,
   onGenerate,
 }: {
   scenes: VideoScene[];
+  landscape?: boolean;
   disabled: boolean;
   busy: boolean;
   busyScene: number | null;
@@ -1078,8 +1082,8 @@ function Storyboard({
           const generated = !sc.imageUrl && !sc.stock && sc.layout !== "text_only" && Boolean(sc.imagePrompt.trim());
           const working = busy && (busyScene === i || (busyScene === null && generated && !fresh));
           return (
-            <li key={i} className="w-[108px] shrink-0 snap-start sm:w-[124px]">
-              <div className="relative aspect-[9/16] overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border">
+            <li key={i} className={`shrink-0 snap-start ${landscape ? "w-[176px] sm:w-[208px]" : "w-[108px] sm:w-[124px]"}`}>
+              <div className={`relative overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border ${landscape ? "aspect-video" : "aspect-[9/16]"}`}>
                 {src && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={src} alt={`Cena ${i + 1}`} className={`h-full w-full object-cover ${!sc.imageUrl && !fresh ? "opacity-40" : ""}`} />

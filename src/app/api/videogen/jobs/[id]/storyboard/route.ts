@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
-import { generateSceneImage, needsGeneratedImage, previewIsFresh } from "@/lib/videogen/storyboard";
+import { generateSceneImage, needsGeneratedImage, previewIsFresh, sceneAspect } from "@/lib/videogen/storyboard";
+import { resolveStyle } from "@/lib/videogen/templates";
 import { attachStockVideos, findStockVideo } from "@/lib/videogen/stockVideo";
 import type { VideoScript } from "@/lib/videogen/types";
 
@@ -43,7 +44,7 @@ async function handle(request: Request, ctx: RouteContext<"/api/videogen/jobs/[i
       delete sc.stockQuery;
     } else if (sc.stockQuery) {
       try {
-        const next = await findStockVideo(sc.stockQuery, sc.durationS || 3, (sc.stock?.pick ?? -1) + 1);
+        const next = await findStockVideo(sc.stockQuery, sc.durationS || 3, (sc.stock?.pick ?? -1) + 1, job.format === "16:9");
         if (!next) return NextResponse.json({ error: "Não achei outro vídeo para esta cena." }, { status: 404 });
         sc.stock = next;
       } catch (err) {
@@ -53,7 +54,14 @@ async function handle(request: Request, ctx: RouteContext<"/api/videogen/jobs/[i
     const saved = await prisma.videoJob.update({ where: { id }, data: { script: JSON.stringify(script) } });
     return NextResponse.json({ job: serializeVideoJob(saved) });
   }
-  if (one === null) script.scenes = (await attachStockVideos(script.scenes)).scenes;
+  if (one === null) script.scenes = (await attachStockVideos(script.scenes, job.format === "16:9")).scenes;
+  // layout padrão da ficha (estilo livre: a do roteiro; template: a do template), para a proporção da imagem
+  const format = job.format;
+  type SpecLike = { image?: { layout?: string } } | null | undefined;
+  const specLayout =
+    format === "16:9"
+      ? ((script.styleSpec as SpecLike)?.image?.layout ?? ((await resolveStyle(job.patternId))?.spec as SpecLike)?.image?.layout ?? null)
+      : null;
   const targets = script.scenes
     .map((sc, i) => ({ sc, i }))
     .filter(({ sc, i }) => needsGeneratedImage(sc) && (one === null ? !previewIsFresh(sc) : i === one));
@@ -68,7 +76,7 @@ async function handle(request: Request, ctx: RouteContext<"/api/videogen/jobs/[i
     for (let t = queue.shift(); t; t = queue.shift()) {
       try {
         const old = t.sc.preview?.url;
-        const res = await generateSceneImage(id, t.i, t.sc.imagePrompt);
+        const res = await generateSceneImage(id, t.i, t.sc.imagePrompt, sceneAspect(format, t.sc, specLayout));
         usd += res.usd;
         script.scenes[t.i] = { ...script.scenes[t.i], preview: { url: res.url, prompt: t.sc.imagePrompt } };
         if (old) await deleteBlobIfOwned(old).catch(() => {});

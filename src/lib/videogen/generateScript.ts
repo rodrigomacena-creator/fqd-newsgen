@@ -15,7 +15,7 @@ import { isAllowedImageUrl } from "./profiles";
 import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
 import { SCENE_LAYOUTS, enforcePhotoPrompts, freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
 import { HUMANIZER_RULE } from "./humanizer";
-import { CTA_EFFECTS } from "./types";
+import { CTA_EFFECTS, type VideoFormat } from "./types";
 import { STOCK_URL_RE } from "./stockVideo";
 
 // Claude via OpenRouter (Rodrigo quer um provedor só pra LLM).
@@ -97,11 +97,15 @@ interface ScriptContext {
   company: VideoProfileDTO | null;
   /** Quantas imagens do briefing foram anexadas (numeradas a partir de 1). */
   imageCount: number;
+  /** "16:9" = vídeo horizontal para o YouTube; senão vertical (Reels/Shorts). */
+  format: VideoFormat;
 }
 
 function buildSystemPrompt(pattern: VideoPattern, guide: string, durationS: number, ctx: ScriptContext): string {
   const words = Math.round(durationS * WORDS_PER_SECOND);
-  const avgScene = (pattern.cenaS[0] + pattern.cenaS[1]) / 2;
+  const landscape = ctx.format === "16:9";
+  // no YouTube horizontal as cenas respiram um pouco mais (quem assiste escolheu o vídeo)
+  const avgScene = ((pattern.cenaS[0] + pattern.cenaS[1]) / 2) * (landscape ? 1.4 : 1);
   const sceneCount = Math.max(1, Math.round(durationS / avgScene));
   const dictionary = mergePronunciations(ctx.person?.pronunciations ?? [], ctx.company?.pronunciations ?? [])
     .map((p) => `"${p.display}" → "${p.spoken}"`)
@@ -123,7 +127,12 @@ ${guide}
 - Imagens do briefing: o usuário anexou ${ctx.imageCount} imagem(ns), numeradas de 1 a ${ctx.imageCount} na mensagem dele. Use-as para entender o assunto e, nas cenas em que uma delas combina com o que é dito, coloque o número dela em "userImage" (essa cena usa a foto real em vez de uma imagem gerada). Use cada imagem do briefing em pelo menos uma cena, a não ser que não tenha nada a ver com o roteiro; pode repetir uma imagem se fizer sentido. Nas cenas com "userImage", "imagePrompt" pode ficar vazio e "visual" descreve a foto. Nas outras cenas, deixe "userImage" como null e escreva o "imagePrompt" normalmente, no mesmo clima das fotos.`
     : "";
 
-  return `Você é roteirista e diretor de arte de vídeos curtos verticais (Reels/Shorts, 9:16).
+  const formatRule = landscape
+    ? `
+- FORMATO HORIZONTAL 16:9 (vídeo normal do YouTube, não Shorts): a tela é larga. Nas cenas em tela cheia a imagem ocupa o quadro todo; nas cenas com card, círculo, polaroid, metade ou dividida a imagem fica à DIREITA e o texto numa coluna à esquerda. O gancho continua importante, mas o ritmo pode respirar mais que num Reels e a explicação pode ir um pouco mais fundo.`
+    : "";
+
+  return `Você é roteirista e diretor de arte de ${landscape ? "vídeos horizontais para o YouTube (16:9)" : "vídeos curtos verticais (Reels/Shorts, 9:16)"}.
 
 ${buildProfilesSection(ctx.person, ctx.company)}
 
@@ -139,9 +148,9 @@ Regras do roteiro:
 - "hooks": escreva 3 aberturas bem diferentes entre si para a cena 1 (ex.: uma pergunta que cutuca, um dado ou fato surpreendente, uma afirmação polêmica ou contraintuitiva), cada uma com "narration" (até 9 palavras) e "onScreen" (até 4 palavras). A primeira delas deve ser exatamente a narração e o onScreen da cena 1. As três precisam emendar com a cena 2.
 - "narration" de cada cena é o trecho falado naquela cena, com a grafia normal (é também a legenda). Não repita o texto entre cenas.
 - "onScreen" é o texto grande na tela quando o padrão usa (palavra-chave, número, título curto); pode ser vazio.
-- "imagePrompt" é em INGLÊS, para um modelo de imagem (Gemini/nano banana), formato vertical 9:16. Descreva só a imagem estática da cena no estilo do padrão (fundo, materiais, luz, composição, paleta). NUNCA peça texto, letras, logotipos ou números dentro da imagem: o texto é colocado depois pelo render. Mantenha o mesmo estilo visual em todas as cenas para o vídeo parecer uma peça só.
+- "imagePrompt" é em INGLÊS, para um modelo de imagem (Gemini/nano banana), formato ${landscape ? "horizontal 16:9 (nas cenas com a imagem ao lado do texto, assunto centralizado num quadro quase quadrado)" : "vertical 9:16"}. Descreva só a imagem estática da cena no estilo do padrão (fundo, materiais, luz, composição, paleta). NUNCA peça texto, letras, logotipos ou números dentro da imagem: o texto é colocado depois pelo render. Mantenha o mesmo estilo visual em todas as cenas para o vídeo parecer uma peça só.
 - "visual" é uma descrição curta em português do que aparece, para revisão humana.
-${ctaRule(ctx.person, ctx.company)}${imagesRule}${directionPromptRule(pattern.id)}
+${ctaRule(ctx.person, ctx.company)}${imagesRule}${directionPromptRule(pattern.id)}${formatRule}
 - Pronúncia: siglas e nomes em inglês são falados como em inglês (SEO e GEO letra por letra). Escreva na narração a grafia normal; o sistema já converte estes termos: ${dictionary}. Se usar outro termo/marca em inglês que um narrador brasileiro leria errado, adicione em "pronunciations" com uma grafia fonética em português (ex.: {"display": "Claude", "spoken": "Clód"}).
 - "keywords": 3 a 8 palavras da narração/tela que merecem destaque visual.
 - "musicPrompt": em inglês, descreve a trilha instrumental no clima do padrão (sem vocais), para o ElevenLabs Music.
@@ -273,6 +282,8 @@ export async function generateVideoScript(params: {
   briefingImages?: BriefingImage[];
   /** Notícia do NewsGen que serve de base: o roteiro só usa os fatos dela. */
   sourceText?: string | null;
+  /** "16:9" = horizontal (YouTube); padrão vertical 9:16. */
+  format?: VideoFormat;
 }): Promise<{ script: VideoScript; usd: number }> {
   const client = getOpenRouterClient();
   const userParts = [`Tema do vídeo: ${params.topic}`];
@@ -299,7 +310,12 @@ export async function generateVideoScript(params: {
     userContent.push({ type: "image_url", image_url: { url: dataUrl } });
   });
 
-  const ctx: ScriptContext = { person: params.person ?? null, company: params.company ?? null, imageCount: attached.length };
+  const ctx: ScriptContext = {
+    person: params.person ?? null,
+    company: params.company ?? null,
+    imageCount: attached.length,
+    format: params.format === "16:9" ? "16:9" : "9:16",
+  };
   const messages: { role: "system" | "user" | "assistant"; content: string | Part[] }[] = [
     {
       role: "system",

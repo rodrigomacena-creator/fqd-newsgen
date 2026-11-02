@@ -45,6 +45,7 @@ export function SceneStudio({
   noNarration,
   disabled,
   targetS,
+  landscape = false,
   onScene,
   onCta,
   onReorder,
@@ -59,6 +60,8 @@ export function SceneStudio({
   noNarration: boolean;
   disabled: boolean;
   targetS: number;
+  /** Vídeo horizontal (16:9): a prévia do palco fica deitada. */
+  landscape?: boolean;
   onScene: (index: number, patch: Partial<VideoScene>) => void;
   onCta: (patch: Partial<VideoScript["cta"]>) => void;
   onReorder: (from: number, to: number) => void;
@@ -366,7 +369,11 @@ export function SceneStudio({
           </p>
         </div>
 
-        <div className="relative aspect-[9/16] w-[118px] shrink-0 overflow-hidden rounded-[22px] border-[3px] border-[#26262C] bg-[#18181C] shadow-[0_24px_60px_-20px_rgba(0,0,0,.8)] sm:w-[210px] sm:rounded-[30px] sm:border-4">
+        <div
+          className={`relative shrink-0 overflow-hidden border-[3px] border-[#26262C] bg-[#18181C] shadow-[0_24px_60px_-20px_rgba(0,0,0,.8)] sm:border-4 ${
+            landscape ? "aspect-video w-[180px] rounded-xl sm:w-[300px] sm:rounded-2xl" : "aspect-[9/16] w-[118px] rounded-[22px] sm:w-[210px] sm:rounded-[30px]"
+          }`}
+        >
           {shownScene?.imageUrl || shownPreview ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={shownScene?.imageUrl || shownPreview} alt="" className="absolute inset-0 h-full w-full object-cover" />

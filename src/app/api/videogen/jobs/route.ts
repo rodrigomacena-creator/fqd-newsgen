@@ -4,7 +4,7 @@ import { recentFreeStyles, resolveStyle } from "@/lib/videogen/templates";
 import { generateVideoScript, VIDEOGEN_TEXT_MODEL } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
-import { DEFAULT_VOICE_ID } from "@/lib/videogen/types";
+import { DEFAULT_VOICE_ID, MAX_DURATION_S, parseVideoFormat } from "@/lib/videogen/types";
 import { cleanBriefingImages, getProfile } from "@/lib/videogen/profiles";
 import { MAX_STYLE_NOTES } from "@/lib/videogen/freeStyle";
 import { articleSource } from "@/lib/videogen/articleSource";
@@ -41,6 +41,8 @@ export async function POST(request: Request) {
     briefingImages?: unknown;
     /** "Notícia vira vídeo": id da notícia do NewsGen que serve de base. */
     articleId?: string;
+    /** "9:16" (padrão, Reels/Shorts) ou "16:9" (YouTube horizontal). */
+    format?: string;
   };
   try {
     body = await request.json();
@@ -55,7 +57,12 @@ export async function POST(request: Request) {
   const style = await resolveStyle(body.patternId?.trim() ?? "");
   if (!style) return NextResponse.json({ error: "Escolha um estilo válido." }, { status: 400 });
   const { pattern, guide } = style;
-  const durationS = Math.min(90, Math.max(5, Math.round(Number(body.durationS) || 15)));
+  const format = parseVideoFormat(body.format);
+  // o horizontal usa o motor genérico (estilo livre e templates); os embutidos são desenhados para 9:16
+  if (format === "16:9" && pattern.kind === "builtin") {
+    return NextResponse.json({ error: "O formato horizontal funciona no estilo livre e nos templates montados." }, { status: 400 });
+  }
+  const durationS = Math.min(MAX_DURATION_S[format], Math.max(5, Math.round(Number(body.durationS) || 15)));
   const textModel = body.textModel?.trim() || VIDEOGEN_TEXT_MODEL;
   const extraInstructions = body.extraInstructions?.trim().slice(0, 2000) || null;
   // direcionamento só faz sentido no estilo livre
@@ -81,6 +88,7 @@ export async function POST(request: Request) {
       extraInstructions,
       styleNotes,
       articleId: article?.id ?? null,
+      format,
       costs: "[]",
     },
   });
@@ -99,6 +107,7 @@ export async function POST(request: Request) {
       company,
       briefingImages,
       sourceText: article?.text,
+      format,
     });
     await appendCosts(job.id, [costEntry("script", "openrouter", { usd })]);
     const updated = await prisma.videoJob.update({

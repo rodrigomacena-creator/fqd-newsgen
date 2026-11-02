@@ -19,7 +19,7 @@ def music_credits_per_second():
     return float(os.environ.get("VIDEOGEN_MUSIC_CREDITS_PER_SECOND") or 13.75)
 
 
-def generate_image(prompt, out_path, attempts=3, costs=None):
+def generate_image(prompt, out_path, attempts=3, costs=None, aspect="9:16"):
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         raise RuntimeError("OPENROUTER_API_KEY não configurada no worker.")
@@ -36,7 +36,7 @@ def generate_image(prompt, out_path, attempts=3, costs=None):
                 json={
                     "model": image_model(),
                     "modalities": ["image", "text"],
-                    "image_config": {"aspect_ratio": "9:16"},
+                    "image_config": {"aspect_ratio": aspect},
                     "messages": [{"role": "user", "content": prompt}],
                     "usage": {"include": True},
                 },
@@ -95,9 +95,9 @@ def silent_audio(seconds, out_path):
 
 
 def prepare_user_image(url, out_path, w=1080, h=1920):
-    """Baixa uma foto do usuário (briefing) e deixa no formato das imagens geradas (9:16, jpg).
+    """Baixa uma foto do usuário (briefing) e deixa no formato do vídeo (w×h: 9:16 ou 16:9, jpg).
 
-    Foto quase vertical: preenche a tela (corte central). Foto horizontal/quadrada: entra
+    Foto com proporção parecida com a do vídeo: preenche a tela (corte central). Senão entra
     inteira no meio, sobre uma versão desfocada e escurecida dela mesma (padrão dos Reels),
     para não cortar o produto/pessoa.
     """
@@ -119,16 +119,17 @@ def prepare_user_image(url, out_path, w=1080, h=1920):
         x, y = (img.width - w) // 2, (img.height - h) // 2
         return img.crop((x, y, x + w, y + h))
 
-    ratio = im.width / im.height
-    if ratio <= (w / h) * 1.2:
+    ratio, target = im.width / im.height, w / h
+    fills = ratio <= target * 1.2 if h > w else ratio >= target / 1.2
+    if fills:
         out = cover(im)
     else:
         out = cover(im).filter(ImageFilter.GaussianBlur(40))
         out = Image.blend(out, Image.new("RGB", out.size, (0, 0, 0)), 0.35)
-        fw = w
-        fh = round(fw / ratio)
+        s = min(w / im.width, h / im.height)  # foto inteira, o maior possível
+        fw, fh = round(im.width * s), round(im.height * s)
         fg = im.resize((fw, fh), Image.LANCZOS)
-        out.paste(fg, (0, (h - fh) // 2))
+        out.paste(fg, ((w - fw) // 2, (h - fh) // 2))
     out.save(out_path, "JPEG", quality=92)
     raw.unlink(missing_ok=True)
     return out_path

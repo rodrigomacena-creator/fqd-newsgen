@@ -22,15 +22,20 @@ interface Candidate {
   duration: number;
 }
 
-/** Vertical primeiro (perto de 1920 de altura); horizontal só se tiver ao menos 1080 de altura. */
-function rank(c: Candidate): number {
+/** Vertical primeiro (perto de 1920 de altura); horizontal só se tiver ao menos 1080 de altura.
+ * No vídeo horizontal (16:9) é o contrário: horizontal ≥720 de altura primeiro, vertical quase nunca serve. */
+function rank(c: Candidate, landscape = false): number {
   const portrait = c.height > c.width;
+  if (landscape) {
+    if (!portrait && c.height >= 720) return Math.abs(c.height - 1080);
+    return Infinity;
+  }
   if (portrait && c.height >= 1280) return Math.abs(c.height - 1920);
   if (!portrait && c.height >= 1080) return 10_000 + Math.abs(c.height - 1080);
   return Infinity;
 }
 
-async function searchPixabay(query: string): Promise<Candidate[]> {
+async function searchPixabay(query: string, landscape = false): Promise<Candidate[]> {
   const key = process.env.PIXABAY_API_KEY;
   if (!key) return [];
   const url = `https://pixabay.com/api/videos/?${new URLSearchParams({
@@ -46,19 +51,19 @@ async function searchPixabay(query: string): Promise<Candidate[]> {
   const data = (await res.json()) as { hits?: { id: number; duration: number; videos: Record<string, Size> }[] };
   return (data.hits ?? []).flatMap((h) => {
     const sizes = ["large", "medium"].map((k) => h.videos?.[k]).filter((s): s is Size => Boolean(s?.url));
-    const best = sizes.map((s) => ({ s, r: rank({ ...s, thumb: "", id: 0, duration: 0 }) })).sort((a, b) => a.r - b.r)[0];
+    const best = sizes.map((s) => ({ s, r: rank({ ...s, thumb: "", id: 0, duration: 0 }, landscape) })).sort((a, b) => a.r - b.r)[0];
     if (!best || best.r === Infinity) return [];
     const thumb = h.videos?.medium?.thumbnail || h.videos?.small?.thumbnail || "";
     return [{ url: best.s.url, thumb, id: h.id, width: best.s.width, height: best.s.height, duration: h.duration }];
   });
 }
 
-async function searchPexels(query: string): Promise<Candidate[]> {
+async function searchPexels(query: string, landscape = false): Promise<Candidate[]> {
   const key = process.env.PEXELS_API_KEY;
   if (!key) return [];
   const url = `https://api.pexels.com/videos/search?${new URLSearchParams({
     query,
-    orientation: "portrait",
+    orientation: landscape ? "landscape" : "portrait",
     size: "medium",
     per_page: "15",
   })}`;
@@ -70,16 +75,16 @@ async function searchPexels(query: string): Promise<Candidate[]> {
     const files = v.video_files
       .filter((f) => f.file_type === "video/mp4")
       .map((f) => ({ url: f.link, thumb: v.image, id: v.id, width: f.width, height: f.height, duration: v.duration }));
-    const best = files.sort((a, b) => rank(a) - rank(b))[0];
-    return best && rank(best) !== Infinity ? [best] : [];
+    const best = files.sort((a, b) => rank(a, landscape) - rank(b, landscape))[0];
+    return best && rank(best, landscape) !== Infinity ? [best] : [];
   });
 }
 
 /** Procura um clipe; `skip` pula resultados (para "trocar vídeo"). Verticais vêm antes dos horizontais. */
-export async function findStockVideo(query: string, minSeconds: number, skip = 0): Promise<Stock | null> {
+export async function findStockVideo(query: string, minSeconds: number, skip = 0, landscape = false): Promise<Stock | null> {
   const q = query.trim();
   if (!q || !stockEnabled()) return null;
-  const sources: [Stock["source"], (q: string) => Promise<Candidate[]>][] = [
+  const sources: [Stock["source"], (q: string, landscape: boolean) => Promise<Candidate[]>][] = [
     ["pixabay", searchPixabay],
     ["pexels", searchPexels],
   ];
@@ -87,12 +92,12 @@ export async function findStockVideo(query: string, minSeconds: number, skip = 0
   for (const [source, search] of sources) {
     let found: Candidate[] = [];
     try {
-      found = await search(q);
+      found = await search(q, landscape);
     } catch (err) {
       lastError = err;
       continue;
     }
-    const list = found.filter((c) => c.duration >= Math.min(minSeconds, 6)).sort((a, b) => rank(a) - rank(b));
+    const list = found.filter((c) => c.duration >= Math.min(minSeconds, 6)).sort((a, b) => rank(a, landscape) - rank(b, landscape));
     if (!list.length) continue;
     const pick = skip % list.length;
     const c = list[pick];
@@ -103,14 +108,14 @@ export async function findStockVideo(query: string, minSeconds: number, skip = 0
 }
 
 /** Preenche scene.stock nas cenas com stockQuery que ainda não têm clipe (falha = segue com imagem). */
-export async function attachStockVideos(scenes: VideoScene[]): Promise<{ scenes: VideoScene[]; changed: boolean }> {
+export async function attachStockVideos(scenes: VideoScene[], landscape = false): Promise<{ scenes: VideoScene[]; changed: boolean }> {
   if (!stockEnabled()) return { scenes, changed: false };
   let changed = false;
   const out = await Promise.all(
     scenes.map(async (sc) => {
       if (!sc.stockQuery || sc.imageUrl || sc.layout === "text_only" || (sc.stock && sc.stock.query === sc.stockQuery)) return sc;
       try {
-        const stock = await findStockVideo(sc.stockQuery, sc.durationS || 3);
+        const stock = await findStockVideo(sc.stockQuery, sc.durationS || 3, 0, landscape);
         if (!stock) return sc;
         changed = true;
         return { ...sc, stock };

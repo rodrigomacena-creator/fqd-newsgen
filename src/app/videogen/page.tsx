@@ -13,7 +13,15 @@ import { useVoices } from "@/lib/videogen/useVoices";
 import { VIDEO_PATTERNS, type VideoPattern } from "@/lib/videogen/patterns";
 import { useStyles } from "@/lib/videogen/useStyles";
 import { useProfiles } from "@/lib/videogen/useProfiles";
-import { DEFAULT_VOICE_ID, DURATION_OPTIONS, WORDS_PER_SECOND, type BriefingImage, type VideoProfileDTO } from "@/lib/videogen/types";
+import {
+  DEFAULT_VOICE_ID,
+  DURATION_OPTIONS,
+  LANDSCAPE_DURATION_OPTIONS,
+  WORDS_PER_SECOND,
+  type BriefingImage,
+  type VideoFormat,
+  type VideoProfileDTO,
+} from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
 const MAX_TOPIC = 2000;
@@ -76,6 +84,8 @@ export default function VideoGenPage() {
   const [briefingImages, setBriefingImages] = useState<BriefingImage[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [durationS, setDurationS] = useState(15);
+  // formato: vertical (Reels/Shorts) é o padrão; horizontal (YouTube) é opcional
+  const [format, setFormat] = useState<VideoFormat>("9:16");
   const [extraInstructions, setExtraInstructions] = useState("");
   const [styleNotes, setStyleNotes] = useState("");
   const [loading, setLoading] = useState(false);
@@ -113,6 +123,19 @@ export default function VideoGenPage() {
   }, [anyRendering]);
 
   const pattern = getStyle(patternId);
+  const landscape = format === "16:9";
+  const durationOptions = landscape ? LANDSCAPE_DURATION_OPTIONS : DURATION_OPTIONS;
+
+  /** Troca o formato. O horizontal só roda no estilo livre e nos templates: estilo embutido vira o livre. */
+  function chooseFormat(next: VideoFormat) {
+    setFormat(next);
+    const options = next === "16:9" ? LANDSCAPE_DURATION_OPTIONS : DURATION_OPTIONS;
+    if (!options.includes(durationS)) setDurationS(next === "16:9" ? 60 : 15);
+    if (next === "16:9" && pattern?.kind === "builtin") {
+      const free = styles.find((s) => s.kind === "free");
+      if (free) setPatternId(free.id);
+    }
+  }
 
   function payload(t: string, withImages: boolean) {
     return {
@@ -127,6 +150,7 @@ export default function VideoGenPage() {
       companyId: companyId || null,
       briefingImages: withImages ? briefingImages : [],
       articleId: article?.id ?? null,
+      format,
     };
   }
 
@@ -386,6 +410,49 @@ export default function VideoGenPage() {
 
             <fieldset className={cardClass} disabled={loading}>
               <legend className="sr-only">Estilo visual</legend>
+              <div className="mb-5">
+                <span id="format-label" className="block text-sm font-medium">
+                  Formato
+                </span>
+                <div role="radiogroup" aria-labelledby="format-label" className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {(
+                    [
+                      { id: "9:16", title: "Vertical 9:16", hint: "Reels, Shorts e TikTok (padrão)" },
+                      { id: "16:9", title: "Horizontal 16:9", hint: "Vídeo normal do YouTube" },
+                    ] as const
+                  ).map((f) => {
+                    const active = format === f.id;
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => chooseFormat(f.id)}
+                        className={`flex min-h-14 items-center gap-3 rounded-xl border px-3 py-2 text-left transition ${
+                          active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"
+                        }`}
+                      >
+                        <span
+                          aria-hidden
+                          className={`shrink-0 rounded-[4px] border-2 ${active ? "border-accent-yellow" : "border-text-secondary/50"} ${
+                            f.id === "9:16" ? "h-7 w-4" : "h-4 w-7"
+                          }`}
+                        />
+                        <span className="min-w-0">
+                          <span className={`block text-sm ${active ? "font-semibold" : "font-medium"}`}>{f.title}</span>
+                          <span className="block text-xs text-text-secondary">{f.hint}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {landscape && (
+                  <p className="mt-1.5 text-xs text-text-secondary">
+                    No horizontal dá para usar o estilo livre e os seus templates. A imagem fica ao lado do texto nas cenas com card.
+                  </p>
+                )}
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className={sectionTitle} aria-hidden>
                   Estilo visual
@@ -425,18 +492,21 @@ export default function VideoGenPage() {
                 >
                   {styles.map((p) => {
                     const active = p.id === patternId;
+                    const off = landscape && p.kind === "builtin"; // embutidos só no vertical
                     return (
                       <label
                         key={p.id}
-                        className={`flex cursor-pointer items-center gap-3 rounded-xl border p-2 pr-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-yellow/40 ${
-                          active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"
-                        }`}
+                        className={`flex items-center gap-3 rounded-xl border p-2 pr-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-yellow/40 ${
+                          off ? "cursor-not-allowed opacity-45" : "cursor-pointer"
+                        } ${active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"}`}
+                        title={off ? "Este estilo só existe no formato vertical" : undefined}
                       >
                         <input
                           type="radio"
                           name="pattern"
                           value={p.id}
                           checked={active}
+                          disabled={off}
                           onChange={() => setPatternId(p.id)}
                           className="sr-only"
                         />
@@ -456,6 +526,7 @@ export default function VideoGenPage() {
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-medium">{p.nome}</span>
                           <span className="line-clamp-2 block text-xs text-text-secondary">{p.tom}</span>
+                          {off && <span className="mt-1 block text-[11px] text-text-secondary">Só no vertical</span>}
                           {(p.kind !== "builtin" || p.semNarracao) && (
                             <span className="mt-1 flex flex-wrap gap-1">
                               {p.kind === "free" && (
@@ -545,7 +616,7 @@ export default function VideoGenPage() {
                     Duração
                   </span>
                   <div role="radiogroup" aria-labelledby="duration-label" className="mt-2 flex flex-wrap gap-1.5">
-                    {DURATION_OPTIONS.map((d) => (
+                    {durationOptions.map((d) => (
                       <button
                         key={d}
                         type="button"
@@ -558,7 +629,7 @@ export default function VideoGenPage() {
                             : "border-border text-text-secondary hover:border-border-hover"
                         }`}
                       >
-                        {d}s
+                        {d >= 120 ? `${d / 60} min` : `${d}s`}
                       </button>
                     ))}
                   </div>
@@ -664,7 +735,7 @@ export default function VideoGenPage() {
                             label={job.error && job.status === "draft" ? "Erro no roteiro" : undefined}
                           />
                           <span>
-                            {getStyle(job.patternId)?.nome ?? (stylesLoaded ? "Estilo removido" : "…")} · {job.durationS}s
+                            {getStyle(job.patternId)?.nome ?? (stylesLoaded ? "Estilo removido" : "…")} · {job.durationS}s{job.format === "16:9" ? " · horizontal" : ""}
                           </span>
                           <span>
                             {formatDate(job.createdAt)}
@@ -1006,7 +1077,7 @@ function AllVideosModal({
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
                       <StatusBadge status={job.status} progress={job.progress} label={job.error && job.status === "draft" ? "Erro no roteiro" : undefined} />
                       <span>
-                        {getStyleName(job.patternId) ?? "Estilo removido"} · {job.durationS}s
+                        {getStyleName(job.patternId) ?? "Estilo removido"} · {job.durationS}s{job.format === "16:9" ? " · horizontal" : ""}
                       </span>
                       <span>Gerado em {formatDate(job.createdAt, true)}</span>
                       {job.costSummary && job.costSummary.totalUsd > 0 && <span>≈ {formatUsd(job.costSummary.totalUsd)}</span>}

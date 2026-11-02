@@ -83,6 +83,7 @@ model VideoJob {
   coverUrl           String? // capa 9:16 (Reels/Shorts) gerada no render final
   thumbUrl           String? // thumbnail 16:9 (YouTube) gerada no render final
   renderMode         String? // "preview" enquanto a prévia está na fila/renderizando; null = render final
+  format             String   @default("9:16") // "9:16" (Reels/Shorts, padrão) ou "16:9" (YouTube horizontal)
   progress           Int? // 0-100, atualizado pelo worker
   costs              String? // JSON string: CostEntry[] (gastos de OpenRouter e ElevenLabs, ver src/lib/videogen/costs.ts)
   personId           String? // VideoProfile (kind person) que fala no vídeo; sem FK de propósito (perfil apagado = genérico)

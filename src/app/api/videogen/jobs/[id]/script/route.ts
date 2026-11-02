@@ -36,6 +36,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
       recentStyles: style.pattern.kind === "free" ? await recentFreeStyles() : [],
       model: job.textModel,
       sourceText: (await articleSource(job.articleId))?.text,
+      format: job.format === "16:9" ? "16:9" : "9:16",
     });
     await appendCosts(id, [costEntry("script", "openrouter", { usd })]);
     const updated = await prisma.videoJob.update({

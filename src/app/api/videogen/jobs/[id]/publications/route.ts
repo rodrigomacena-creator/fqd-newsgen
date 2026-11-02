@@ -25,12 +25,15 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/jo
   } catch {
     return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
   }
-  const job = await prisma.videoJob.findUnique({ where: { id }, select: { videoUrl: true, status: true } });
+  const job = await prisma.videoJob.findUnique({ where: { id }, select: { videoUrl: true, status: true, format: true } });
   if (!job) return NextResponse.json({ error: "Vídeo não encontrado." }, { status: 404 });
   if (!job.videoUrl || job.status !== "done") return NextResponse.json({ error: "Renderize o vídeo antes de publicar." }, { status: 400 });
 
   const platforms = (Array.isArray(body.platforms) ? body.platforms : []).filter((p): p is Platform => PLATFORMS.includes(p as Platform));
   if (platforms.length === 0) return NextResponse.json({ error: "Escolha pelo menos uma rede." }, { status: 400 });
+  if (job.format === "16:9" && platforms.includes("instagram")) {
+    return NextResponse.json({ error: "Vídeo horizontal vai só para o YouTube; o Instagram (Reels) é vertical." }, { status: 400 });
+  }
   const accounts = await prisma.socialAccount.findMany({ where: { platform: { in: platforms } } });
   const missing = platforms.filter((p) => !accounts.some((a) => a.platform === p));
   if (missing.length) {

@@ -1,5 +1,5 @@
 import type { VideoJob } from "@/generated/prisma/client";
-import { summarizeCosts, type BriefingImage, type CostEntry, type CostSummary, type NarrationWord, type VideoJobStatus, type VideoScript } from "./types";
+import { summarizeCosts, type VideoFormat, type BriefingImage, type CostEntry, type CostSummary, type NarrationWord, type VideoJobStatus, type VideoScript } from "./types";
 import { ELEVENLABS_USD_PER_CREDIT, parseCosts } from "./costs";
 import { parseBriefingImages } from "./profiles";
 
@@ -44,6 +44,8 @@ export interface VideoJobDTO {
   thumbUrl: string | null;
   /** "preview" enquanto a prévia está na fila/renderizando; null = render final. */
   renderMode: string | null;
+  /** "9:16" (Reels/Shorts, padrão) ou "16:9" (YouTube horizontal). */
+  format: VideoFormat;
   progress: number | null;
   error: string | null;
   costs: CostEntry[];
@@ -59,6 +61,7 @@ export function serializeVideoJob(job: VideoJob): VideoJobDTO {
   return {
     ...job,
     status: job.status as VideoJobStatus,
+    format: job.format === "16:9" ? "16:9" : "9:16",
     script: parseJson<VideoScript>(job.script),
     briefingImages: parseBriefingImages(job.briefingImages),
     narrationWords: parseJson<NarrationWord[]>(job.narrationWords),

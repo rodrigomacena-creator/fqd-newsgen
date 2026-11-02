@@ -14,6 +14,8 @@ Uso:
   python3 worker.py --template-video ref.mp4 --out pasta/   # monta um template local, sem o app
 """
 import argparse
+import contextlib
+import functools
 import json
 import os
 import shutil
@@ -30,7 +32,7 @@ import requests
 from providers import download, generate_image, generate_music, prepare_user_image, silent_audio
 from render import RENDERERS, template_engine
 from render.audio_fx import build_sfx_track, detect_beats, sfx_cues
-from render.common import mix, render_speed
+from render.common import mix, render_size, render_speed
 from render.cover import make_covers
 from render.cta_fx import overlay_cta
 from render.timeline import build_timeline
@@ -171,13 +173,33 @@ def produce(job, workdir, report=lambda p: None, costs=None, assets=None):
     if assets is None:
         assets = {}
     assets.setdefault("scenes", {})
-    if job.get("renderMode") == "preview":
-        with render_speed(PREVIEW_FPS):
-            return _produce(job, workdir, report, costs, assets, preview=True)
-    return _produce(job, workdir, report, costs, assets, preview=False)
+    preview = job.get("renderMode") == "preview"
+    with contextlib.ExitStack() as stack:
+        if is_landscape(job):  # formato horizontal (YouTube): 1920×1080 em todos os renderizadores
+            stack.enter_context(render_size(1920, 1080))
+        if preview:
+            stack.enter_context(render_speed(PREVIEW_FPS))
+        return _produce(job, workdir, report, costs, assets, preview=preview)
 
 
-def scene_prompt(sc):
+def is_landscape(job):
+    return job.get("format") == "16:9"
+
+
+def scene_aspect(job, sc):
+    """Proporção da imagem gerada para a cena. Vertical: sempre 9:16. Horizontal (16:9): tela cheia
+    pede 16:9; card/polaroid/círculo e metade/dividida (imagem ao lado do texto) pedem quadrada/4:5."""
+    if not is_landscape(job):
+        return "9:16"
+    layout = sc.get("layout") or ((job.get("templateSpec") or {}).get("image") or {}).get("layout") or "fullbleed"
+    if layout == "card":
+        return "4:5"
+    if layout in ("circle", "polaroid", "split", "top_half"):
+        return "1:1"
+    return "16:9"
+
+
+def scene_prompt(sc, landscape=False):
     """Prompt de imagem da cena; cena sem prompt (a IA às vezes devolve vazio) usa a fala/texto da cena."""
     p = (sc.get("imagePrompt") or sc.get("visual") or "").strip()
     if p:
@@ -185,13 +207,16 @@ def scene_prompt(sc):
     base = (sc.get("narration") or sc.get("onScreen") or "").strip()
     if not base:
         return ""
-    return f"Editorial photograph that visually illustrates this idea: {base}. Vertical 9:16 composition, no text, no letters."
+    comp = "Horizontal 16:9 composition" if landscape else "Vertical 9:16 composition"
+    return f"Editorial photograph that visually illustrates this idea: {base}. {comp}, no text, no letters."
 
 
 def _produce(job, workdir, report, costs, assets, preview):
     module = RENDERERS.get(job["patternId"])
     if not module and job.get("templateSpec"):
         module = template_engine  # template montado pela aplicação: motor genérico + ficha de estilo
+    if is_landscape(job) and module is not template_engine:
+        raise RuntimeError("O formato horizontal (16:9) só funciona no estilo livre e nos templates montados.")
     if not module:
         raise RuntimeError(f'O worker ainda não sabe renderizar o padrão "{job["patternId"]}".')
     script = job.get("script") or {}
@@ -220,7 +245,7 @@ def _produce(job, workdir, report, costs, assets, preview):
         path = workdir / f"cena_{i:02d}.jpg"
         if sc.get("imageUrl"):
             try:
-                return prepare_user_image(sc["imageUrl"], path)
+                return prepare_user_image(sc["imageUrl"], path, *((1920, 1080) if is_landscape(job) else (1080, 1920)))
             except Exception as e:
                 if not (sc.get("imagePrompt") or sc.get("visual")):
                     raise
@@ -231,7 +256,8 @@ def _produce(job, workdir, report, costs, assets, preview):
                 return download(pv["url"], path)
             except Exception as e:
                 log(f"cena {i + 1}: prévia do storyboard falhou ({e}); gerando com IA")
-        out = cached(generate_image, path, scene_prompt(sc))
+        gen = functools.partial(generate_image, aspect=scene_aspect(job, sc))
+        out = cached(gen, path, scene_prompt(sc, is_landscape(job)))
         assets["scenes"][i] = (out, sc.get("imagePrompt") or "")  # o app guarda como prévia da cena
         return out
 

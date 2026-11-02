@@ -70,7 +70,7 @@ async function claim() {
     // Falhou (Pixabay fora, timeout)? Segue sem: a cena usa imagem.
     if (script) {
       try {
-        const { scenes, changed } = await attachStockVideos(script.scenes);
+        const { scenes, changed } = await attachStockVideos(script.scenes, job.format === "16:9");
         if (changed) {
           script.scenes = scenes;
           job.script = JSON.stringify(script);

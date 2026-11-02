@@ -320,6 +320,14 @@ reais encontradas ao construir o projeto, não só a estrutura.
   veryfast, sem gerar trilha (usa a guardada, se houver); sobe em `previa.mp4`, grava `previewUrl` e o job volta para
   `script_ready` (o mp4 final, se existir, fica). Ao criar um renderizador novo, leia `FPS` como global na hora do render
   (nunca calcule constantes com ele no import), senão a prévia sai errada.
+  **Formato horizontal (opcional)** (`VideoJob.format` = `"9:16"` padrão ou `"16:9"`, seletor "Formato" na criação): o foco
+  continua sendo o vertical. O 16:9 só roda no motor genérico (estilo livre e templates; embutidos são 9:16 e a API recusa).
+  No worker, `render_size(1920, 1080)` (`render/common.py`) troca W/H de todos os módulos como o `render_speed` faz com o FPS;
+  o motor põe a imagem das cenas card/círculo/polaroid/metade/dividida à DIREITA e o texto numa coluna à esquerda
+  (`side_mode`/`text_column` em `template_engine.py`), tela cheia e só texto seguem centralizados. Imagens geradas na proporção
+  da cena (`scene_aspect` no worker ↔ `sceneAspect` em `storyboard.ts`), vídeo de banco prefere horizontal, roteiro ganha a
+  regra de formato e cenas ~1,4x mais longas, durações até 3 min. Publicação: 16:9 vai só para o YouTube (sem #Shorts).
+  Ao criar renderizador, leia W/H como globais na hora do render (nunca em constante de import ou valor padrão de argumento).
   **Capa automática** (`worker/render/cover.py`, só no render final): imagem da 1ª cena com imagem + texto da tela da cena 1
   (palavra-chave na cor de destaque do estilo), em 9:16 e 16:9; sobe como `cover`/`thumb` e vira `VideoJob.coverUrl`/`thumbUrl`.
   **Publicar direto** (`src/lib/videogen/social.ts`, `PublishPanel.tsx`, tabelas `SocialAccount` e `VideoPublication`):

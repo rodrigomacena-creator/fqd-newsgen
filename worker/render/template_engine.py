@@ -22,7 +22,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 from . import motion as mv
-from .common import FPS, H, W, FrameWriter, asset, cover_resize, ease, font, grain_frames, group_lines, keyword_set, norm, spread_words, vignette
+from .common import FPS, H, W, FrameWriter, asset, cover_resize, ease, font, grain_frames, group_lines, keyword_set, landscape, norm, spread_words, vignette
 from .timeline import build_timeline
 
 USES_SCENE_IMAGES = True
@@ -163,7 +163,7 @@ def _is_light(hex_color):
 def _ensure_legible(spec):
     """Evita texto ilegível: tira legenda/título de cima do card e garante contorno sobre foto."""
     img, cap, title = spec["image"], spec["caption"], spec["title"]
-    if img["layout"] in ("card", "circle", "polaroid"):
+    if img["layout"] in ("card", "circle", "polaroid") and not landscape():  # no 16:9 o card fica ao lado do texto
         ratio = {"circle": 1.0, "card": 1.25, "polaroid": 1.3}[img["layout"]]
         hfrac = W * (min(img["scale"], 0.8) if img["layout"] == "polaroid" else img["scale"]) * ratio / H
         top, bottom = img["y"] - hfrac / 2, img["y"] + hfrac / 2
@@ -172,11 +172,13 @@ def _ensure_legible(spec):
                 cap["y"] = round(bottom + 0.07, 3)
             else:
                 cap["box"] = True
+                cap["boxColor"] = _contrast_box(cap["color"], cap["boxColor"])
         if title["enabled"] and top - 0.03 < title["y"] < bottom + 0.03 and not title["box"]:
             if top - 0.07 >= 0.06:
                 title["y"] = round(top - 0.07, 3)
             else:
                 title["box"] = True
+                title["boxColor"] = _contrast_box(title["color"], title["boxColor"])
     over_photo = img["layout"] in ("fullbleed", "top_half", "split") or spec["background"]["kind"] in ("texture", "blurred_image")
     if over_photo and cap["enabled"] and not cap["box"] and (not cap["stroke"] or cap["strokeWidth"] < 3):
         cap["stroke"] = "#000000" if _is_light(cap["color"]) else "#FFFFFF"
@@ -184,6 +186,31 @@ def _ensure_legible(spec):
     if over_photo and title["enabled"] and not title["box"] and (not title["stroke"] or title["strokeWidth"] < 3):
         title["stroke"] = "#000000" if _is_light(title["color"]) else "#FFFFFF"
         title["strokeWidth"] = max(title["strokeWidth"], 5)
+
+
+def _contrast_box(text_color, box_color):
+    """Cor da caixa atrás do texto: a da ficha se contrasta com o texto; senão preto/branco."""
+    if _is_light(text_color) != _is_light(box_color or "#000000"):
+        return box_color or "#000000"
+    return "#000000" if _is_light(text_color) else "#FFFFFF"
+
+
+# ---------- formato horizontal (16:9) ----------
+# No 16:9 as cenas com imagem "ao lado" (card, círculo, polaroid, metade/dividida) põem a imagem na
+# direita e o texto numa coluna à esquerda; tela cheia e só texto continuam centralizados.
+SIDE_LAYOUTS = ("card", "circle", "polaroid", "top_half", "split")
+SIDE_IMAGE_W = 0.54  # fração da largura ocupada pela imagem em metade/dividida
+
+
+def side_mode(layout):
+    return landscape() and layout in SIDE_LAYOUTS
+
+
+def text_column(layout):
+    """(centro x, largura máxima) da área de texto da cena."""
+    if side_mode(layout):
+        return W * 0.25, int(W * 0.40)
+    return W / 2, 960 if not landscape() else 1500
 
 
 def rgb(hex_color):
@@ -283,10 +310,12 @@ class SceneVisual:
                 tone = (0, 0, 0) if light_text else (rgb(pal_bg) if _is_light(pal_bg) else (255, 255, 255))
                 self.scrim = (a[:, None, None], np.array(tone, np.float32))
         elif self.layout in ("top_half", "split"):
-            self.big = cover_resize(img, int(W * 1.25), int(H * 0.58 * 1.25))
+            tw, th = self._panel()
+            self.big = cover_resize(img, int(tw * 1.25), int(th * 1.25))
         elif self.layout == "polaroid":
             # foto com moldura branca grossa (base maior), levemente torta
-            cw = int(W * min(lay["scale"], 0.8))
+            # no 16:9 o tamanho vem da altura (a moldura inteira ocupa ~76% da altura)
+            cw = int(W * min(lay["scale"], 0.8)) if not landscape() else int(H * 0.76 / 1.35 * min(lay["scale"], 0.8) / 0.7)
             ch = int(cw * 1.1)
             photo = cover_resize(img, cw, ch).crop((0, 0, cw, ch))
             side, base = int(cw * 0.05), int(cw * 0.2)
@@ -299,6 +328,8 @@ class SceneVisual:
             self.shadow = sh.filter(ImageFilter.GaussianBlur(26))
         elif self.layout in ("card", "circle"):
             cw = int(W * lay["scale"])
+            if landscape():  # 16:9: tamanho pela altura (card ~74%, círculo ~66% da altura)
+                cw = int(H * (0.66 if self.layout == "circle" else 0.74 / 1.25) * min(lay["scale"], 0.85) / 0.7)
             ch = cw if self.layout == "circle" else int(cw * 1.25)
             card = cover_resize(img, cw, ch).crop((0, 0, cw, ch))
             radius = cw / 2 if self.layout == "circle" else lay["cornerRadius"]
@@ -316,6 +347,18 @@ class SceneVisual:
                 sh = Image.new("L", (card.width + 120, card.height + 120), 0)
                 sh.paste(mask.point(lambda v: int(v * 0.45)), (60, 80))
                 self.shadow = sh.filter(ImageFilter.GaussianBlur(28))
+
+    def _panel(self):
+        """Tamanho da área da imagem em metade/dividida: faixa de cima (9:16) ou lado direito (16:9)."""
+        if landscape():
+            return int(W * SIDE_IMAGE_W), H
+        return W, int(H * 0.58)
+
+    def _card_center(self):
+        """Centro do card: no 16:9 fica à direita, na meia altura; senão no meio, na altura da ficha."""
+        if landscape():
+            return W * 0.70, H * 0.5
+        return W / 2, H * self.spec["image"]["y"]
 
     def _zoom(self, p):
         """(zoom, pan_x, pan_y) da imagem em p. Mistura linear + ease para nunca "parar" no meio."""
@@ -371,7 +414,7 @@ class SceneVisual:
             self.big = _filter(self.clip.at(local_t), self.spec["image"]["filter"], self.spec)
         if self.big is not None:
             bw, bh = self.big.size
-            tw, th = (W, H) if self.layout == "fullbleed" else (W, int(H * 0.58))
+            tw, th = (W, H) if self.layout == "fullbleed" else self._panel()
             f = self.clip.zoom if self.clip is not None else (1.3 if self.layout == "fullbleed" else 1.25)
             r = min(bw / tw, bh / th)
             cw, ch = min(bw, int(tw * r / (f * z))), min(bh, int(th * r / (f * z)))
@@ -379,12 +422,17 @@ class SceneVisual:
             cy = (bh - ch) / 2 + pany * (bh - ch) / 2 - sy
             cx, cy = min(max(cx, 0), bw - cw), min(max(cy, 0), bh - ch)
             crop = self.big.crop((int(cx), int(cy), int(cx) + cw, int(cy) + ch)).resize((tw, th), Image.BILINEAR)
-            fr.paste(crop, (0, 0))
+            px = W - tw if self.layout != "fullbleed" and landscape() else 0
+            fr.paste(crop, (px, 0))
             if self.scrim is not None:
                 a, tone = self.scrim
                 fr = Image.fromarray((np.asarray(fr, dtype=np.float32) * (1 - a) + tone * a).astype(np.uint8))
             if self.layout == "split":  # faixa de destaque na divisa da tela dividida
-                ImageDraw.Draw(fr).rectangle((0, th - 7, W, th + 9), fill=rgb(self.spec["palette"]["accent"]))
+                accent = rgb(self.spec["palette"]["accent"])
+                if landscape():
+                    ImageDraw.Draw(fr).rectangle((px - 9, 0, px + 7, H), fill=accent)
+                else:
+                    ImageDraw.Draw(fr).rectangle((0, th - 7, W, th + 9), fill=accent)
         elif self.card is not None and self.direction:
             # card como "objeto" da direção (mola, queda, balanço...) + flutuação leve
             dx, dy, s, rot = mv.object_motion(self.direction["object"], local_t)
@@ -394,8 +442,9 @@ class SceneVisual:
             rot += getattr(self, "tilt", 0.0)
             if abs(rot) > 0.05:
                 card = card.rotate(rot, resample=Image.BILINEAR, expand=True)
-            x = (W - card.width) / 2 + panx * 60 + dx + sx
-            y = H * self.spec["image"]["y"] - card.height / 2 + bob + dy + sy
+            ccx, ccy = self._card_center()
+            x = ccx - card.width / 2 + panx * 60 + dx + sx
+            y = ccy - card.height / 2 + bob + dy + sy
             if self.shadow is not None:
                 sh = self.shadow.resize((max(1, int(self.shadow.width * s)), max(1, int(self.shadow.height * s))))
                 fr.paste((0, 0, 0), (int(x + (card.width - sh.width) / 2), int(y + (card.height - sh.height) / 2 + 20 * s)), sh)
@@ -411,8 +460,9 @@ class SceneVisual:
             card = self.card.resize((max(1, int(self.card.width * s)), max(1, int(self.card.height * s))), Image.BILINEAR)
             if abs(rot) > 0.05:
                 card = card.rotate(rot, resample=Image.BILINEAR, expand=True)
-            x = (W - card.width) / 2 + panx * 70 + sx
-            y = H * self.spec["image"]["y"] - card.height / 2 + bob + (1 - ease(k)) * 90 + sy
+            ccx, ccy = self._card_center()
+            x = ccx - card.width / 2 + panx * 70 + sx
+            y = ccy - card.height / 2 + bob + (1 - ease(k)) * 90 + sy
             if self.shadow is not None:
                 sh = self.shadow.resize((max(1, int(self.shadow.width * s)), max(1, int(self.shadow.height * s))))
                 fr.paste((0, 0, 0), (int(x + (card.width - sh.width) / 2), int(y + (card.height - sh.height) / 2 + 20 * s)), sh)
@@ -579,6 +629,7 @@ class Captions:
         words = [w for w in words if w[1] < cta_start - 0.05 and _clean(w[0])]
         chars = max(8, int(self.MAX_W / (self.cfg["size"] * 0.58)))
         lines = group_lines(words, max_chars=chars, max_words=self.cfg["maxWordsPerLine"])
+        self.col = None  # (centro x, largura máx., y) da coluna de texto da cena atual; None = padrão
         self.lines = []
         for i, ln in enumerate(lines):
             start = ln[0][1]
@@ -607,13 +658,14 @@ class Captions:
         imgs = [self.style.word_img(w[0], size, self._mode(w[0], False)) for w in ln]
         gap = int(size * 0.22)
         total = sum(i.width for i in imgs) + gap * (len(imgs) - 1)
-        while total > self.MAX_W and size > 44:
+        col_x, max_w, col_y = self.col or (W / 2, self.MAX_W, self.cfg["y"])
+        while total > max_w and size > 44:
             size = int(size * 0.9)
             imgs = [self.style.word_img(w[0], size, self._mode(w[0], False)) for w in ln]
             gap = int(size * 0.22)
             total = sum(i.width for i in imgs) + gap * (len(imgs) - 1)
-        cy = int(H * self.cfg["y"])
-        x = (W - total) // 2
+        cy = int(H * col_y)
+        x = int(col_x - total / 2)
         lh = max(i.height for i in imgs)
         if self.cfg["box"]:
             _box(fr, x - 28, cy - lh // 2 - 14, x + total + 28, cy + lh // 2 + 14, rgb(self.cfg["boxColor"]))
@@ -705,16 +757,22 @@ class Title:
         self.style = TextStyle(self.cfg, spec["palette"])
         self._cache = {}
         self._words = {}
+        self.col = None  # (centro x, largura máx., y) da coluna de texto da cena atual; None = padrão
+
+    def _column(self):
+        return self.col or (W / 2, 900, self.cfg["y"])
 
     def _kinetic_layout(self, text):
         """Palavras soltas com a posição de cada uma no bloco (para entrarem uma a uma)."""
-        if text in self._words:
-            return self._words[text]
+        col_x, max_w, _ = self._column()
+        key = (text, col_x, max_w)
+        if key in self._words:
+            return self._words[key]
         size = int(self.cfg["size"])
         txt = self.style.text(text.strip())
         while True:
             f = font(self.style.path, size)
-            lines = _wrap(txt, f, 900)
+            lines = _wrap(txt, f, max_w)
             if len(lines) <= 4 or size <= 40:
                 break
             size = int(size * 0.88)
@@ -725,7 +783,7 @@ class Title:
             parts = ln.split()
             widths = [f.getlength(w) for w in parts]
             space = f.getlength(" ")
-            x = (W - (sum(widths) + space * (len(parts) - 1))) / 2
+            x = col_x - (sum(widths) + space * (len(parts) - 1)) / 2
             for w, wd in zip(parts, widths):
                 bb = f.getbbox(w, stroke_width=sw)
                 im = Image.new("RGBA", (int(wd) + 2 * sw + 8, lh + 2 * sw), (0, 0, 0, 0))
@@ -734,8 +792,8 @@ class Title:
                 items.append((im, x - sw - 4, li * lh, bb))
                 x += wd + space
         total_h = lh * len(lines)
-        self._words[text] = (items, total_h)
-        return self._words[text]
+        self._words[key] = (items, total_h)
+        return self._words[key]
 
     def _idle(self, local_t):
         idle = self.mo["textIdle"]
@@ -750,7 +808,8 @@ class Title:
         if not self.cfg["enabled"] or not text.strip():
             return
         anim = self.cfg["animation"]
-        cy = int(H * self.cfg["y"])
+        col_x, max_w, col_y = self._column()
+        cy = int(H * col_y)
         idle_dy, idle_s = self._idle(local_t)
         # saída: some subindo nos últimos 0,18s da cena (só em cenas com tempo para isso)
         out = 0.0
@@ -778,9 +837,10 @@ class Title:
                             min(1.0, k * 2) * exit_alpha)
             return
 
-        if text not in self._cache:
-            self._cache[text] = _text_block(text, self.style, int(self.cfg["size"]))
-        full = self._cache[text]
+        key = (text, max_w)
+        if key not in self._cache:
+            self._cache[key] = _text_block(text, self.style, int(self.cfg["size"]), max_w=max_w)
+        full = self._cache[key]
         im = full
         k = ease(local_t / 0.45)
         alpha, dy, scale = 1.0, 0, 1.0
@@ -802,10 +862,10 @@ class Title:
         dy += idle_dy + exit_dy
         alpha *= exit_alpha
         draw_im = im if abs(scale - 1.0) < 0.005 else im.resize((max(1, int(im.width * scale)), max(1, int(im.height * scale))))
-        x = (W - (full.width if anim == "typewriter" else draw_im.width)) / 2
+        x = col_x - (full.width if anim == "typewriter" else draw_im.width) / 2
         y = cy - draw_im.height / 2 + dy
         if self.cfg["box"]:
-            _box(fr, (W - full.width) / 2 - 30, cy - full.height / 2 - 22 + dy, (W + full.width) / 2 + 30,
+            _box(fr, col_x - full.width / 2 - 30, cy - full.height / 2 - 22 + dy, col_x + full.width / 2 + 30,
                  cy + full.height / 2 + 22 + dy, rgb(self.cfg["boxColor"]), 0.9 * alpha)
         _paste_rgba(fr, draw_im, x, y, alpha)
 
@@ -1073,7 +1133,16 @@ def render(job, assets, out_path, on_progress=None):
                 if flash > 0:
                     fr = np.clip(fr.astype(np.float32) + 60 * flash, 0, 255).astype(np.uint8)
                 particles.draw(fr, t)
-                if vis.layout in ("split", "top_half") and spec["title"]["y"] < 0.62:
+                # 16:9: imagem ao lado = texto numa coluna à esquerda; tela cheia = texto mais largo
+                col_x, col_w = text_column(vis.layout)
+                if side_mode(vis.layout):
+                    title.col, captions.col = (col_x, col_w, 0.34), (col_x, col_w, 0.72)
+                elif landscape():
+                    title.col = (col_x, col_w, min(max(spec["title"]["y"], 0.12), 0.4))
+                    captions.col = (col_x, col_w, min(max(spec["caption"]["y"], 0.6), 0.86))
+                if side_mode(vis.layout):
+                    title.draw(fr, sc.data.get("onScreen") or "", local, span)
+                elif vis.layout in ("split", "top_half") and spec["title"]["y"] < 0.62:
                     title_low.draw(fr, sc.data.get("onScreen") or "", local, span)
                 elif vis.layout == "text_only":
                     title_big.draw(fr, sc.data.get("onScreen") or sc.data.get("narration") or "", local, span)
