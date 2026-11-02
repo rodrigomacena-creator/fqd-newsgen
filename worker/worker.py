@@ -31,6 +31,7 @@ from providers import download, generate_image, generate_music, prepare_user_ima
 from render import RENDERERS, template_engine
 from render.audio_fx import build_sfx_track, detect_beats, sfx_cues
 from render.common import mix, render_speed
+from render.cover import make_covers
 from render.cta_fx import overlay_cta
 from render.timeline import build_timeline
 
@@ -128,6 +129,9 @@ class App:
 
     def template_update(self, template_id, payload, timeout=60):
         return self._post(f"/api/videogen/worker/templates/{template_id}", payload, timeout=timeout)
+
+    def publish_tick(self):
+        return self._post("/api/videogen/worker/publish-tick", timeout=320)
 
     def template_upload_token(self, template_id, kind):
         return self._post(f"/api/videogen/worker/templates/{template_id}/upload-token", {"file": kind})
@@ -350,6 +354,17 @@ def _produce(job, workdir, report, costs, assets, preview):
         log(f"efeitos sonoros: {e} (segue sem)")
     final = workdir / "video.mp4"
     mix(str(video_only), str(narration) if narration else None, str(music), duration, str(final), sfx=sfx)
+
+    # capa automática (só no render final): imagem da primeira cena que tem imagem + texto do gancho
+    if not preview:
+        try:
+            src = images[min(images)] if images else None
+            if src is None:
+                src = workdir / "quadro_capa.jpg"
+                subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "0.8", "-i", str(final), "-frames:v", "1", str(src)], check=True)
+            assets["covers"] = make_covers(src, job, workdir)
+        except Exception as e:
+            log(f"capa: {e} (segue sem)")
     return final
 
 
@@ -376,6 +391,15 @@ def upload_assets(app, job_id, generated):
             raise
         except Exception as e:
             log(f"cena {i + 1}: imagem não guardada ({e})")
+    covers = generated.get("covers")
+    if covers:
+        for key, kind, path in (("cover", "cover", covers[0]), ("thumb", "thumb", covers[1])):
+            try:
+                out[key] = upload(app, job_id, path, file=kind)
+            except JobGone:
+                raise
+            except Exception as e:
+                log(f"capa ({kind}) não guardada ({e})")
     music = generated.get("music")
     if music:
         path, prompt, seconds = music
@@ -490,7 +514,17 @@ def main():
 
     app = App()
     log(f"worker iniciado → {APP_URL}")
+    last_tick = 0.0
     while True:
+        # publicações agendadas/em processamento (Instagram): o app avança quando o worker chama
+        if time.time() - last_tick >= 60:
+            last_tick = time.time()
+            try:
+                r = app.publish_tick()
+                if r.get("advanced"):
+                    log(f"publicações: {r['advanced']} avançada(s)")
+            except Exception as e:
+                log("aviso: publish-tick:", e)
         try:
             res = app.claim()
         except Exception as e:

@@ -39,6 +39,9 @@ export interface VideoJobDTO {
   videoUrl: string | null;
   /** Prévia rápida (render leve, sem trilha), quando gerada. */
   previewUrl: string | null;
+  /** Capa 9:16 (Reels/Shorts) e thumbnail 16:9 (YouTube), geradas no render final. */
+  coverUrl: string | null;
+  thumbUrl: string | null;
   /** "preview" enquanto a prévia está na fila/renderizando; null = render final. */
   renderMode: string | null;
   progress: number | null;

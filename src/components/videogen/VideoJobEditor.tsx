@@ -1,5 +1,6 @@
 "use client";
 
+import { CoverPreview, PublishPanel } from "./PublishPanel";
 import { ScriptLoader } from "./ScriptLoader";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -583,13 +584,15 @@ export function VideoJobEditor({ id }: { id: string }) {
                   src={job.videoUrl}
                   className="mx-auto aspect-[9/16] max-h-[70dvh] w-full rounded-xl bg-black object-contain"
                 />
-                <a href={job.videoUrl} download className={`mt-4 w-full ${primaryButton}`}>
+                <a href={job.videoUrl} download className={`mt-4 w-full ${primaryButton} !bg-foreground !text-background hover:!bg-foreground/85`}>
                   <Icon name="download" className="h-4 w-4" /> Baixar mp4
                 </a>
                 <button type="button" onClick={() => queue()} disabled={disabled} className={`mt-2 w-full ${secondaryButton}`}>
                   {busy === "queue" ? <Spinner /> : <Icon name="refresh" className="h-4 w-4" />}
                   Renderizar de novo
                 </button>
+                <CoverPreview job={job} />
+                <PublishPanel key={job.videoUrl} job={job} />
               </div>
             ) : (
               <p className="mt-3 text-sm text-text-secondary">

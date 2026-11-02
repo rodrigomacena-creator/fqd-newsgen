@@ -52,10 +52,13 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/wo
       );
     } else {
       if (job.videoUrl && job.videoUrl !== body.videoUrl) await deleteBlobIfOwned(job.videoUrl);
+      const covers = pickCovers(body.assets);
+      if (covers.coverUrl && job.coverUrl && job.coverUrl !== covers.coverUrl) await deleteBlobIfOwned(job.coverUrl);
+      if (covers.thumbUrl && job.thumbUrl && job.thumbUrl !== covers.thumbUrl) await deleteBlobIfOwned(job.thumbUrl);
       await withDbRetry(() =>
         prisma.videoJob.update({
           where: { id },
-          data: { status: "done", renderMode: null, videoUrl: body.videoUrl, progress: 100, finishedAt: new Date(), error: null, ...scriptData },
+          data: { status: "done", renderMode: null, videoUrl: body.videoUrl, progress: 100, finishedAt: new Date(), error: null, ...scriptData, ...covers },
         }),
       );
     }
@@ -77,6 +80,15 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/wo
     await withDbRetry(() => prisma.videoJob.update({ where: { id }, data: { progress } }));
   }
   return NextResponse.json({ ok: true });
+}
+
+/** Capa 9:16 e thumbnail 16:9 que o worker gerou no render final (assets.cover / assets.thumb). */
+function pickCovers(assets: unknown): { coverUrl?: string; thumbUrl?: string } {
+  const a = (assets ?? {}) as { cover?: unknown; thumb?: unknown };
+  const out: { coverUrl?: string; thumbUrl?: string } = {};
+  if (typeof a.cover === "string" && isAllowedImageUrl(a.cover)) out.coverUrl = a.cover;
+  if (typeof a.thumb === "string" && isAllowedImageUrl(a.thumb)) out.thumbUrl = a.thumb;
+  return out;
 }
 
 /**

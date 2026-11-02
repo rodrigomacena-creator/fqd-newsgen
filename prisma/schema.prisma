@@ -80,6 +80,8 @@ model VideoJob {
   narrationDurationS Float?
   videoUrl           String? // mp4 final no Vercel Blob (escrito pelo worker)
   previewUrl         String? // prévia rápida (baixa fluidez, sem trilha) no Vercel Blob
+  coverUrl           String? // capa 9:16 (Reels/Shorts) gerada no render final
+  thumbUrl           String? // thumbnail 16:9 (YouTube) gerada no render final
   renderMode         String? // "preview" enquanto a prévia está na fila/renderizando; null = render final
   progress           Int? // 0-100, atualizado pelo worker
   costs              String? // JSON string: CostEntry[] (gastos de OpenRouter e ElevenLabs, ver src/lib/videogen/costs.ts)
@@ -143,4 +145,40 @@ model VideoProfile {
   updatedAt      DateTime @updatedAt
 
   @@index([kind, name])
+}
+
+// Contas de rede social conectadas para publicar os vídeos do VideoGen (uma por plataforma).
+// Tokens de OAuth: refresh token do Google (YouTube) e token de longa duração do Instagram.
+model SocialAccount {
+  platform     String    @id // youtube | instagram
+  accountId    String // id do canal / id do usuário do Instagram
+  accountName  String // nome do canal / @usuario
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// Publicação de um vídeo numa rede (agora ou agendada). O YouTube agenda nativamente (publishAt);
+// o Instagram é publicado quando a hora chega (o worker chama /api/videogen/worker/publish-tick).
+model VideoPublication {
+  id          String    @id @default(cuid())
+  jobId       String
+  platform    String // youtube | instagram
+  status      String // pending | processing | published | scheduled | failed
+  title       String?
+  caption     String?
+  privacy     String? // youtube: public | unlisted | private
+  scheduledAt DateTime?
+  containerId String? // instagram: contêiner de mídia em processamento
+  externalId  String? // id do vídeo/mídia publicada
+  url         String?
+  error       String?
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([jobId])
+  @@index([status, scheduledAt])
 }

@@ -320,7 +320,15 @@ reais encontradas ao construir o projeto, não só a estrutura.
   veryfast, sem gerar trilha (usa a guardada, se houver); sobe em `previa.mp4`, grava `previewUrl` e o job volta para
   `script_ready` (o mp4 final, se existir, fica). Ao criar um renderizador novo, leia `FPS` como global na hora do render
   (nunca calcule constantes com ele no import), senão a prévia sai errada.
-  **Banco na Vercel**: `src/lib/prisma.ts` tem `pool.on("error")` (sem ele, conexão ociosa que cai derruba a função com
+  **Capa automática** (`worker/render/cover.py`, só no render final): imagem da 1ª cena com imagem + texto da tela da cena 1
+  (palavra-chave na cor de destaque do estilo), em 9:16 e 16:9; sobe como `cover`/`thumb` e vira `VideoJob.coverUrl`/`thumbUrl`.
+  **Publicar direto** (`src/lib/videogen/social.ts`, `PublishPanel.tsx`, tabelas `SocialAccount` e `VideoPublication`):
+  YouTube via OAuth do Google (`GOOGLE_CLIENT_ID/SECRET`, upload resumable feito pela função da Vercel, thumbnail = `thumbUrl`,
+  agendamento nativo com `publishAt`); Instagram via "Instagram API com login do Instagram" (`INSTAGRAM_APP_ID/SECRET`,
+  Reel em 3 passos: contêiner → espera FINISHED → media_publish; token de 60 dias renovado sozinho). Cada passo é
+  `advancePublication()`, chamado pela tela (GET `.../publications`) e pelo worker a cada 60 s (`/api/videogen/worker/publish-tick`),
+  que também solta os Reels agendados. Rotas OAuth: `/api/videogen/social/[platform]/connect|callback` (state em cookie).
+    **Banco na Vercel**: `src/lib/prisma.ts` tem `pool.on("error")` (sem ele, conexão ociosa que cai derruba a função com
   500) e `withDbRetry()` para as rotas do worker; os `claim` respondem 503 com o motivo em JSON em vez de 500 vazio.
   **Acabamento automático (todos os estilos)**: `worker/render/audio_fx.py` acha as batidas da trilha
   (`detect_beats`, vai em `script["_beats"]` e `timeline.py` encaixa o começo das cenas e o CTA na batida mais
@@ -416,3 +424,4 @@ Portal" aparece mas dá erro ao tentar enviar. `WORDPRESS_APP_PASSWORD` é a Sen
 sem ela o resto do app funciona normalmente. `ELEVENLABS_API_KEY` é necessária só pro VideoGen
 (vozes e narração). `VIDEOGEN_WORKER_TOKEN` é o segredo compartilhado com o worker
 de render (sem ele as rotas `/api/videogen/worker/*` respondem 503). `PIXABAY_API_KEY` (opcional; ou `PEXELS_API_KEY`) liga os vídeos de banco do estilo livre.
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` e `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET` (opcionais) ligam a publicação direta no YouTube e no Instagram.
