@@ -30,7 +30,8 @@ import requests
 from providers import download, generate_image, generate_music, prepare_user_image, silent_audio
 from render import RENDERERS, template_engine
 from render.audio_fx import build_sfx_track, detect_beats, sfx_cues
-from render.common import mix, overlay_logo
+from render.common import mix
+from render.cta_fx import overlay_cta
 from render.timeline import build_timeline
 
 HERE = Path(__file__).resolve().parent
@@ -257,16 +258,30 @@ def produce(job, workdir, report=lambda p: None, costs=None):
     duration = module.render(job, {"images": images, **extra}, str(video_only), on_progress=lambda p: report(50 + 40 * p))
     report(91)
 
-    logo_url = (job.get("brand") or {}).get("logoUrl")
-    if logo_url:
+    # fecho: logo (da empresa, outro ou nenhum), imagem e efeito, iguais em todos os estilos
+    cta = script.get("cta") or {}
+    logo_mode = cta.get("logo") or "company"
+    logo_url = cta.get("logoUrl") if logo_mode == "custom" else (job.get("brand") or {}).get("logoUrl") if logo_mode == "company" else None
+    logo = image = None
+    for kind, url in (("logo", logo_url), ("cta_imagem", cta.get("imageUrl"))):
+        if not url:
+            continue
         try:
-            ext = Path(logo_url.split("?")[0]).suffix.lower() or ".png"
-            logo = download(logo_url, workdir / f"logo{ext}")
-            branded = workdir / "video_logo.mp4"
-            overlay_logo(str(video_only), str(logo), tl.cta_start, duration, str(branded))
-            video_only = branded
+            ext = Path(url.split("?")[0]).suffix.lower() or ".png"
+            path = download(url, workdir / f"{kind}{ext}")
+            if kind == "logo":
+                logo = str(path)
+            else:
+                image = str(path)
         except Exception as e:
-            log(f"logo da empresa: {e} (segue sem logo)")
+            log(f"{kind}: {e} (segue sem)")
+    accent = (((job.get("templateSpec") or {}).get("palette") or {}).get("accent")) or "#E8322B"
+    try:
+        branded = overlay_cta(str(video_only), tl.cta_start, duration, str(workdir / "video_cta.mp4"),
+                              logo=logo, image=image, effect=cta.get("effect") or "none", accent=accent)
+        video_only = Path(branded)
+    except Exception as e:
+        log(f"fecho (logo/imagem/efeito): {e} (segue sem)")
     report(93)
 
     sfx = None

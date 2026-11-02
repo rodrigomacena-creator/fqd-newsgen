@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { AutoTextarea, CopyButton, Icon } from "./ui";
+import { AutoTextarea, CopyButton, Icon, Spinner } from "./ui";
+import { uploadImage } from "@/lib/videogen/uploadImage";
 import { SceneImage } from "./SceneImage";
 import { VoiceWave } from "./VoiceWave";
 import { sceneTiming } from "@/lib/videogen/sceneTiming";
 import { DIRECTION_FIELD_LABEL, DIRECTION_FIELDS, DIRECTION_OPTIONS, defaultDirection, type SceneDirection } from "@/lib/videogen/direction";
-import type { BriefingImage, NarrationWord, VideoScene, VideoScript } from "@/lib/videogen/types";
+import { CTA_EFFECTS, MAX_BRIEFING_IMAGES, type BriefingImage, type NarrationWord, type VideoScene, type VideoScript } from "@/lib/videogen/types";
 
 type Selection = number | "cta";
 
@@ -121,6 +122,27 @@ export function SceneStudio({
     const v = Math.min(Math.max(t, 0), timing.total);
     setTime(v);
     if (audioRef.current && useAudio) audioRef.current.currentTime = v;
+  }
+
+  // painel de detalhes (palco + inspetor) recolhido por padrão: só a timeline fica à vista
+  // (o editor só monta no navegador, depois de carregar o vídeo: dá para ler o localStorage aqui)
+  const [details, setDetailsState] = useState(() => {
+    try {
+      return typeof window !== "undefined" && localStorage.getItem("videogen.details") === "1";
+    } catch {
+      return false;
+    }
+  });
+  function setDetails(open: boolean) {
+    setDetailsState(open);
+    try {
+      localStorage.setItem("videogen.details", open ? "1" : "0");
+    } catch {}
+  }
+  /** Clique num bloco: seleciona e abre os detalhes. */
+  function openBlock(s: Selection) {
+    select(s);
+    setDetails(true);
   }
 
   function select(s: Selection) {
@@ -263,7 +285,7 @@ export function SceneStudio({
         setSel(to);
       }
     } else {
-      select(i);
+      openBlock(i);
     }
     setDrag(null);
   }
@@ -299,13 +321,15 @@ export function SceneStudio({
 
   return (
     <div
-      className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-3xl border border-border bg-surface text-foreground shadow-[0_30px_80px_-50px_rgba(0,0,0,.35)] lg:grid-cols-[minmax(0,1fr)_392px] lg:grid-rows-[540px_auto]"
+      className={`grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-3xl border border-border bg-surface text-foreground shadow-[0_30px_80px_-50px_rgba(0,0,0,.35)] lg:grid-cols-[minmax(0,1fr)_392px] ${details ? "lg:grid-rows-[540px_auto]" : ""}`}
     >
       {useAudio && <audio ref={audioRef} src={narrationUrl!} preload="auto" onEnded={() => setPlaying(false)} className="hidden" />}
 
       {/* palco: número grande, frase e prévia 9:16 */}
       <section
         aria-label={shown === "cta" ? "Prévia do fecho" : `Prévia da cena ${shown + 1}`}
+        id="studio-details-stage"
+        hidden={!details}
         className="relative order-1 flex items-center gap-4 overflow-hidden px-4 py-5 sm:gap-8 sm:px-8 sm:py-8 lg:border-r lg:border-border"
       >
         <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#E10600]/[0.06] blur-3xl" />
@@ -385,12 +409,14 @@ export function SceneStudio({
 
       {/* detalhes */}
       <aside
+        id="studio-details"
+        hidden={!details}
         aria-label="Detalhes"
         className="relative order-3 border-t border-border bg-background px-4 pb-5 pt-6 max-lg:rounded-t-3xl sm:px-6 lg:order-2 lg:overflow-y-auto lg:overscroll-contain lg:border-t-0 lg:pt-5 [scrollbar-color:var(--border-hover)_transparent] [scrollbar-width:thin]"
       >
         <span aria-hidden className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-border-hover lg:hidden" />
         {selected === "cta" ? (
-          <CtaInspector script={script} noNarration={noNarration} disabled={disabled} block={timing.cta} onChange={onCta} onPrev={() => select(count - 1)} />
+          <CtaInspector script={script} noNarration={noNarration} disabled={disabled} block={timing.cta} onChange={onCta} onPrev={() => select(count - 1)} briefing={briefing} onAddImage={onAddImage} />
         ) : script.scenes[selected] ? (
           <SceneInspector
             index={selected}
@@ -425,7 +451,7 @@ export function SceneStudio({
       </aside>
 
       {/* timeline */}
-      <section aria-label="Timeline das cenas" className="order-2 border-t border-border bg-surface-2 lg:order-3 lg:col-span-2">
+      <section aria-label="Timeline das cenas" className={`order-2 bg-surface-2 lg:order-3 lg:col-span-2 ${details ? "border-t border-border" : ""}`}>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 sm:px-5">
           <div className="flex items-center gap-1.5">
             <button type="button" aria-label="Cena anterior" onClick={() => step(-1)} className={darkIconButton}>
@@ -453,6 +479,18 @@ export function SceneStudio({
             · {fmt(timing.total)} s de {targetS} s{!timing.measured && !noNarration && " · estimado"}
           </p>
           <span className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setDetails(!details)}
+            aria-expanded={details}
+            aria-controls="studio-details"
+            className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition ${
+              details ? "border-[#FF3B3B] bg-[#FF3B3B]/10 text-[#FF3B3B]" : "border-border text-foreground hover:border-[#FF3B3B] hover:text-[#FF3B3B]"
+            }`}
+          >
+            <Icon name="down" className={`h-3.5 w-3.5 transition-transform ${details ? "rotate-180" : ""}`} />
+            {details ? "Fechar detalhes" : `Detalhes ${shown === "cta" ? "do fecho" : `da cena ${shown + 1}`}`}
+          </button>
           <label className="hidden items-center gap-2 text-xs text-text-secondary sm:flex">
             Zoom
             <input
@@ -549,7 +587,7 @@ export function SceneStudio({
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            select(i);
+                            openBlock(i);
                           } else onBlockKey(e, i);
                         }}
                         title="Clique para ver os detalhes · arraste para mudar a ordem (Alt+← → no teclado)"
@@ -587,7 +625,7 @@ export function SceneStudio({
                   {/* fecho */}
                   <button
                     type="button"
-                    onClick={() => select("cta")}
+                    onClick={() => openBlock("cta")}
                     aria-pressed={selected === "cta"}
                     className={`absolute top-2.5 bottom-2.5 overflow-hidden rounded-xl border px-2.5 py-1.5 text-left text-background transition ${
                       selected === "cta"
@@ -650,7 +688,9 @@ export function SceneStudio({
         <p className="px-4 pb-3 pt-1 text-[11px] text-text-secondary sm:px-5">
           {drag?.started
             ? `Solte para colocar a cena ${drag.from + 1} na linha vermelha.`
-            : "Clique num bloco para ver e editar tudo da cena. Arraste para mudar a ordem (no celular, pela alça à esquerda do bloco)."}
+            : details
+              ? "Clique num bloco para ver e editar tudo da cena. Arraste para mudar a ordem (no celular, pela alça à esquerda do bloco)."
+              : "Clique num bloco (ou em “Detalhes”) para abrir a prévia e editar a cena. Arraste para mudar a ordem."}
         </p>
       </section>
     </div>
@@ -980,6 +1020,8 @@ function CtaInspector({
   block,
   onChange,
   onPrev,
+  briefing,
+  onAddImage,
 }: {
   script: VideoScript;
   noNarration: boolean;
@@ -987,7 +1029,11 @@ function CtaInspector({
   block: { start: number; end: number };
   onChange: (patch: Partial<VideoScript["cta"]>) => void;
   onPrev: () => void;
+  briefing: BriefingImage[];
+  onAddImage: (url: string) => void;
 }) {
+  const cta = script.cta;
+  const logoMode = cta.logo ?? "company";
   return (
     <div>
       <InspectorHead
@@ -1015,7 +1061,163 @@ function CtaInspector({
           <AutoTextarea id="cta-screen" minRows={2} value={script.cta.onScreen} onChange={(e) => onChange({ onScreen: e.target.value })} disabled={disabled} className={`mt-1.5 ${studioField}`} />
         </div>
       </div>
-      <p className="mt-4 text-xs text-text-secondary">O logo da empresa aparece no topo durante o fecho, quando o perfil tem logo.</p>
+
+      <div className="mt-6 space-y-5 border-t border-border pt-5">
+        <div>
+          <p className={studioLabel}>Efeito</p>
+          <div className="mt-2 grid grid-cols-3 gap-1.5">
+            {CTA_EFFECTS.map((e) => {
+              const active = (cta.effect ?? "none") === e.id;
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  disabled={disabled}
+                  aria-pressed={active}
+                  onClick={() => onChange({ effect: e.id === "none" ? undefined : e.id })}
+                  className={`min-h-9 rounded-lg border px-2 text-xs font-semibold transition disabled:opacity-50 ${
+                    active ? "border-[#FF3B3B] bg-[#FF3B3B]/10 text-[#FF3B3B]" : "border-border text-text-secondary hover:text-foreground"
+                  }`}
+                >
+                  {e.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <CtaImagePicker
+          label="Imagem no fecho"
+          help="Aparece num cartão entre o logo e o texto do CTA (produto, capa, foto sua...)."
+          url={cta.imageUrl}
+          briefing={briefing}
+          disabled={disabled}
+          onAddImage={onAddImage}
+          onPick={(url) => onChange({ imageUrl: url })}
+        />
+
+        <div>
+          <p className={studioLabel}>Logo no topo</p>
+          <div role="radiogroup" aria-label="Logo no topo do fecho" className="mt-2 flex gap-1 rounded-xl border border-border bg-surface-2 p-1">
+            {(
+              [
+                ["company", "Da empresa"],
+                ["custom", "Outro"],
+                ["none", "Sem logo"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={logoMode === id}
+                disabled={disabled}
+                onClick={() => onChange({ logo: id === "company" ? undefined : id, ...(id !== "custom" ? { logoUrl: undefined } : {}) })}
+                className={`flex min-h-9 flex-1 items-center justify-center rounded-lg text-xs font-semibold transition disabled:opacity-50 ${
+                  logoMode === id ? "bg-surface text-foreground shadow-sm" : "text-text-secondary hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {logoMode === "company" && <p className="mt-1.5 text-[11px] text-text-secondary">Usa o logo do perfil da empresa, quando ele tem logo.</p>}
+          {logoMode === "custom" && (
+            <div className="mt-3">
+              <CtaImagePicker
+                label="Logo"
+                help="PNG com fundo transparente fica melhor. Vai sobre um cartão branco."
+                url={cta.logoUrl}
+                briefing={briefing}
+                disabled={disabled}
+                onAddImage={onAddImage}
+                onPick={(url) => onChange({ logoUrl: url })}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Escolhe uma imagem do briefing ou envia uma nova (que entra no briefing, para o Blob ser limpo depois). */
+function CtaImagePicker({
+  label,
+  help,
+  url,
+  briefing,
+  disabled,
+  onAddImage,
+  onPick,
+}: {
+  label: string;
+  help: string;
+  url?: string;
+  briefing: BriefingImage[];
+  disabled: boolean;
+  onAddImage: (url: string) => void;
+  onPick: (url: string | undefined) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const full = briefing.length >= MAX_BRIEFING_IMAGES;
+
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const u = await uploadImage(file, "briefing");
+      onAddImage(u);
+      onPick(u);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao enviar a imagem.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div>
+      <p className={studioLabel}>{label}</p>
+      {url ? (
+        <div className="mt-2 flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt="" className="h-16 w-16 rounded-lg border border-border bg-white object-contain" />
+          <button type="button" disabled={disabled} onClick={() => onPick(undefined)} className="text-xs font-semibold text-text-secondary hover:text-[#FF3B3B] disabled:opacity-50">
+            Remover
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {briefing.map((b) => (
+            <button
+              key={b.url}
+              type="button"
+              disabled={disabled}
+              onClick={() => onPick(b.url)}
+              title="Usar esta imagem"
+              className="h-14 w-14 overflow-hidden rounded-lg border border-border transition hover:border-[#FF3B3B] disabled:opacity-50"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={b.url} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+          <button
+            type="button"
+            disabled={disabled || uploading || full}
+            onClick={() => inputRef.current?.click()}
+            className="flex h-14 min-w-14 items-center justify-center gap-1 rounded-lg border border-dashed border-border px-3 text-xs font-semibold text-text-secondary transition hover:border-[#FF3B3B] hover:text-[#FF3B3B] disabled:opacity-50"
+          >
+            {uploading ? <Spinner /> : <Icon name="plus" className="h-4 w-4" />} Enviar
+          </button>
+          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(e) => void upload(e.target.files?.[0])} />
+        </div>
+      )}
+      <p className="mt-1.5 text-[11px] text-text-secondary">{full && !url ? `Limite de ${MAX_BRIEFING_IMAGES} imagens no vídeo.` : help}</p>
+      {error && <p className="mt-1 text-[11px] text-[#FF3B3B]">{error}</p>}
     </div>
   );
 }

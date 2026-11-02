@@ -53,8 +53,18 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/videogen/j
   let removedImages: string[] = [];
   if (body.briefingImages !== undefined) {
     const next = cleanBriefingImages(body.briefingImages);
-    const finalScript = data.script ? (JSON.parse(data.script as string) as { scenes: { imageUrl?: string }[] }) : job.script ? JSON.parse(job.script) : { scenes: [] };
-    const inUse = new Set<string>([...next.map((i) => i.url), ...(finalScript.scenes ?? []).map((s: { imageUrl?: string }) => s.imageUrl).filter(Boolean)]);
+    const finalScript = (data.script ? JSON.parse(data.script as string) : job.script ? JSON.parse(job.script) : { scenes: [] }) as {
+      scenes?: { imageUrl?: string }[];
+      cta?: { imageUrl?: string; logoUrl?: string };
+    };
+    const inUse = new Set<string>(
+      [
+        ...next.map((i) => i.url),
+        ...(finalScript.scenes ?? []).map((s) => s.imageUrl),
+        finalScript.cta?.imageUrl,
+        finalScript.cta?.logoUrl,
+      ].filter((u): u is string => Boolean(u))
+    );
     removedImages = parseBriefingImages(job.briefingImages).map((i) => i.url).filter((u) => !inUse.has(u));
     data.briefingImages = next.length ? JSON.stringify(next) : null;
   }

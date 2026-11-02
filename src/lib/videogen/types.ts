@@ -72,7 +72,17 @@ export interface Pronunciation {
 export interface VideoScript {
   title: string;
   scenes: VideoScene[];
-  cta: { onScreen: string; narration: string };
+  cta: {
+    onScreen: string;
+    narration: string;
+    /** Efeito por cima do fecho (worker/render/cta_fx.py). Sem campo = nenhum. */
+    effect?: CtaEffect;
+    /** Imagem mostrada no fecho (precisa estar nas imagens do briefing, como as fotos das cenas). */
+    imageUrl?: string;
+    /** Logo no topo do fecho: da empresa (padrão), outro enviado (logoUrl) ou nenhum. */
+    logo?: "company" | "custom" | "none";
+    logoUrl?: string;
+  };
   /** Palavras que o render destaca (caixa vermelha, cor de destaque etc.). */
   keywords: string[];
   /** Opções de abertura (gancho) que a IA escreveu; a cena 1 usa uma delas e o editor deixa trocar. */
@@ -185,3 +195,14 @@ export function summarizeCosts(entries: CostEntry[], usdPerCredit: number): Cost
   s.totalUsd = s.openrouterUsd + s.elevenUsd;
   return s;
 }
+
+/** Efeitos do fecho: mesmo cardápio de EFFECTS em worker/render/cta_fx.py. */
+export const CTA_EFFECTS = [
+  { id: "none", label: "Nenhum" },
+  { id: "confete", label: "Confete" },
+  { id: "brilhos", label: "Brilhos" },
+  { id: "pulso", label: "Pulso" },
+  { id: "flash", label: "Flash" },
+  { id: "seta", label: "Seta para baixo" },
+] as const;
+export type CtaEffect = (typeof CTA_EFFECTS)[number]["id"];

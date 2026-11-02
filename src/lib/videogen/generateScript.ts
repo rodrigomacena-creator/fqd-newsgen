@@ -15,6 +15,7 @@ import { isAllowedImageUrl } from "./profiles";
 import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
 import { SCENE_LAYOUTS, enforcePhotoPrompts, freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
 import { HUMANIZER_RULE } from "./humanizer";
+import { CTA_EFFECTS } from "./types";
 import { STOCK_URL_RE } from "./stockVideo";
 
 // Claude via OpenRouter (Rodrigo quer um provedor só pra LLM).
@@ -211,7 +212,7 @@ export function normalizeScript(input: unknown): VideoScript {
   return {
     title: str(d.title) || "Vídeo sem título",
     scenes,
-    cta: { narration: str(cta.narration), onScreen: str(cta.onScreen) },
+    cta: normalizeCta(cta),
     keywords: (Array.isArray(d.keywords) ? d.keywords : []).map(str).filter(Boolean),
     ...(hooks.length > 1 ? { hooks } : {}),
     musicPrompt: str(d.musicPrompt),
@@ -361,4 +362,19 @@ export async function generateVideoScript(params: {
   script.scenes = script.scenes.map((sc, i) => (sc.direction ? sc : { ...sc, direction: defaultDirection(i) }));
   if (params.pattern.kind === "free") script.scenes = enforcePhotoPrompts(script.scenes, script.styleSpec);
   return { script, usd };
+}
+
+/** CTA do roteiro: textos + opções do fecho (efeito, imagem, logo), só com valores válidos. */
+function normalizeCta(cta: Record<string, unknown>): VideoScript["cta"] {
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const out: VideoScript["cta"] = { narration: str(cta.narration), onScreen: str(cta.onScreen) };
+  const effect = CTA_EFFECTS.find((e) => e.id === cta.effect)?.id;
+  if (effect && effect !== "none") out.effect = effect;
+  if (typeof cta.imageUrl === "string" && isAllowedImageUrl(cta.imageUrl)) out.imageUrl = cta.imageUrl;
+  if (cta.logo === "none") out.logo = "none";
+  if (cta.logo === "custom" && typeof cta.logoUrl === "string" && isAllowedImageUrl(cta.logoUrl)) {
+    out.logo = "custom";
+    out.logoUrl = cta.logoUrl;
+  }
+  return out;
 }

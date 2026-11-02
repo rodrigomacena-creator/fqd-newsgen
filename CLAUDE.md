@@ -365,7 +365,12 @@ reais encontradas ao construir o projeto, não só a estrutura.
   (`prepare_user_image`: vertical = corte central; horizontal = foto inteira sobre fundo desfocado) em vez
   de gerar. Toda imagem usada numa cena precisa estar em `briefingImages` (o editor garante) — é por essa
   lista que o PATCH/DELETE do job apaga os blobs. O `claim` manda `brand.logoUrl` da empresa e o worker
-  põe o logo num cartão branco no topo durante o CTA (`overlay_logo` em `render/common.py`), em todos os estilos.
+  põe o logo num cartão branco no topo durante o CTA, em todos os estilos. **Opções do fecho** (`script.cta.effect`/`imageUrl`/
+  `logo`/`logoUrl`, editáveis no inspetor do fecho; `CTA_EFFECTS` em `types.ts` ↔ `EFFECTS` em `worker/render/cta_fx.py`):
+  `overlay_cta()` desenha logo (empresa, outro ou nenhum), imagem e efeito (confete, brilhos, pulso, flash, seta) em PNGs
+  só no trecho do fecho e o ffmpeg sobrepõe. Roteiro sem esses campos = só o logo da empresa, como antes. A imagem/logo
+  enviados no fecho entram em `briefingImages` (e o PATCH considera `cta.imageUrl`/`logoUrl` em uso). No editor, o palco +
+  inspetor ficam recolhidos por padrão (botão "Detalhes" na barra da timeline; clicar num bloco abre; `localStorage` lembra).
 
 `Article.sources` e `Article.sections` são JSON-em-string (não tabelas relacionais) — decisão
 deliberada de simplicidade, mantida assim de propósito.
