@@ -668,7 +668,7 @@ function StepBar({
   const savingNote = dirty ? " Suas alterações são salvas antes." : "";
   const actionClass = "w-full sm:w-auto";
   // Botão principal em tinta (preto no claro, claro no escuro): o vermelho sai da faixa.
-  const ink = "!bg-foreground !text-background hover:!bg-foreground/85";
+  const ink = "!bg-foreground !text-background hover:!bg-foreground/85 btn-glow";
 
   let title: string;
   let hint = "";
@@ -679,7 +679,7 @@ function StepBar({
     title = "Gerar o roteiro";
     hint = "A IA escreve as cenas a partir do tema; depois você revisa.";
     action = (
-      <button type="button" onClick={onGenerateScript} disabled={busy !== null} className={`${actionClass} ${primaryButton} ${ink}`}>
+      <button type="button" onClick={onGenerateScript} disabled={busy !== null} aria-busy={busy === "script"} className={`${actionClass} ${primaryButton} ${ink}`}>
         {busy === "script" ? <Spinner /> : <Icon name="sparkles" className="h-4 w-4" />}
         {busy === "script" ? "Gerando roteiro…" : "Gerar roteiro"}
       </button>
@@ -688,7 +688,7 @@ function StepBar({
     title = "Revise as cenas e gere a narração";
     hint = `Edite o que quiser; a narração usa o texto atual.${savingNote}`;
     action = (
-      <button type="button" onClick={onNarration} disabled={busy !== null} className={`${actionClass} ${primaryButton} ${ink}`}>
+      <button type="button" onClick={onNarration} disabled={busy !== null} aria-busy={busy === "narration"} className={`${actionClass} ${primaryButton} ${ink}`}>
         {busy === "narration" ? <Spinner /> : <Icon name="mic" className="h-4 w-4" />}
         {busy === "narration" ? "Gerando narração…" : "Gerar narração"}
       </button>
@@ -720,7 +720,7 @@ function StepBar({
     title = job.status === "failed" ? "O render falhou. Tente de novo" : noNarration ? "Envie para o render" : "Ouça a narração e envie para o render";
     hint = `Se a voz estiver boa, envie: o servidor gera as imagens, a trilha e monta o mp4. Se não, ajuste e gere de novo.${savingNote}`;
     action = (
-      <button type="button" onClick={onQueue} disabled={busy !== null} className={`${actionClass} ${primaryButton} ${ink} btn-glow`}>
+      <button type="button" onClick={onQueue} disabled={busy !== null} aria-busy={busy === "queue"} className={`${actionClass} ${primaryButton} ${ink}`}>
         {busy === "queue" ? <Spinner /> : <Icon name="arrow" className="h-4 w-4" />}
         {busy === "queue" ? "Enviando…" : "Enviar para render"}
       </button>

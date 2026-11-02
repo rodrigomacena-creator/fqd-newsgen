@@ -89,15 +89,23 @@ body {
   background: var(--border-hover);
 }
 
-/* Botão "Enviar para render": brilho pulsando + reflexo passando (VideoGen, controlador de etapas). */
+/* Botão principal do controle de etapas (VideoGen): chama a atenção em todas as etapas.
+   Parado: brilho pulsando + reflexo passando. Trabalhando (aria-busy): não apaga; o reflexo
+   acelera e uma faixa listrada corre embaixo. Cores neutras do tema (o botão é "tinta"). */
 @keyframes render-glow {
-  /* Brilho neutro (cor do texto do tema): o botão de render é "tinta", não vermelho. */
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--foreground) 35%, transparent), 0 6px 18px color-mix(in srgb, var(--foreground) 18%, transparent); }
   50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--foreground) 0%, transparent), 0 8px 30px color-mix(in srgb, var(--foreground) 30%, transparent); }
 }
 @keyframes render-shine {
   0% { transform: translateX(-120%) skewX(-20deg); }
   55%, 100% { transform: translateX(260%) skewX(-20deg); }
+}
+@keyframes btn-busy-stripes {
+  to { background-position: 28px 0; }
+}
+@keyframes btn-busy-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.025); }
 }
 .btn-glow {
   position: relative;
@@ -110,18 +118,42 @@ body {
   position: absolute;
   inset: 0 auto 0 0;
   width: 40%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--background) 45%, transparent), transparent);
   animation: render-shine 2.6s ease-in-out infinite;
   pointer-events: none;
   z-index: 1;
 }
-.btn-glow:disabled {
+.btn-glow:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.btn-glow:disabled:not([aria-busy="true"]) {
   animation: none;
 }
-.btn-glow:disabled::after {
+.btn-glow:disabled:not([aria-busy="true"])::after {
   display: none;
 }
+.btn-glow[aria-busy="true"] {
+  opacity: 1 !important;
+  cursor: progress;
+  animation: render-glow 1.2s ease-in-out infinite, btn-busy-breathe 1.2s ease-in-out infinite;
+}
+.btn-glow[aria-busy="true"]::after {
+  animation-duration: 1.3s;
+}
+.btn-glow[aria-busy="true"]::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 4px;
+  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--background) 70%, transparent) 0 7px, transparent 7px 14px);
+  background-size: 28px 4px;
+  animation: btn-busy-stripes 0.6s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
 @media (prefers-reduced-motion: reduce) {
-  .btn-glow { animation: none; box-shadow: 0 0 0 3px rgba(241, 0, 0, 0.25), 0 8px 24px rgba(241, 0, 0, 0.35); }
-  .btn-glow::after { display: none; }
+  .btn-glow,
+  .btn-glow[aria-busy="true"] { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--foreground) 22%, transparent), 0 8px 24px color-mix(in srgb, var(--foreground) 25%, transparent); }
+  .btn-glow::after,
+  .btn-glow[aria-busy="true"]::before { display: none; }
 }
