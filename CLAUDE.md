@@ -328,7 +328,7 @@ reais encontradas ao construir o projeto, não só a estrutura.
   estimativa), arrastáveis (mouse no bloco todo; no toque só pela alça, pra não brigar com a rolagem),
   clique abre os detalhes no painel à direita; o bloco do fecho edita o CTA. Visual "estúdio" que segue o tema do
   app (claro por padrão, a pedido do Rodrigo; só a prévia 9:16 fica sempre escura): palco com número grande + frase + prévia 9:16,
-  inspetor de 392px com rolagem própria e a timeline embaixo (no celular: palco, timeline, detalhes).
+  inspetor de 392px com rolagem própria, os dois ABAIXO da timeline (a timeline fica sempre no topo; no celular: timeline, palco, detalhes).
   **Movimento por cena** (`src/lib/videogen/direction.ts` ↔ `worker/render/motion.py`, mesmo cardápio dos dois
   lados): cada cena tem `direction = {cut, camera, object, mark, emphasis}`, escolhida pelo roteirista (IA) num
   menu fixo e editável no inspetor da cena ("Movimento"). Vale para TODOS os estilos (embutidos e templates, inclusive

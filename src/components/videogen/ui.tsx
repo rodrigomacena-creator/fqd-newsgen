@@ -21,8 +21,22 @@ export function AutoTextarea({ value, className = "", minRows = 1, ...rest }: Te
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight + 2}px`;
+    const fit = () => {
+      if (!el.offsetWidth) return; // escondido (ex.: painel de detalhes fechado): mede quando aparecer
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight + 2}px`;
+    };
+    fit();
+    // Remede quando a largura muda ou o campo deixa de estar escondido.
+    let width = el.offsetWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.offsetWidth !== width) {
+        width = el.offsetWidth;
+        fit();
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [value]);
   return <textarea ref={ref} rows={minRows} value={value} className={`resize-none overflow-hidden ${className}`} {...rest} />;
 }

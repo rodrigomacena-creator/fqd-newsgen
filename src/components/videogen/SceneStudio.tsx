@@ -321,7 +321,7 @@ export function SceneStudio({
 
   return (
     <div
-      className={`grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-3xl border border-border bg-surface text-foreground shadow-[0_30px_80px_-50px_rgba(0,0,0,.35)] lg:grid-cols-[minmax(0,1fr)_392px] ${details ? "lg:grid-rows-[540px_auto]" : ""}`}
+      className={`grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-3xl border border-border bg-surface text-foreground shadow-[0_30px_80px_-50px_rgba(0,0,0,.35)] lg:grid-cols-[minmax(0,1fr)_392px] ${details ? "lg:grid-rows-[auto_540px]" : ""}`}
     >
       {useAudio && <audio ref={audioRef} src={narrationUrl!} preload="auto" onEnded={() => setPlaying(false)} className="hidden" />}
 
@@ -330,7 +330,7 @@ export function SceneStudio({
         aria-label={shown === "cta" ? "Prévia do fecho" : `Prévia da cena ${shown + 1}`}
         id="studio-details-stage"
         hidden={!details}
-        className="relative order-1 flex items-center gap-4 overflow-hidden px-4 py-5 sm:gap-8 sm:px-8 sm:py-8 lg:border-r lg:border-border"
+        className="relative order-2 flex items-center gap-4 overflow-hidden px-4 py-5 sm:gap-8 sm:px-8 sm:py-8 lg:border-r lg:border-border"
       >
         <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#E10600]/[0.06] blur-3xl" />
         <div className="relative min-w-0 flex-1">
@@ -412,7 +412,7 @@ export function SceneStudio({
         id="studio-details"
         hidden={!details}
         aria-label="Detalhes"
-        className="relative order-3 border-t border-border bg-background px-4 pb-5 pt-6 max-lg:rounded-t-3xl sm:px-6 lg:order-2 lg:overflow-y-auto lg:overscroll-contain lg:border-t-0 lg:pt-5 [scrollbar-color:var(--border-hover)_transparent] [scrollbar-width:thin]"
+        className="relative order-3 border-t border-border bg-background px-4 pb-5 pt-6 max-lg:rounded-t-3xl sm:px-6 lg:overflow-y-auto lg:overscroll-contain lg:border-t-0 lg:pt-5 [scrollbar-color:var(--border-hover)_transparent] [scrollbar-width:thin]"
       >
         <span aria-hidden className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-border-hover lg:hidden" />
         {selected === "cta" ? (
@@ -451,7 +451,7 @@ export function SceneStudio({
       </aside>
 
       {/* timeline */}
-      <section aria-label="Timeline das cenas" className={`order-2 bg-surface-2 lg:order-3 lg:col-span-2 ${details ? "border-t border-border" : ""}`}>
+      <section aria-label="Timeline das cenas" className={`order-1 bg-surface-2 lg:col-span-2 ${details ? "border-b border-border" : ""}`}>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-3 sm:px-5">
           <div className="flex items-center gap-1.5">
             <button type="button" aria-label="Cena anterior" onClick={() => step(-1)} className={darkIconButton}>
