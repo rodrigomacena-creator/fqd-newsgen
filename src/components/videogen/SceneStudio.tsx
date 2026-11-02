@@ -514,7 +514,7 @@ export function SceneStudio({
           </button>
         </div>
 
-        <div ref={scrollRef} className="relative overflow-x-auto overscroll-x-contain pb-2">
+        <div ref={scrollRef} className="relative isolate overflow-x-auto overscroll-x-contain pb-2">
           <div className="relative" style={{ width: width + LABEL_W }}>
             {/* nomes das trilhas (fixos ao rolar) */}
             <div
