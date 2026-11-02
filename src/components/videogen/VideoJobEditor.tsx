@@ -1,5 +1,6 @@
 "use client";
 
+import { ScriptLoader } from "./ScriptLoader";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -823,15 +824,8 @@ function StepBar({
         {action && <div className="shrink-0">{action}</div>}
       </div>
       {progress !== null && (
-        <div
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={progress}
-          aria-label="Progresso do render"
-          className="h-1 bg-surface-2"
-        >
-          <div className="h-full bg-accent-yellow transition-[width] duration-700" style={{ width: `${Math.max(3, progress)}%` }} />
+        <div className="mx-auto w-full max-w-6xl px-2 sm:px-4">
+          <ScriptLoader progress={Math.max(3, progress)} label="Progresso do render" height={30} showLabel={false} />
         </div>
       )}
       </div>

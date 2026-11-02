@@ -28,9 +28,24 @@ function progressAt(seconds: number) {
  * direita; a ponta solta faíscas e uma poeira fina corre pela pista em direção a ela.
  * Desenhada num canvas, na cor de destaque do tema.
  */
-export function ScriptLoader() {
+export function ScriptLoader({
+  progress,
+  label = "Escrevendo o roteiro",
+  height = HEIGHT,
+  showLabel = true,
+}: {
+  /** Progresso real (0-100), ex.: o render. Sem ele, o progresso é estimado pelo tempo. */
+  progress?: number | null;
+  label?: string;
+  height?: number;
+  showLabel?: boolean;
+} = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pct, setPct] = useState(0);
+  const target = useRef<number | null>(null);
+  useEffect(() => {
+    target.current = progress == null ? null : Math.min(100, Math.max(0, progress)) / 100;
+  }, [progress]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -47,7 +62,7 @@ export function ScriptLoader() {
     const resize = () => {
       width = canvas.clientWidth;
       canvas.width = width * dpr;
-      canvas.height = HEIGHT * dpr;
+      canvas.height = height * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
     resize();
@@ -56,7 +71,9 @@ export function ScriptLoader() {
 
     const particles: Particle[] = [];
     const start = performance.now();
-    const midY = HEIGHT / 2;
+    const midY = height / 2;
+    const spread = Math.min(34, height * 0.47);
+    let current = target.current ?? 0;
     const pad = 8;
     let raf = 0;
     let last = start;
@@ -65,7 +82,9 @@ export function ScriptLoader() {
     const frame = (now: number) => {
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
-      const p = progressAt((now - start) / 1000);
+      // progresso real: a ponta desliza até o valor recebido; senão, estimado pelo tempo
+      if (target.current != null) current += (target.current - current) * Math.min(1, dt * 3);
+      const p = target.current != null ? current : progressAt((now - start) / 1000);
       const headX = pad + (width - pad * 2) * p;
       const shown = Math.round(p * 100);
       if (shown !== lastPct) {
@@ -73,7 +92,7 @@ export function ScriptLoader() {
         setPct(shown);
       }
 
-      ctx.clearRect(0, 0, width, HEIGHT);
+      ctx.clearRect(0, 0, width, height);
 
       // pista
       ctx.strokeStyle = muted;
@@ -115,7 +134,7 @@ export function ScriptLoader() {
           const x = pad + Math.random() * Math.max(headX - pad, 1);
           particles.push({
             x,
-            y: midY + (Math.random() - 0.5) * 34,
+            y: midY + (Math.random() - 0.5) * spread,
             vx: 30 + Math.random() * 40,
             vy: 0,
             life: 0,
@@ -172,14 +191,17 @@ export function ScriptLoader() {
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, []);
+  }, [height]);
 
   return (
-    <div role="progressbar" aria-label="Escrevendo o roteiro" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="w-full">
-      <canvas ref={canvasRef} aria-hidden className="block w-full" style={{ height: HEIGHT }} />
-      <p className="text-center text-xs text-text-secondary">
-        Escrevendo o roteiro<span className="tabular-nums"> · {pct}%</span>
-      </p>
+    <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress ?? pct} className="w-full">
+      <canvas ref={canvasRef} aria-hidden className="block w-full" style={{ height }} />
+      {showLabel && (
+        <p className="text-center text-xs text-text-secondary">
+          {label}
+          <span className="tabular-nums"> · {pct}%</span>
+        </p>
+      )}
     </div>
   );
 }
