@@ -24,6 +24,8 @@ export interface VideoJobDTO {
   extraInstructions: string | null;
   /** Direcionamento do usuário para o estilo livre (movimento, música, clima...). */
   styleNotes: string | null;
+  /** Notícia do NewsGen que serviu de base ("Notícia vira vídeo"). */
+  articleId: string | null;
   /** Perfil (pessoa) que fala no vídeo. */
   personId: string | null;
   /** Perfil (empresa) para quem é o conteúdo. */

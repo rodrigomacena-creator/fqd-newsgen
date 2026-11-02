@@ -7,6 +7,7 @@ import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { DEFAULT_VOICE_ID } from "@/lib/videogen/types";
 import { cleanBriefingImages, getProfile } from "@/lib/videogen/profiles";
 import { MAX_STYLE_NOTES } from "@/lib/videogen/freeStyle";
+import { articleSource } from "@/lib/videogen/articleSource";
 
 export const maxDuration = 300;
 
@@ -38,6 +39,8 @@ export async function POST(request: Request) {
     personId?: string;
     companyId?: string;
     briefingImages?: unknown;
+    /** "Notícia vira vídeo": id da notícia do NewsGen que serve de base. */
+    articleId?: string;
   };
   try {
     body = await request.json();
@@ -45,7 +48,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
   }
 
-  const topic = body.topic?.trim().slice(0, MAX_TOPIC);
+  const article = await articleSource(body.articleId?.trim());
+  if (body.articleId?.trim() && !article) return NextResponse.json({ error: "Notícia não encontrada." }, { status: 404 });
+  const topic = (body.topic?.trim() || article?.title || "").slice(0, MAX_TOPIC);
   if (!topic) return NextResponse.json({ error: "Informe o tema do vídeo." }, { status: 400 });
   const style = await resolveStyle(body.patternId?.trim() ?? "");
   if (!style) return NextResponse.json({ error: "Escolha um estilo válido." }, { status: 400 });
@@ -75,6 +80,7 @@ export async function POST(request: Request) {
       textModel,
       extraInstructions,
       styleNotes,
+      articleId: article?.id ?? null,
       costs: "[]",
     },
   });
@@ -92,6 +98,7 @@ export async function POST(request: Request) {
       person,
       company,
       briefingImages,
+      sourceText: article?.text,
     });
     await appendCosts(job.id, [costEntry("script", "openrouter", { usd })]);
     const updated = await prisma.videoJob.update({

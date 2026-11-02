@@ -5,6 +5,7 @@ import { generateVideoScript } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { jobProfiles, parseBriefingImages } from "@/lib/videogen/profiles";
+import { articleSource } from "@/lib/videogen/articleSource";
 
 export const maxDuration = 300;
 
@@ -34,6 +35,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
       // inclui o roteiro atual deste vídeo: "gerar de novo" deve sair diferente
       recentStyles: style.pattern.kind === "free" ? await recentFreeStyles() : [],
       model: job.textModel,
+      sourceText: (await articleSource(job.articleId))?.text,
     });
     await appendCosts(id, [costEntry("script", "openrouter", { usd })]);
     const updated = await prisma.videoJob.update({

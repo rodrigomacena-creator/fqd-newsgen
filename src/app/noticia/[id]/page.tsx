@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { Header } from "@/components/Header";
@@ -70,7 +71,19 @@ export default async function ArticlePage(props: PageProps<"/noticia/[id]">) {
           <p className="text-xs font-semibold uppercase tracking-widest text-accent-yellow">
             Gerado por IA · {sources.length} {sources.length === 1 ? "fonte" : "fontes"}
           </p>
-          <DeleteArticleButton articleId={article.id} redirectTo="/noticias" />
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/videogen?noticia=${article.id}`}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold text-foreground transition hover:border-accent-yellow hover:text-accent-yellow"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <rect x="3" y="5" width="14" height="14" rx="2" />
+                <path d="m17 10 4-2.5v9L17 14" />
+              </svg>
+              Criar vídeo
+            </Link>
+            <DeleteArticleButton articleId={article.id} redirectTo="/noticias" />
+          </div>
         </div>
         <p className="mt-1 text-xs text-text-secondary/70">
           Clique em qualquer texto abaixo para editar — salva automaticamente.

@@ -261,9 +261,17 @@ export async function generateVideoScript(params: {
   person?: VideoProfileDTO | null;
   company?: VideoProfileDTO | null;
   briefingImages?: BriefingImage[];
+  /** Notícia do NewsGen que serve de base: o roteiro só usa os fatos dela. */
+  sourceText?: string | null;
 }): Promise<{ script: VideoScript; usd: number }> {
   const client = getOpenRouterClient();
   const userParts = [`Tema do vídeo: ${params.topic}`];
+  if (params.sourceText?.trim()) {
+    userParts.push(
+      `NOTÍCIA DE BASE (o vídeo conta esta notícia em formato de Reels: escolha o ângulo mais forte para o gancho, ` +
+        `use só os fatos, nomes e números que estão aqui, sem inventar nada além; não precisa cobrir tudo):\n"""\n${params.sourceText.trim()}\n"""`
+    );
+  }
   if (params.extraInstructions?.trim()) userParts.push(`Instruções extras: ${params.extraInstructions.trim()}`);
 
   // Imagens do briefing vão como entrada de visão (reduzidas, em base64: o modelo não precisa

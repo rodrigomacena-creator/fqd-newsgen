@@ -338,6 +338,13 @@ reais encontradas ao construir o projeto, não só a estrutura.
   baixado para `VIDEOGEN_MODELS_DIR`; sem modelo vira cartão). Os traços à mão são desenhados pelo render (na cor de
   destaque do estilo), por isso os imagePrompts não pedem setas/círculos. Ao criar um renderizador novo, use
   `motion.py` (corte, câmera, `ObjectLayer`, `Marks`, `emphasis`) guardado por `has_direction`.
+  **Notícia vira vídeo**: botão "Criar vídeo" em `/noticia/[id]` abre `/videogen?noticia=<id>`; o POST de jobs recebe
+  `articleId` (coluna `VideoJob.articleId`, sem FK), `articleSource()` (`src/lib/videogen/articleSource.ts`) monta o texto
+  da notícia e ele entra no prompt como NOTÍCIA DE BASE (só os fatos dela); "gerar de novo" relê a notícia. As imagens
+  da notícia NÃO viram imagens do briefing de propósito (excluir o vídeo apagaria os blobs da notícia).
+  **Vários temas de uma vez** (`/videogen`, "Vários temas de uma vez"): um roteiro por linha (até 10), criados um de
+  cada vez pelo navegador com as mesmas escolhas; sem imagens do briefing (o mesmo blob em vários vídeos seria apagado
+  com o primeiro excluído).
   **Voz humana** (`src/lib/videogen/humanizer.ts`): regras da skill "humanizer" (blader/humanizer, contra vícios de texto
   de IA: "não é X, é Y", frases de efeito, trios forçados, travessões, palavras-muleta...) adaptadas pra narração em pt-BR;
   entram no prompt de todo roteiro (`HUMANIZER_RULE` em `generateScript.ts`).

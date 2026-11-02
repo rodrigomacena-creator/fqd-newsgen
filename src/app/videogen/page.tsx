@@ -17,6 +17,7 @@ import { DEFAULT_VOICE_ID, DURATION_OPTIONS, WORDS_PER_SECOND, type BriefingImag
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
 const MAX_TOPIC = 2000;
+const MAX_BATCH = 10;
 const noopSubscribe = () => () => {};
 
 export default function VideoGenPage() {
@@ -24,6 +25,32 @@ export default function VideoGenPage() {
   const { voices, loading: loadingVoices, error: voicesError } = useVoices();
 
   const [topic, setTopic] = useState("");
+  // vários temas de uma vez: um vídeo (roteiro) por linha
+  const [batch, setBatch] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number; failed: string[] } | null>(null);
+  // /videogen?noticia=<id> (botão "Criar vídeo" da notícia): o roteiro sai da notícia
+  const wantedArticle = useSyncExternalStore(
+    noopSubscribe,
+    () => new URLSearchParams(window.location.search).get("noticia"),
+    () => null
+  );
+  const [article, setArticle] = useState<{ id: string; title: string; subtitle: string; coverImage: string | null } | null>(null);
+  const [articleError, setArticleError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!wantedArticle) return;
+    fetch(`/api/articles/${encodeURIComponent(wantedArticle)}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.article) throw new Error(data.error || "Notícia não encontrada.");
+        setArticle(data.article);
+      })
+      .catch((err) => setArticleError(err instanceof Error ? err.message : "Notícia não encontrada."));
+  }, [wantedArticle]);
+  const batchTopics = topic
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .slice(0, MAX_BATCH);
   const { styles, loaded: stylesLoaded, getStyle, removeStyle } = useStyles();
   const [managingStyles, setManagingStyles] = useState(false);
   const [chosenPattern, setPatternId] = useState<string | null>(null);
@@ -87,9 +114,63 @@ export default function VideoGenPage() {
 
   const pattern = getStyle(patternId);
 
+  function payload(t: string, withImages: boolean) {
+    return {
+      topic: t,
+      patternId,
+      voiceId,
+      voiceName,
+      durationS,
+      extraInstructions,
+      styleNotes: pattern?.kind === "free" ? styleNotes : "",
+      personId: personId || null,
+      companyId: companyId || null,
+      briefingImages: withImages ? briefingImages : [],
+      articleId: article?.id ?? null,
+    };
+  }
+
+  /** Vários temas: gera um roteiro por linha, um de cada vez, e mostra os vídeos na lista. */
+  async function submitBatch() {
+    const list = batchTopics;
+    if (list.length === 0) {
+      setError("Escreva ao menos um tema (um por linha).");
+      document.getElementById("topic")?.focus();
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    const failed: string[] = [];
+    setBatchProgress({ done: 0, total: list.length, failed });
+    for (let i = 0; i < list.length; i++) {
+      try {
+        const res = await fetch("/api/videogen/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // imagens do briefing não vão no lote: o mesmo arquivo em vários vídeos seria apagado junto com o primeiro excluído
+          body: JSON.stringify(payload(list[i], false)),
+        });
+        if (!res.ok) failed.push(list[i]);
+      } catch {
+        failed.push(list[i]);
+      }
+      setBatchProgress({ done: i + 1, total: list.length, failed: [...failed] });
+    }
+    try {
+      const data = await (await fetch(`/api/videogen/jobs?take=${HOME_LIST}`)).json();
+      setJobs(data.jobs ?? []);
+      setTotalJobs(data.total ?? 0);
+    } catch {}
+    setLoading(false);
+    setTopic(failed.join("\n"));
+    if (failed.length) setError(`Não deu para gerar ${failed.length} de ${list.length}. Eles ficaram no campo para tentar de novo.`);
+    document.getElementById("seus-videos")?.scrollIntoView({ behavior: "smooth" });
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!topic.trim()) {
+    if (batch && !article) return submitBatch();
+    if (!topic.trim() && !article) {
       setError("Escreva o tema do vídeo.");
       document.getElementById("topic")?.focus();
       return;
@@ -104,18 +185,7 @@ export default function VideoGenPage() {
       const res = await fetch("/api/videogen/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          topic,
-          patternId,
-          voiceId,
-          voiceName,
-          durationS,
-          extraInstructions,
-          styleNotes: pattern?.kind === "free" ? styleNotes : "",
-          personId: personId || null,
-          companyId: companyId || null,
-          briefingImages,
-        }),
+        body: JSON.stringify(payload(topic, true)),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Não foi possível gerar o roteiro. Tente de novo.");
@@ -175,27 +245,85 @@ export default function VideoGenPage() {
             <section className={cardClass}>
               <div className="flex items-baseline justify-between gap-2">
                 <label htmlFor="topic" className={sectionTitle}>
-                  Tema <span aria-hidden>*</span>
-                  <span className="sr-only"> (obrigatório)</span>
+                  {article ? (
+                    <>Ângulo do vídeo <span className="text-xs font-normal text-text-secondary">(opcional)</span></>
+                  ) : batch ? (
+                    <>Temas <span aria-hidden>*</span></>
+                  ) : (
+                    <>
+                      Tema <span aria-hidden>*</span>
+                      <span className="sr-only"> (obrigatório)</span>
+                    </>
+                  )}
                 </label>
-                <span className="text-xs tabular-nums text-text-secondary">
-                  {topic.length}/{MAX_TOPIC}
-                </span>
+                <div className="flex items-center gap-3">
+                  {!article && (
+                    <button
+                      type="button"
+                      onClick={() => setBatch((b) => !b)}
+                      disabled={loading}
+                      aria-pressed={batch}
+                      className="text-xs font-semibold text-accent-yellow hover:underline disabled:opacity-50"
+                    >
+                      {batch ? "Só um tema" : "Vários temas de uma vez"}
+                    </button>
+                  )}
+                  <span className="text-xs tabular-nums text-text-secondary">
+                    {batch && !article ? `${batchTopics.length}/${MAX_BATCH} temas` : `${topic.length}/${MAX_TOPIC}`}
+                  </span>
+                </div>
               </div>
+              {wantedArticle && (article || articleError) && (
+                <div className="mt-3 flex items-center gap-3 rounded-xl border border-accent-yellow/40 bg-accent-yellow/10 p-3">
+                  {article?.coverImage && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={article.coverImage} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-accent-yellow">
+                      {article ? "Vídeo a partir da notícia" : "Notícia"}
+                    </p>
+                    <p className="truncate text-sm font-semibold">{article ? article.title : articleError}</p>
+                  </div>
+                  {article && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setArticle(null);
+                        window.history.replaceState(null, "", "/videogen");
+                      }}
+                      disabled={loading}
+                      className="shrink-0 text-xs font-medium text-text-secondary hover:text-foreground"
+                    >
+                      Remover
+                    </button>
+                  )}
+                </div>
+              )}
               <textarea
                 id="topic"
-                rows={3}
-                required
-                maxLength={MAX_TOPIC}
+                required={!article}
+                maxLength={batch && !article ? MAX_TOPIC * MAX_BATCH : MAX_TOPIC}
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 disabled={loading}
                 aria-describedby="topic-help"
-                placeholder="Ex.: Por que o GEO vai importar mais que o SEO em 2027"
+                rows={batch && !article ? 6 : 3}
+                placeholder={
+                  article
+                    ? "Opcional. Ex.: foque no impacto para quem tem loja online"
+                    : batch
+                      ? "Um tema por linha (até 10). Ex.:\nPor que o GEO importa mais que o SEO\nComo o Google AI Mode muda as buscas"
+                      : "Ex.: Por que o GEO vai importar mais que o SEO em 2027"
+                }
                 className={`mt-3 resize-y ${fieldClass}`}
               />
               <p id="topic-help" className="mt-1.5 text-xs text-text-secondary">
-                Uma frase basta. Quanto mais específico (público, ângulo, exemplo), melhor o roteiro.
+                {article
+                  ? "O roteiro conta a notícia usando só os fatos dela. Se quiser, diga o ângulo ou o público."
+                  : batch
+                    ? "Cada linha vira um vídeo com as mesmas escolhas abaixo (pessoa, estilo, duração). Os roteiros ficam em \u201cSeus vídeos\u201d para revisar um por um."
+                    : "Uma frase basta. Quanto mais específico (público, ângulo, exemplo), melhor o roteiro."}
               </p>
             </section>
 
@@ -239,6 +367,7 @@ export default function VideoGenPage() {
               </div>
             </fieldset>
 
+            {!(batch && !article) && (
             <section className={cardClass} aria-labelledby="briefing-images-title">
               <div className="flex items-baseline justify-between gap-2">
                 <h2 id="briefing-images-title" className={sectionTitle}>
@@ -253,6 +382,7 @@ export default function VideoGenPage() {
                 <BriefingImages images={briefingImages} onChange={setBriefingImages} disabled={loading} onBusyChange={setUploadingImages} />
               </div>
             </section>
+            )}
 
             <fieldset className={cardClass} disabled={loading}>
               <legend className="sr-only">Estilo visual</legend>
@@ -473,11 +603,17 @@ export default function VideoGenPage() {
 
             {loading ? (
               <div className="rounded-2xl border border-border bg-surface px-4 py-3">
+                {batchProgress && (
+                  <p className="mb-2 text-sm font-semibold" aria-live="polite">
+                    Gerando roteiro {Math.min(batchProgress.done + 1, batchProgress.total)} de {batchProgress.total}…
+                  </p>
+                )}
                 <ScriptLoader />
               </div>
             ) : (
               <button type="submit" className={`w-full py-3.5 ${primaryButton}`}>
-                Gerar roteiro <Icon name="arrow" className="h-4 w-4" />
+                {batch && !article ? `Gerar ${batchTopics.length || ""} roteiro${batchTopics.length === 1 ? "" : "s"}` : "Gerar roteiro"}{" "}
+                <Icon name="arrow" className="h-4 w-4" />
               </button>
             )}
             {!loading && (

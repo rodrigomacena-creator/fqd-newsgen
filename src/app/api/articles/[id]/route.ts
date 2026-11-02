@@ -16,6 +16,14 @@ interface PatchBody {
   removeImage?: "cover" | "instagram" | number | { instagramImage: number };
 }
 
+/** Resumo da notícia (usado pelo VideoGen em "Notícia vira vídeo"). */
+export async function GET(_request: Request, ctx: RouteContext<"/api/articles/[id]">) {
+  const { id } = await ctx.params;
+  const a = await prisma.article.findUnique({ where: { id }, select: { id: true, title: true, subtitle: true, coverImage: true } });
+  if (!a) return NextResponse.json({ error: "Notícia não encontrada." }, { status: 404 });
+  return NextResponse.json({ article: a });
+}
+
 export async function PATCH(
   request: Request,
   ctx: RouteContext<"/api/articles/[id]">
