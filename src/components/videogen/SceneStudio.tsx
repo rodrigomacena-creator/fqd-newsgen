@@ -213,6 +213,25 @@ export function SceneStudio({
     return clientX - el.getBoundingClientRect().left + el.scrollLeft - LABEL_W - PAD;
   }
 
+  /** Arrastar o marcador de tempo (pela régua, pela faixa da voz ou pela etiqueta do cursor). */
+  function startScrub(e: ReactPointerEvent<HTMLElement>) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    seek(laneX(e.clientX) / px);
+    const move = (ev: PointerEvent) => seek(laneX(ev.clientX) / px);
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  }
+
   function onBlockPointerDown(e: ReactPointerEvent, i: number, fromGrip: boolean) {
     if (disabled || e.button !== 0) return;
     // no toque, só a alça arrasta (o resto do bloco rola a timeline)
@@ -486,7 +505,7 @@ export function SceneStudio({
             <div className="relative" style={{ marginLeft: LABEL_W, width, paddingLeft: PAD }}>
               <div className="relative">
                 {/* régua */}
-                <div className="relative h-7 cursor-pointer border-b border-border" onPointerDown={(e) => seek(laneX(e.clientX) / px)} aria-hidden>
+                <div className="relative h-7 cursor-ew-resize touch-none select-none border-b border-border" onPointerDown={startScrub} aria-hidden>
                   {ticks.map((s) => (
                     <span key={s} className="absolute bottom-0" style={{ left: s * px }}>
                       <span className={`block w-px ${s % majorEvery === 0 ? "h-2.5 bg-text-secondary/60" : "h-1.5 bg-border-hover"}`} />
@@ -597,7 +616,7 @@ export function SceneStudio({
 
                 {/* voz: onda sonora da narração (vermelha até o cursor) */}
                 {!noNarration && (
-                  <div className="relative flex h-14 items-center border-b border-border" aria-hidden>
+                  <div className="relative flex h-14 cursor-ew-resize touch-none select-none items-center border-b border-border" onPointerDown={startScrub} aria-hidden>
                     <VoiceWave url={useAudio ? narrationUrl : null} words={timing.words} total={timing.total} px={px} time={time} height={48} />
                   </div>
                 )}
@@ -616,7 +635,11 @@ export function SceneStudio({
 
                 {/* cursor de reprodução */}
                 <div className="pointer-events-none absolute top-0 bottom-0 z-30 w-0.5 bg-[#FF3B3B] shadow-[0_0_8px_rgba(255,59,59,.6)]" style={{ left: time * px }} aria-hidden>
-                  <span className="absolute left-1/2 top-0.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-[#FF3B3B] px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums text-white">
+                  <span
+                    onPointerDown={startScrub}
+                    title="Arraste para mudar o tempo"
+                    className="pointer-events-auto absolute left-1/2 top-0.5 -translate-x-1/2 cursor-grab touch-none select-none whitespace-nowrap rounded-md bg-[#FF3B3B] px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums text-white active:cursor-grabbing"
+                  >
                     {fmt(time)}s
                   </span>
                 </div>
