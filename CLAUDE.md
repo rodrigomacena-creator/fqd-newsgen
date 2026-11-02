@@ -323,7 +323,7 @@ reais encontradas ao construir o projeto, não só a estrutura.
   (`PIXABAY_API_KEY`; a API não filtra vertical, então prefere arquivos verticais e aceita horizontal ≥1080p, que o
   worker recorta no centro); Pexels (`PEXELS_API_KEY`) fica de reserva (a emissão de chaves deles estava pausada em 11/2026). No worker, cena com
   `stock.url` vira tela cheia tocando o clipe (`extract_clip_frames` + `StockClip` no motor genérico); falhou, usa a imagem.
-  **Editor de cenas em timeline** (`SceneStudio.tsx`): blocos por cena (largura = tempo, `sceneTiming.ts`
+  **Editor de cenas em timeline** (`SceneStudio.tsx`; faixa da voz = onda sonora decodificada do mp3 no navegador em `VoiceWave.tsx`, ou aproximada pelas palavras antes da narração): blocos por cena (largura = tempo, `sceneTiming.ts`
   espelha `worker/render/timeline.py`: tempos reais da narração se ela ainda bate com o roteiro, senão
   estimativa), arrastáveis (mouse no bloco todo; no toque só pela alça, pra não brigar com a rolagem),
   clique abre os detalhes no painel à direita; o bloco do fecho edita o CTA. Visual "estúdio" que segue o tema do

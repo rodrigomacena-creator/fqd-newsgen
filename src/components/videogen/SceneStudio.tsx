@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { AutoTextarea, CopyButton, Icon } from "./ui";
 import { SceneImage } from "./SceneImage";
+import { VoiceWave } from "./VoiceWave";
 import { sceneTiming } from "@/lib/videogen/sceneTiming";
 import { DIRECTION_FIELD_LABEL, DIRECTION_FIELDS, DIRECTION_OPTIONS, defaultDirection, type SceneDirection } from "@/lib/videogen/direction";
 import type { BriefingImage, NarrationWord, VideoScene, VideoScript } from "@/lib/videogen/types";
@@ -594,19 +595,10 @@ export function SceneStudio({
                   </button>
                 </div>
 
-                {/* voz: uma barrinha por palavra, no tempo dela (vermelha até o cursor) */}
+                {/* voz: onda sonora da narração (vermelha até o cursor) */}
                 {!noNarration && (
-                  <div className="relative h-14 border-b border-border" aria-hidden>
-                    {timing.words.map((w, k) => {
-                      const h = 8 + ((w[0].length * 7 + k * 13) % 28);
-                      return (
-                        <span
-                          key={k}
-                          className={`absolute top-1/2 -translate-y-1/2 rounded-sm ${w[1] <= time ? "bg-[#FF3B3B]" : "bg-border-hover"}`}
-                          style={{ left: w[1] * px, width: Math.max(2, (w[2] - w[1]) * px - 2), height: h }}
-                        />
-                      );
-                    })}
+                  <div className="relative flex h-14 items-center border-b border-border" aria-hidden>
+                    <VoiceWave url={useAudio ? narrationUrl : null} words={timing.words} total={timing.total} px={px} time={time} height={48} />
                   </div>
                 )}
 
