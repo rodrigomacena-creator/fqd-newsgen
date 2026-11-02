@@ -10,7 +10,8 @@ import { ScriptLoader } from "@/components/videogen/ScriptLoader";
 import { formatUsd } from "@/components/videogen/CostPanel";
 import { FlowSteps, Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
-import { VIDEO_PATTERNS, type VideoPattern } from "@/lib/videogen/patterns";
+import type { VideoPattern } from "@/lib/videogen/patterns";
+import { FREE_STYLE_ID } from "@/lib/videogen/freeStyle";
 import { useStyles } from "@/lib/videogen/useStyles";
 import { useProfiles } from "@/lib/videogen/useProfiles";
 import {
@@ -59,7 +60,9 @@ export default function VideoGenPage() {
     .map((t) => t.trim())
     .filter(Boolean)
     .slice(0, MAX_BATCH);
-  const { styles, loaded: stylesLoaded, getStyle, removeStyle } = useStyles();
+  const { styles: allStyles, loaded: stylesLoaded, getStyle, removeStyle } = useStyles();
+  // Os estilos embutidos antigos só continuam valendo para vídeos já criados; os novos usam os gerados.
+  const styles = allStyles.filter((s) => s.kind !== "builtin");
   const [managingStyles, setManagingStyles] = useState(false);
   const [chosenPattern, setPatternId] = useState<string | null>(null);
   // /videogen?estilo=<id> (link "Criar vídeo neste estilo" da tela de templates)
@@ -69,7 +72,7 @@ export default function VideoGenPage() {
     () => null
   );
   const patternId =
-    chosenPattern ?? (wantedPattern && styles.some((s) => s.id === wantedPattern) ? wantedPattern : VIDEO_PATTERNS[0]?.id ?? "");
+    chosenPattern ?? (wantedPattern && styles.some((s) => s.id === wantedPattern) ? wantedPattern : FREE_STYLE_ID);
   const { people, companies, loaded: profilesLoaded } = useProfiles();
   // null = ainda não escolheu (usa o perfil padrão); "" = nenhum
   const [chosenPerson, setChosenPerson] = useState<string | null>(null);
@@ -126,15 +129,11 @@ export default function VideoGenPage() {
   const landscape = format === "16:9";
   const durationOptions = landscape ? LANDSCAPE_DURATION_OPTIONS : DURATION_OPTIONS;
 
-  /** Troca o formato. O horizontal só roda no estilo livre e nos templates: estilo embutido vira o livre. */
+  /** Troca o formato (o horizontal ganha durações maiores). */
   function chooseFormat(next: VideoFormat) {
     setFormat(next);
     const options = next === "16:9" ? LANDSCAPE_DURATION_OPTIONS : DURATION_OPTIONS;
     if (!options.includes(durationS)) setDurationS(next === "16:9" ? 60 : 15);
-    if (next === "16:9" && pattern?.kind === "builtin") {
-      const free = styles.find((s) => s.kind === "free");
-      if (free) setPatternId(free.id);
-    }
   }
 
   function payload(t: string, withImages: boolean) {
@@ -478,7 +477,7 @@ export default function VideoGenPage() {
                   styles={styles}
                   onDeleted={(id) => {
                     removeStyle(id);
-                    if (id === patternId) setPatternId(VIDEO_PATTERNS[0]?.id ?? "");
+                    if (id === patternId) setPatternId(FREE_STYLE_ID);
                   }}
                   onClose={() => setManagingStyles(false)}
                 />
@@ -492,21 +491,16 @@ export default function VideoGenPage() {
                 >
                   {styles.map((p) => {
                     const active = p.id === patternId;
-                    const off = landscape && p.kind === "builtin"; // embutidos só no vertical
                     return (
                       <label
                         key={p.id}
-                        className={`flex items-center gap-3 rounded-xl border p-2 pr-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-yellow/40 ${
-                          off ? "cursor-not-allowed opacity-45" : "cursor-pointer"
-                        } ${active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"}`}
-                        title={off ? "Este estilo só existe no formato vertical" : undefined}
+                        className={`flex items-center gap-3 rounded-xl border p-2 pr-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-yellow/40 cursor-pointer ${active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"}`}
                       >
                         <input
                           type="radio"
                           name="pattern"
                           value={p.id}
                           checked={active}
-                          disabled={off}
                           onChange={() => setPatternId(p.id)}
                           className="sr-only"
                         />
@@ -526,7 +520,6 @@ export default function VideoGenPage() {
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-medium">{p.nome}</span>
                           <span className="line-clamp-2 block text-xs text-text-secondary">{p.tom}</span>
-                          {off && <span className="mt-1 block text-[11px] text-text-secondary">Só no vertical</span>}
                           {(p.kind !== "builtin" || p.semNarracao) && (
                             <span className="mt-1 flex flex-wrap gap-1">
                               {p.kind === "free" && (
@@ -723,12 +716,14 @@ export default function VideoGenPage() {
                     <li key={job.id} className="flex items-center transition hover:bg-surface-2">
                       <Link
                         href={`/videogen/${job.id}`}
-                        className="flex min-w-0 flex-1 flex-col gap-1.5 py-3 pl-4 pr-1 outline-none focus-visible:bg-surface-2"
+                        className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3 pr-1 outline-none focus-visible:bg-surface-2"
                       >
-                        <span className="line-clamp-2 text-sm font-medium" title={title}>
-                          {title}
-                        </span>
-                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
+                        <JobThumb job={job} />
+                        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                          <span className="line-clamp-2 text-sm font-medium" title={title}>
+                            {title}
+                          </span>
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
                           <StatusBadge
                             status={job.status}
                             progress={job.progress}
@@ -740,6 +735,7 @@ export default function VideoGenPage() {
                           <span>
                             {formatDate(job.createdAt)}
                             {job.costSummary && job.costSummary.totalUsd > 0 && ` · ≈ ${formatUsd(job.costSummary.totalUsd)}`}
+                          </span>
                           </span>
                         </span>
                       </Link>
@@ -883,7 +879,7 @@ function formatDate(iso: string, withTime = false) {
   });
 }
 
-/** Lista os estilos: templates podem ser excluídos; os embutidos fazem parte do código. */
+/** Lista os templates (cada um pode ser excluído). */
 function ManageStylesModal({ styles, onDeleted, onClose }: { styles: VideoPattern[]; onDeleted: (id: string) => void; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -911,7 +907,6 @@ function ManageStylesModal({ styles, onDeleted, onClose }: { styles: VideoPatter
   }
 
   const templates = styles.filter((s) => s.kind === "template");
-  const builtins = styles.filter((s) => s.kind === "builtin");
 
   return (
     <dialog
@@ -939,7 +934,7 @@ function ManageStylesModal({ styles, onDeleted, onClose }: { styles: VideoPatter
         {templates.length === 0 ? (
           <p className="px-5 py-3 text-sm text-text-secondary">Nenhum template ainda.</p>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-border pb-2">
             {templates.map((s) => (
               <StyleRow key={s.id} style={s}>
                 <button
@@ -956,19 +951,9 @@ function ManageStylesModal({ styles, onDeleted, onClose }: { styles: VideoPatter
             ))}
           </ul>
         )}
-        <p className="border-t border-border px-5 pt-4 text-xs font-semibold uppercase tracking-wide text-text-secondary">Estilos embutidos ({builtins.length})</p>
-        <ul className="divide-y divide-border pb-2">
-          {builtins.map((s) => (
-            <StyleRow key={s.id} style={s}>
-              <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-text-secondary" title="Faz parte do código do app">
-                Embutido
-              </span>
-            </StyleRow>
-          ))}
-        </ul>
       </div>
       <p className="border-t border-border px-5 py-3 text-xs text-text-secondary">
-        Excluir um template não muda os vídeos já prontos. Os estilos embutidos fazem parte do código: para tirar um deles, é só me pedir.
+        Excluir um template não muda os vídeos já prontos.
       </p>
     </dialog>
   );
@@ -1071,8 +1056,10 @@ function AllVideosModal({
                 <li key={job.id} className="flex items-center transition hover:bg-surface-2">
                   <Link
                     href={`/videogen/${job.id}`}
-                    className="flex min-w-0 flex-1 flex-col gap-1.5 py-3 pl-5 pr-1 focus-visible:bg-surface-2 focus-visible:outline-none"
+                    className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 pr-1 focus-visible:bg-surface-2 focus-visible:outline-none"
                   >
+                    <JobThumb job={job} />
+                    <span className="flex min-w-0 flex-1 flex-col gap-1.5">
                     <span className="line-clamp-2 text-sm font-medium">{title}</span>
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
                       <StatusBadge status={job.status} progress={job.progress} label={job.error && job.status === "draft" ? "Erro no roteiro" : undefined} />
@@ -1081,6 +1068,7 @@ function AllVideosModal({
                       </span>
                       <span>Gerado em {formatDate(job.createdAt, true)}</span>
                       {job.costSummary && job.costSummary.totalUsd > 0 && <span>≈ {formatUsd(job.costSummary.totalUsd)}</span>}
+                    </span>
                     </span>
                   </Link>
                   <button
@@ -1111,5 +1099,30 @@ function AllVideosModal({
         </button>
       </div>
     </dialog>
+  );
+}
+
+/** Miniatura da lista de vídeos: capa do render final; antes dele, a imagem da 1ª cena que já tiver prévia. */
+function JobThumb({ job }: { job: VideoJobDTO }) {
+  const landscape = job.format === "16:9";
+  const src =
+    (landscape ? job.thumbUrl || job.coverUrl : job.coverUrl || job.thumbUrl) ||
+    job.script?.scenes.find((sc) => sc.preview?.url)?.preview?.url ||
+    null;
+  return (
+    <span className="flex h-16 w-16 shrink-0 items-center justify-center">
+      <span
+        className={`flex items-center justify-center overflow-hidden rounded-md bg-surface-2 ring-1 ring-border ${
+          landscape ? "aspect-video w-16" : "aspect-[9/16] h-16"
+        }`}
+      >
+        {src ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
+        ) : (
+          <Icon name="film" className="h-4 w-4 text-text-secondary" />
+        )}
+      </span>
+    </span>
   );
 }

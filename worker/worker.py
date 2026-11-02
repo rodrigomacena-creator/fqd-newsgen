@@ -237,6 +237,11 @@ def _produce(job, workdir, report, costs, assets, preview):
     used = {s.index for s in tl.scenes} if getattr(module, "USES_SCENE_IMAGES", True) else set()
     # cena "só texto" (estilo livre) não usa imagem: não gasta geração com ela
     used -= {i for i, sc in enumerate(scenes) if sc.get("layout") == "text_only" and not sc.get("imageUrl")}
+    # ficha sem imagem (layout "none", ex.: Papel e Hera): só gera para cena que pediu layout próprio ou tem foto
+    spec_img = ((job.get("templateSpec") or {}).get("image") or {}) if module is template_engine else {}
+    spec_bg = ((job.get("templateSpec") or {}).get("background") or {}) if module is template_engine else {}
+    if spec_img.get("layout") == "none" and spec_bg.get("kind") != "blurred_image":
+        used -= {i for i, sc in enumerate(scenes) if not sc.get("layout") and not sc.get("imageUrl")}
     def cached(fn, path, *a):
         return path if REUSE_ASSETS and path.exists() else fn(*a, path, costs=costs)
 
@@ -340,8 +345,16 @@ def _produce(job, workdir, report, costs, assets, preview):
     extra = {}
     if module is template_engine:
         extra["spec"] = job["templateSpec"]
-        texture_url = ((job["templateSpec"] or {}).get("background") or {}).get("textureUrl")
-        if texture_url:
+        texture_url = ((job["templateSpec"] or {}).get("background") or {}).get("textureUrl") or ""
+        if texture_url.startswith("asset:"):  # textura fixa do worker (ex.: templates que vieram dos estilos embutidos)
+            from render.common import asset
+            path = Path(asset(Path(texture_url[6:]).name))
+            land_path = path.with_name(path.stem + "_16x9" + path.suffix)  # versão horizontal, se existir
+            if job.get("format") == "16:9" and land_path.exists():
+                path = land_path
+            if path.exists():
+                extra["texture"] = path
+        elif texture_url:
             extra["texture"] = download(texture_url, workdir / "textura.jpg")
         extra["clips"] = clips
     duration = module.render(job, {"images": images, **extra}, str(video_only), on_progress=lambda p: report(50 + 40 * p))

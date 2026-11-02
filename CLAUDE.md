@@ -256,7 +256,12 @@ reais encontradas ao construir o projeto, não só a estrutura.
   unificados por `listStyles()`/`resolveStyle()` em `src/lib/videogen/templates.ts` (formato `VideoPattern`):
   (1) **embutidos** — `videogen/padroes/*.md`, cada um com renderizador próprio em `worker/render/<id>.py`
   e exemplo de 5s em `public/videogen/exemplos/<id>.mp4` (os padrões sem renderizador foram apagados em
-  31/10/2026 a pedido do Rodrigo; não recrie); (2) **templates** — tabela `VideoTemplate`, montados pela
+  31/10/2026 a pedido do Rodrigo; não recrie). **Desde 02/11/2026 os embutidos não aparecem mais para vídeos novos**: foram
+  recriados como templates (`tpl-editorial-pb-vermelho`, `tpl-estudio-serif-cinematico`, `tpl-papel-hera`, migration
+  `20261102230000_builtin_styles_as_templates`, exemplos em `public/videogen/exemplos/tpl-*.mp4`, fundos fixos do worker via
+  `textureUrl: "asset:<arquivo>"` com variante `_16x9` usada no horizontal). A API de estilos ainda devolve os embutidos (o
+  editor precisa achar o nome dos vídeos antigos) e a home filtra `kind === "builtin"`; o padrão da home é o estilo livre.
+  Ficha com `image.layout = "none"` não gera imagem (papel-hera); (2) **templates** — tabela `VideoTemplate`, montados pela
   própria aplicação: o usuário sobe um vídeo de referência (upload direto do navegador pro Blob via
   `/api/videogen/templates/upload`), o worker baixa, mede cortes com ffmpeg, manda 12 quadros pra um
   modelo com visão (`VIDEOGEN_VISION_MODEL`) e recebe uma **ficha de estilo** (`spec`) que o **motor
