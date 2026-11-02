@@ -39,7 +39,7 @@ import {
 } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
-type Busy = null | "save" | "script" | "narration" | "queue" | "delete" | "storyboard";
+type Busy = null | "save" | "script" | "narration" | "queue" | "preview" | "delete" | "storyboard";
 
 export function VideoJobEditor({ id }: { id: string }) {
   const router = useRouter();
@@ -81,10 +81,12 @@ export function VideoJobEditor({ id }: { id: string }) {
       const res = await fetch(`/api/videogen/jobs/${id}`);
       if (!res.ok) return;
       const data = await res.json();
-      setJob(data.job);
+      // Terminou: recarrega tudo (o worker grava no roteiro as imagens e a trilha que gerou).
+      if (data.job && data.job.status !== "queued" && data.job.status !== "rendering") applyJob(data.job);
+      else setJob(data.job);
     }, 5000);
     return () => clearInterval(timer);
-  }, [polling, id]);
+  }, [polling, id, applyJob]);
 
   // Avisa antes de sair da página com edições não salvas.
   useEffect(() => {
@@ -186,9 +188,12 @@ export function VideoJobEditor({ id }: { id: string }) {
     if (data?.error) setError(data.error);
   }
 
-  async function queue(remove = false) {
+  async function queue(remove = false, mode?: "preview") {
     if (!remove && dirty && !(await save())) return;
-    const data = await call("queue", `/api/videogen/jobs/${id}/queue`, { method: remove ? "DELETE" : "POST" });
+    const data = await call(mode === "preview" ? "preview" : "queue", `/api/videogen/jobs/${id}/queue`, {
+      method: remove ? "DELETE" : "POST",
+      ...(mode ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) } : {}),
+    });
     if (data?.job) applyJob(data.job);
   }
 
@@ -319,6 +324,7 @@ export function VideoJobEditor({ id }: { id: string }) {
       onGenerateScript={regenerateScript}
       onNarration={generateNarration}
       onQueue={() => queue()}
+      onPreview={() => queue(false, "preview")}
       onUnqueue={() => queue(true)}
       onSave={save}
       onDiscard={discard}
@@ -554,6 +560,21 @@ export function VideoJobEditor({ id }: { id: string }) {
             <h2 id="render-title" className={sectionTitle}>
               Vídeo
             </h2>
+            {job.previewUrl && !locked && !(job.status === "done" && job.videoUrl) && (
+              <div className="mt-4">
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-text-secondary">
+                  <Icon name="play" className="h-3.5 w-3.5" /> Prévia rápida
+                  <span className="font-normal normal-case tracking-normal">(menos fluida, sem trilha)</span>
+                </p>
+                <video
+                  controls
+                  preload="metadata"
+                  src={job.previewUrl}
+                  className="mx-auto aspect-[9/16] max-h-[60dvh] w-full rounded-xl bg-black object-contain"
+                />
+                <p className="mt-2 text-xs text-text-secondary">Gostou? Envie para o render final no card de etapas: ele reaproveita as imagens da prévia.</p>
+              </div>
+            )}
             {job.status === "done" && job.videoUrl ? (
               <div className="mt-4">
                 <video
@@ -645,6 +666,7 @@ function StepBar({
   onGenerateScript,
   onNarration,
   onQueue,
+  onPreview,
   onUnqueue,
   onSave,
   onDiscard,
@@ -659,6 +681,7 @@ function StepBar({
   onGenerateScript: () => void;
   onNarration: () => void;
   onQueue: () => void;
+  onPreview: () => void;
   onUnqueue: () => void;
   onSave: () => void;
   onDiscard: () => void;
@@ -694,7 +717,7 @@ function StepBar({
       </button>
     );
   } else if (job.status === "queued") {
-    title = "Na fila de render";
+    title = job.renderMode === "preview" ? "Prévia na fila" : "Na fila de render";
     hint = "O servidor pega o vídeo em instantes. Você pode sair desta página.";
     action = (
       <button type="button" onClick={onUnqueue} disabled={busy !== null} className={`${actionClass} ${secondaryButton}`}>
@@ -703,8 +726,13 @@ function StepBar({
     );
   } else if (job.status === "rendering") {
     progress = job.progress ?? 0;
-    title = `Renderizando · ${progress}%`;
-    hint = "O servidor está montando o mp4 (alguns minutos). Você pode sair desta página.";
+    if (job.renderMode === "preview") {
+      title = `Gerando a prévia · ${progress}%`;
+      hint = "Versão rápida para conferir ritmo e cortes: menos fluida e sem trilha. As imagens geradas ficam para o render final.";
+    } else {
+      title = `Renderizando · ${progress}%`;
+      hint = "O servidor está montando o mp4 (alguns minutos). Você pode sair desta página.";
+    }
   } else if (done) {
     title = "Vídeo pronto";
     hint = "Assista no card do vídeo. A legenda do post está no roteiro.";
@@ -720,10 +748,22 @@ function StepBar({
     title = job.status === "failed" ? "O render falhou. Tente de novo" : noNarration ? "Envie para o render" : "Ouça a narração e envie para o render";
     hint = `Se a voz estiver boa, envie: o servidor gera as imagens, a trilha e monta o mp4. Se não, ajuste e gere de novo.${savingNote}`;
     action = (
-      <button type="button" onClick={onQueue} disabled={busy !== null} aria-busy={busy === "queue"} className={`${actionClass} ${primaryButton} ${ink}`}>
-        {busy === "queue" ? <Spinner /> : <Icon name="arrow" className="h-4 w-4" />}
-        {busy === "queue" ? "Enviando…" : "Enviar para render"}
-      </button>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <button
+          type="button"
+          onClick={onPreview}
+          disabled={busy !== null}
+          title="Render rápido para conferir ritmo e cortes (menos fluido, sem trilha). As imagens ficam para o render final."
+          className={`${actionClass} ${secondaryButton} bg-background/70`}
+        >
+          {busy === "preview" ? <Spinner /> : <Icon name="play" className="h-4 w-4" />}
+          {busy === "preview" ? "Enviando…" : "Prévia rápida"}
+        </button>
+        <button type="button" onClick={onQueue} disabled={busy !== null} aria-busy={busy === "queue"} className={`${actionClass} ${primaryButton} ${ink}`}>
+          {busy === "queue" ? <Spinner /> : <Icon name="arrow" className="h-4 w-4" />}
+          {busy === "queue" ? "Enviando…" : "Enviar para render"}
+        </button>
+      </div>
     );
   }
 
@@ -1010,7 +1050,8 @@ function Storyboard({
             <span className="font-normal text-text-secondary">(opcional)</span>
           </h2>
           <p className="mt-0.5 text-xs text-text-secondary">
-            Veja as imagens antes do render e gere de novo só as que não gostou. O render usa estas imagens.
+            Veja as imagens antes do render e gere de novo só as que não gostou. O render usa estas imagens e guarda aqui as que gerar,
+            então ao renderizar de novo só as cenas alteradas ganham imagem nova (a trilha também é reaproveitada).
             {scenes.some((sc) => sc.stock) && (
               <> Vídeos de banco: {[...new Set(scenes.map((sc) => sc.stock && (sc.stock.source === "pexels" ? "Pexels" : "Pixabay")).filter(Boolean))].join(" e ")}.</>
             )}

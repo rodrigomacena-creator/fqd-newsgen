@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma, withDbRetry } from "@/lib/prisma";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
 import { checkWorkerAuth } from "@/lib/videogen/workerAuth";
 import { appendCosts, sanitizeCosts } from "@/lib/videogen/costs";
+import { isAllowedImageUrl } from "@/lib/videogen/profiles";
+import type { VideoScript } from "@/lib/videogen/types";
 
 /**
  * Atualização do worker sobre um job que ele está renderizando:
  * { progress } durante o render, { status: "done", videoUrl } no fim ou { status: "failed", error }.
  * Qualquer uma pode trazer { costs: CostEntry[] } com os gastos do worker (imagens e trilha).
+ * "done"/"failed" podem trazer { assets: { scenes: [{ index, prompt, url }], music: { url, prompt, seconds } } }:
+ * imagens geradas e trilha que o worker subiu pro Blob. Viram scene.preview / script.musicTrack e o
+ * próximo render (ou a prévia) reaproveita, gerando de novo só o que mudou.
+ * Se o job estava em modo prévia, "done" grava previewUrl e volta para "script_ready" (o mp4 final fica).
  * Só vale enquanto o job está "rendering" (se o usuário excluiu o vídeo, responde 404/409 e o
  * worker descarta o trabalho).
  */
@@ -16,7 +22,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/wo
   if (denied) return denied;
   const { id } = await ctx.params;
 
-  let body: { progress?: number; status?: string; videoUrl?: string; error?: string; costs?: unknown };
+  let body: { progress?: number; status?: string; videoUrl?: string; error?: string; costs?: unknown; assets?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -30,26 +36,76 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/wo
   }
 
   await appendCosts(id, sanitizeCosts(body.costs));
+  const script = body.status === "done" || body.status === "failed" ? mergeAssets(job.script, body.assets) : null;
+  const scriptData = script ? { script } : {};
+  const preview = job.renderMode === "preview";
 
   if (body.status === "done") {
     if (!body.videoUrl) return NextResponse.json({ error: "Informe videoUrl." }, { status: 400 });
-    if (job.videoUrl && job.videoUrl !== body.videoUrl) await deleteBlobIfOwned(job.videoUrl);
-    await prisma.videoJob.update({
-      where: { id },
-      data: { status: "done", videoUrl: body.videoUrl, progress: 100, finishedAt: new Date(), error: null },
-    });
+    if (preview) {
+      if (job.previewUrl && job.previewUrl !== body.videoUrl) await deleteBlobIfOwned(job.previewUrl);
+      await withDbRetry(() =>
+        prisma.videoJob.update({
+          where: { id },
+          data: { status: "script_ready", renderMode: null, previewUrl: body.videoUrl, progress: null, finishedAt: new Date(), error: null, ...scriptData },
+        }),
+      );
+    } else {
+      if (job.videoUrl && job.videoUrl !== body.videoUrl) await deleteBlobIfOwned(job.videoUrl);
+      await withDbRetry(() =>
+        prisma.videoJob.update({
+          where: { id },
+          data: { status: "done", renderMode: null, videoUrl: body.videoUrl, progress: 100, finishedAt: new Date(), error: null, ...scriptData },
+        }),
+      );
+    }
   } else if (body.status === "failed") {
-    await prisma.videoJob.update({
-      where: { id },
-      data: {
-        status: "failed",
-        error: (body.error || "O render falhou.").slice(0, 2000),
-        finishedAt: new Date(),
-      },
-    });
+    await withDbRetry(() =>
+      prisma.videoJob.update({
+        where: { id },
+        data: {
+          status: "failed",
+          renderMode: null,
+          error: `${preview ? "Prévia: " : ""}${body.error || "O render falhou."}`.slice(0, 2000),
+          finishedAt: new Date(),
+          ...scriptData,
+        },
+      }),
+    );
   } else {
     const progress = Math.min(99, Math.max(1, Math.round(Number(body.progress) || 1)));
-    await prisma.videoJob.update({ where: { id }, data: { progress } });
+    await withDbRetry(() => prisma.videoJob.update({ where: { id }, data: { progress } }));
   }
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * Grava no roteiro as imagens e a trilha que o worker gerou: cada imagem vira scene.preview da cena
+ * (só se o imagePrompt da cena ainda é o que gerou a imagem) e a trilha vira script.musicTrack.
+ * Devolve o roteiro em JSON ou null se nada mudou.
+ */
+function mergeAssets(scriptJson: string | null, assets: unknown): string | null {
+  if (!scriptJson || !assets || typeof assets !== "object") return null;
+  let script: VideoScript;
+  try {
+    script = JSON.parse(scriptJson) as VideoScript;
+  } catch {
+    return null;
+  }
+  const a = assets as { scenes?: unknown; music?: unknown };
+  let changed = false;
+  for (const raw of Array.isArray(a.scenes) ? a.scenes : []) {
+    const it = (raw ?? {}) as { index?: unknown; prompt?: unknown; url?: unknown };
+    const scene = typeof it.index === "number" ? script.scenes[it.index] : undefined;
+    if (!scene || typeof it.url !== "string" || !isAllowedImageUrl(it.url) || typeof it.prompt !== "string") continue;
+    if (scene.imageUrl || it.prompt !== scene.imagePrompt) continue; // cena mudou durante o render
+    scene.preview = { url: it.url, prompt: it.prompt };
+    changed = true;
+  }
+  const m = (a.music ?? null) as { url?: unknown; prompt?: unknown; seconds?: unknown } | null;
+  if (m && typeof m.url === "string" && isAllowedImageUrl(m.url) && typeof m.prompt === "string" && Number(m.seconds) > 0) {
+    script.musicTrack = { url: m.url, prompt: m.prompt, seconds: Number(m.seconds) };
+    changed = true;
+  }
+  return changed ? JSON.stringify(script) : null;
 }

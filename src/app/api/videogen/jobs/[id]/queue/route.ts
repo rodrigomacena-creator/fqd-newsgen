@@ -6,9 +6,15 @@ import { serializeVideoJob } from "@/lib/videogen/jobs";
 /**
  * Coloca o vídeo na fila de render (status "queued"). Quem renderiza é o worker na VPS,
  * que pega o job mais antigo com esse status. DELETE tira da fila enquanto não começou.
+ * Corpo opcional { mode: "preview" }: prévia rápida (render leve, sem trilha); o mp4 final atual fica.
  */
-export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/jobs/[id]/queue">) {
+export async function POST(request: Request, ctx: RouteContext<"/api/videogen/jobs/[id]/queue">) {
   const { id } = await ctx.params;
+  let mode: "preview" | null = null;
+  try {
+    const body = (await request.json()) as { mode?: string };
+    if (body?.mode === "preview") mode = "preview";
+  } catch {}
   const job = await prisma.videoJob.findUnique({ where: { id } });
   if (!job) return NextResponse.json({ error: "Vídeo não encontrado." }, { status: 404 });
   if (!job.script) return NextResponse.json({ error: "Gere o roteiro primeiro." }, { status: 400 });
@@ -25,7 +31,10 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
 
   const updated = await prisma.videoJob.update({
     where: { id },
-    data: { status: "queued", progress: 0, error: null, videoUrl: null, startedAt: null, finishedAt: null },
+    data:
+      mode === "preview"
+        ? { status: "queued", renderMode: "preview", progress: 0, error: null, startedAt: null, finishedAt: null }
+        : { status: "queued", renderMode: null, progress: 0, error: null, videoUrl: null, startedAt: null, finishedAt: null },
   });
   return NextResponse.json({ job: serializeVideoJob(updated) });
 }
@@ -34,7 +43,7 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/videogen
   const { id } = await ctx.params;
   const result = await prisma.videoJob.updateMany({
     where: { id, status: "queued" },
-    data: { status: "script_ready", progress: null },
+    data: { status: "script_ready", progress: null, renderMode: null },
   });
   if (result.count === 0) {
     return NextResponse.json({ error: "O vídeo não está aguardando na fila." }, { status: 409 });

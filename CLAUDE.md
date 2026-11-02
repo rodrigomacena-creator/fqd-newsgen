@@ -310,6 +310,18 @@ reais encontradas ao construir o projeto, não só a estrutura.
   `ELEVENLABS_USD_PER_CREDIT` (padrão US$ 22 / 100 mil, plano Creator). O worker manda os gastos
   dele somados por etapa junto do `done`/`failed`. Jobs com `costs` nulo são anteriores a isso.
   Excluir um job apaga a pasta `videogen/<id>/` no Blob; não é permitido enquanto `rendering`.
+  **Reaproveitamento (refazer só o que mudou)**: o worker sobe as imagens que gerou (`videogen/<id>/cenas/`) e a trilha
+  (`trilha.mp3`) e manda em `assets` no `done`/`failed`; o app grava como `scene.preview` (só se o `imagePrompt` não mudou)
+  e `script.musicTrack` (reusada se o `musicPrompt` é o mesmo e ela cobre a duração). Próximo render/prévia só gera o que
+  mudou. Cena sem imagem (crédito acabou, erro) agora FALHA o job com o motivo (antes saía "pronto" com fundo liso);
+  as imagens que deram certo ficam guardadas. Cena sem prompt usa a fala da cena (`scene_prompt()`).
+  **Prévia rápida** (`VideoJob.renderMode = "preview"`, POST `.../queue` com `{mode:"preview"}`): o worker renderiza a
+  12 fps (`render_speed()` em `render/common.py` troca o FPS de todos os renderizadores; mesma resolução/layout), x264
+  veryfast, sem gerar trilha (usa a guardada, se houver); sobe em `previa.mp4`, grava `previewUrl` e o job volta para
+  `script_ready` (o mp4 final, se existir, fica). Ao criar um renderizador novo, leia `FPS` como global na hora do render
+  (nunca calcule constantes com ele no import), senão a prévia sai errada.
+  **Banco na Vercel**: `src/lib/prisma.ts` tem `pool.on("error")` (sem ele, conexão ociosa que cai derruba a função com
+  500) e `withDbRetry()` para as rotas do worker; os `claim` respondem 503 com o motivo em JSON em vez de 500 vazio.
   **Acabamento automático (todos os estilos)**: `worker/render/audio_fx.py` acha as batidas da trilha
   (`detect_beats`, vai em `script["_beats"]` e `timeline.py` encaixa o começo das cenas e o CTA na batida mais
   próxima) e monta uma faixa de efeitos (whoosh nos cortes, impacto na abertura/palavras-chave/CTA, riser antes do

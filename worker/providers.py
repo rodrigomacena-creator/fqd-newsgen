@@ -2,6 +2,7 @@
 dos vídeos (worker.py) e pela montagem de templates (template_builder.py)."""
 import base64
 import os
+import time
 import subprocess
 
 import requests
@@ -18,12 +19,16 @@ def music_credits_per_second():
     return float(os.environ.get("VIDEOGEN_MUSIC_CREDITS_PER_SECOND") or 13.75)
 
 
-def generate_image(prompt, out_path, attempts=2, costs=None):
+def generate_image(prompt, out_path, attempts=3, costs=None):
     key = os.environ.get("OPENROUTER_API_KEY")
     if not key:
         raise RuntimeError("OPENROUTER_API_KEY não configurada no worker.")
+    if not (prompt or "").strip():
+        raise RuntimeError("cena sem prompt de imagem")
     last = ""
-    for _ in range(attempts):
+    for attempt in range(attempts):
+        if attempt:
+            time.sleep(3 * attempt)  # falha passageira (limite, rede): espera um pouco antes de tentar de novo
         try:
             r = requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",

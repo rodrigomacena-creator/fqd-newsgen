@@ -6,6 +6,35 @@ import numpy as np
 from PIL import Image, ImageFont
 
 W, H, FPS = 1080, 1920, 30
+PRESET = "medium"  # preset do x264 (a prévia rápida usa um mais leve)
+CRF_ADD = 0  # a prévia comprime mais (arquivo menor, sobe mais rápido)
+
+
+class render_speed:
+    """Troca o FPS (e o preset do x264) de todos os renderizadores durante um bloco `with`.
+    Os módulos leem FPS como global na hora de renderizar, então basta trocar o valor neles.
+    Usado na prévia rápida: menos quadros = render bem mais rápido, mesma resolução e layout."""
+
+    def __init__(self, fps, preset="veryfast"):
+        self.fps, self.preset, self.saved = fps, preset, []
+
+    def __enter__(self):
+        import sys
+        for name, mod in list(sys.modules.items()):
+            if (name == "render" or name.startswith("render.")) and mod is not None and hasattr(mod, "FPS"):
+                self.saved.append((mod, mod.FPS))
+                mod.FPS = self.fps
+        global PRESET, CRF_ADD
+        self.saved_preset, PRESET = PRESET, self.preset
+        self.saved_crf, CRF_ADD = CRF_ADD, 6
+        return self
+
+    def __exit__(self, *exc):
+        global PRESET, CRF_ADD
+        for mod, fps in self.saved:
+            mod.FPS = fps
+        PRESET, CRF_ADD = self.saved_preset, self.saved_crf
+        return False
 
 FONT_SANS = os.environ.get("VIDEOGEN_FONT_SANS", "/usr/share/fonts/opentype/inter/InterDisplay-Black.otf")
 FONT_SERIF = os.environ.get(
@@ -43,7 +72,7 @@ class FrameWriter:
     def __init__(self, out, crf=27):
         self.proc = subprocess.Popen(
             ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
-             "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-preset", "medium", "-crf", str(crf),
+             "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-preset", PRESET, "-crf", str(crf + CRF_ADD),
              "-pix_fmt", "yuv420p", out],
             stdin=subprocess.PIPE,
         )

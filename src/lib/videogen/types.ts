@@ -95,6 +95,8 @@ export interface VideoScript {
   pronunciations: Pronunciation[];
   /** Só no "estilo livre": ficha de estilo que a IA montou para este vídeo (formato do motor genérico). */
   styleSpec?: Record<string, unknown>;
+  /** Trilha já gerada pelo worker (reaproveitada no próximo render se o musicPrompt não mudou e ela é longa o bastante). */
+  musicTrack?: { url: string; prompt: string; seconds: number };
 }
 
 /** [palavra de exibição, início em s, fim em s] — mesmo formato do words.json do pipeline Python. */

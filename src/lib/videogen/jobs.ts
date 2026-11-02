@@ -37,6 +37,10 @@ export interface VideoJobDTO {
   narrationWords: NarrationWord[] | null;
   narrationDurationS: number | null;
   videoUrl: string | null;
+  /** Prévia rápida (render leve, sem trilha), quando gerada. */
+  previewUrl: string | null;
+  /** "preview" enquanto a prévia está na fila/renderizando; null = render final. */
+  renderMode: string | null;
   progress: number | null;
   error: string | null;
   costs: CostEntry[];

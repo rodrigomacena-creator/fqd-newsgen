@@ -219,7 +219,16 @@ export function normalizeScript(input: unknown): VideoScript {
     postCaption: str(d.postCaption),
     pronunciations,
     ...(sanitizeStyleSpec(d.styleSpec) ? { styleSpec: sanitizeStyleSpec(d.styleSpec) } : {}),
+    ...(normalizeMusicTrack(d.musicTrack) ? { musicTrack: normalizeMusicTrack(d.musicTrack) } : {}),
   };
+}
+
+function normalizeMusicTrack(v: unknown): VideoScript["musicTrack"] | undefined {
+  const m = (v ?? null) as { url?: unknown; prompt?: unknown; seconds?: unknown } | null;
+  if (!m || typeof m.url !== "string" || !isAllowedImageUrl(m.url) || typeof m.prompt !== "string") return undefined;
+  const seconds = Number(m.seconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
+  return { url: m.url, prompt: m.prompt, seconds };
 }
 
 /** Baixa a imagem e devolve um data URL JPEG de até 1024px (null se falhar). */

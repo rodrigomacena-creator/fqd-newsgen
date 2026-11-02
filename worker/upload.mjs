@@ -13,7 +13,7 @@ const body = await readFile(file);
 const blob = await put(pathname, body, {
   access: "public",
   token,
-  contentType: /\.jpe?g$/i.test(pathname) ? "image/jpeg" : "video/mp4",
+  contentType: /\.jpe?g$/i.test(pathname) ? "image/jpeg" : /\.mp3$/i.test(pathname) ? "audio/mpeg" : "video/mp4",
   multipart: body.length > 8 * 1024 * 1024,
 });
 console.log(JSON.stringify({ url: blob.url }));

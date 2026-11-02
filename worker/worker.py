@@ -30,7 +30,7 @@ import requests
 from providers import download, generate_image, generate_music, prepare_user_image, silent_audio
 from render import RENDERERS, template_engine
 from render.audio_fx import build_sfx_track, detect_beats, sfx_cues
-from render.common import mix
+from render.common import mix, render_speed
 from render.cta_fx import overlay_cta
 from render.timeline import build_timeline
 
@@ -105,17 +105,22 @@ class App:
         except Exception as e:  # progresso é só informativo
             log("aviso: progresso não enviado:", e)
 
-    def done(self, job_id, url, costs=None):
-        self._post(f"/api/videogen/worker/jobs/{job_id}", {"status": "done", "videoUrl": url, "costs": merge_costs(costs)})
+    def done(self, job_id, url, costs=None, assets=None):
+        self._post(f"/api/videogen/worker/jobs/{job_id}",
+                   {"status": "done", "videoUrl": url, "costs": merge_costs(costs), "assets": assets or {}})
 
-    def failed(self, job_id, error, costs=None):
+    def failed(self, job_id, error, costs=None, assets=None):
         try:
-            self._post(f"/api/videogen/worker/jobs/{job_id}", {"status": "failed", "error": error, "costs": merge_costs(costs)})
+            self._post(f"/api/videogen/worker/jobs/{job_id}",
+                       {"status": "failed", "error": error, "costs": merge_costs(costs), "assets": assets or {}})
         except Exception as e:
             log("aviso: não consegui marcar como falho:", e)
 
-    def upload_token(self, job_id):
-        return self._post(f"/api/videogen/worker/jobs/{job_id}/upload-token")
+    def upload_token(self, job_id, file="video", index=None):
+        payload = {"file": file}
+        if index is not None:
+            payload["index"] = index
+        return self._post(f"/api/videogen/worker/jobs/{job_id}/upload-token", payload)
 
     # templates (montados a partir de um vídeo de referência)
     def claim_template(self):
@@ -151,8 +156,35 @@ def extract_clip_frames(mp4, out_dir, seconds):
 CLIP_ZOOM = 1.12  # folga do quadro do vídeo para o movimento de câmera
 
 
-def produce(job, workdir, report=lambda p: None, costs=None):
-    """Gera assets, renderiza e mixa. Devolve o caminho do mp4 final."""
+PREVIEW_FPS = 12  # prévia rápida: mesma resolução e layout, menos quadros (render ~2,5x mais rápido)
+
+
+def produce(job, workdir, report=lambda p: None, costs=None, assets=None):
+    """Gera assets, renderiza e mixa. Devolve o caminho do mp4 final.
+    assets (dict, opcional) recebe o que foi gerado para o app guardar e reaproveitar no próximo
+    render: {"scenes": {i: (arquivo, prompt)}, "music": (arquivo, prompt, segundos)}.
+    Job com renderMode "preview": prévia rápida (12 fps, x264 veryfast, sem gerar trilha)."""
+    if assets is None:
+        assets = {}
+    assets.setdefault("scenes", {})
+    if job.get("renderMode") == "preview":
+        with render_speed(PREVIEW_FPS):
+            return _produce(job, workdir, report, costs, assets, preview=True)
+    return _produce(job, workdir, report, costs, assets, preview=False)
+
+
+def scene_prompt(sc):
+    """Prompt de imagem da cena; cena sem prompt (a IA às vezes devolve vazio) usa a fala/texto da cena."""
+    p = (sc.get("imagePrompt") or sc.get("visual") or "").strip()
+    if p:
+        return p
+    base = (sc.get("narration") or sc.get("onScreen") or "").strip()
+    if not base:
+        return ""
+    return f"Editorial photograph that visually illustrates this idea: {base}. Vertical 9:16 composition, no text, no letters."
+
+
+def _produce(job, workdir, report, costs, assets, preview):
     module = RENDERERS.get(job["patternId"])
     if not module and job.get("templateSpec"):
         module = template_engine  # template montado pela aplicação: motor genérico + ficha de estilo
@@ -195,7 +227,9 @@ def produce(job, workdir, report=lambda p: None, costs=None):
                 return download(pv["url"], path)
             except Exception as e:
                 log(f"cena {i + 1}: prévia do storyboard falhou ({e}); gerando com IA")
-        return cached(generate_image, path, sc.get("imagePrompt") or sc.get("visual") or "")
+        out = cached(generate_image, path, scene_prompt(sc))
+        assets["scenes"][i] = (out, sc.get("imagePrompt") or "")  # o app guarda como prévia da cena
+        return out
 
     # vídeo de banco (Pexels) por cena: só o motor genérico sabe tocar; falha = volta para a imagem
     clips = {}
@@ -217,22 +251,47 @@ def produce(job, workdir, report=lambda p: None, costs=None):
                 except Exception as e:
                     log(f"cena {i + 1}: vídeo de banco falhou ({e}); usando imagem")
 
+    # trilha: reaproveita a do render anterior se o prompt é o mesmo e ela cobre o vídeo; a prévia não gera trilha
+    music_prompt = script.get("musicPrompt") or ""
+    track = script.get("musicTrack") or {}
+    def get_music():
+        path = workdir / "trilha.mp3"
+        if track.get("url") and track.get("prompt") == music_prompt and float(track.get("seconds") or 0) >= tl.duration + 1:
+            try:
+                return download(track["url"], path)
+            except Exception as e:
+                log(f"trilha guardada falhou ({e}); gerando de novo")
+        if preview:
+            return silent_audio(tl.duration + 1, path)
+        out = cached(generate_music, path, music_prompt, tl.duration)
+        assets["music"] = (out, music_prompt, max(10, tl.duration + 2))
+        return out
+
     with ThreadPoolExecutor(5) as ex:
-        music_f = ex.submit(cached, generate_music, workdir / "trilha.mp3", script.get("musicPrompt"), tl.duration)
+        music_f = ex.submit(get_music)
         futs = {
             i: ex.submit(scene_image, i, sc)
             for i, sc in enumerate(scenes) if i in used and i not in clips
         }
         done_count = 0
+        failed = {}
         for i, f in futs.items():
             try:
                 images[i] = f.result()
             except Exception as e:
-                log(f"cena {i + 1}: {e} (vai com fundo liso)")
+                log(f"cena {i + 1}: {e}")
+                failed[i] = str(e)
             done_count += 1
             report(5 + 40 * done_count / max(len(futs), 1))
-        if not images and futs and not clips:
-            raise RuntimeError("Nenhuma imagem de cena foi gerada (OpenRouter).")
+        if failed:
+            # Antes o vídeo saía "pronto" com fundo liso nessas cenas. Agora falha com o motivo; as imagens
+            # que deram certo ficam guardadas e o próximo render só gera as que faltaram.
+            nums = ", ".join(str(i + 1) for i in sorted(failed))
+            first = next(iter(failed.values()))
+            raise RuntimeError(
+                f"{len(failed)} cena(s) ficaram sem imagem (cena {nums}): {first[:240]}. "
+                "As outras imagens foram guardadas; mande renderizar de novo para gerar só as que faltam."
+            )
         try:
             music = music_f.result()
         except Exception as e:
@@ -294,13 +353,39 @@ def produce(job, workdir, report=lambda p: None, costs=None):
     return final
 
 
-def upload(app, job_id, path, tok=None):
-    tok = tok or app.upload_token(job_id)
+def upload(app, job_id, path, tok=None, file="video", index=None):
+    tok = tok or app.upload_token(job_id, file, index)
     out = subprocess.run(["node", str(HERE / "upload.mjs"), str(path), tok["pathname"], tok["clientToken"]],
                          capture_output=True, text=True, cwd=HERE, timeout=900)
     if out.returncode != 0:
         raise RuntimeError(f"upload no Blob falhou: {out.stderr.strip()[:400]}")
     return json.loads(out.stdout.strip().splitlines()[-1])["url"]
+
+
+def upload_assets(app, job_id, generated):
+    """Sobe as imagens de cena e a trilha geradas neste render; devolve o formato que o app espera."""
+    from PIL import Image
+
+    out = {"scenes": []}
+    for i, (path, prompt) in sorted((generated.get("scenes") or {}).items()):
+        try:
+            jpg = Path(path).with_name(f"envio_cena_{i:02d}.jpg")
+            Image.open(path).convert("RGB").save(jpg, "JPEG", quality=88)
+            out["scenes"].append({"index": i, "prompt": prompt, "url": upload(app, job_id, jpg, file="scene", index=i)})
+        except JobGone:
+            raise
+        except Exception as e:
+            log(f"cena {i + 1}: imagem não guardada ({e})")
+    music = generated.get("music")
+    if music:
+        path, prompt, seconds = music
+        try:
+            out["music"] = {"url": upload(app, job_id, path, file="music"), "prompt": prompt, "seconds": seconds}
+        except JobGone:
+            raise
+        except Exception as e:
+            log(f"trilha não guardada ({e})")
+    return out
 
 
 def process(app, job):
@@ -316,17 +401,23 @@ def process(app, job):
             app.progress(job_id, p)
 
     costs = []  # imagens (custo da OpenRouter) e trilha (créditos estimados), enviados no fim
+    generated = {}  # imagens/trilha geradas: sobem pro Blob e o app guarda para o próximo render
+    preview = job.get("renderMode") == "preview"
     try:
-        final = produce(job, workdir, report, costs)
+        final = produce(job, workdir, report, costs, generated)
         app.progress(job_id, 95)
-        url = upload(app, job_id, final)
-        app.done(job_id, url, costs)
-        log(f"job {job_id}: pronto {url}")
+        url = upload(app, job_id, final, file="preview" if preview else "video")
+        app.done(job_id, url, costs, upload_assets(app, job_id, generated))
+        log(f"job {job_id}: {'prévia' if preview else 'pronto'} {url}")
     except JobGone as e:
         log(f"job {job_id}: descartado ({e})")
     except Exception as e:
         traceback.print_exc()
-        app.failed(job_id, str(e), costs)
+        try:
+            saved = upload_assets(app, job_id, generated)
+        except JobGone:
+            saved = {}
+        app.failed(job_id, str(e), costs, saved)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 

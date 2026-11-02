@@ -79,6 +79,8 @@ model VideoJob {
   narrationWords     String? // JSON string: [palavra, início_s, fim_s][] (palavras já com a grafia de exibição)
   narrationDurationS Float?
   videoUrl           String? // mp4 final no Vercel Blob (escrito pelo worker)
+  previewUrl         String? // prévia rápida (baixa fluidez, sem trilha) no Vercel Blob
+  renderMode         String? // "preview" enquanto a prévia está na fila/renderizando; null = render final
   progress           Int? // 0-100, atualizado pelo worker
   costs              String? // JSON string: CostEntry[] (gastos de OpenRouter e ElevenLabs, ver src/lib/videogen/costs.ts)
   personId           String? // VideoProfile (kind person) que fala no vídeo; sem FK de propósito (perfil apagado = genérico)
