@@ -12,7 +12,7 @@
 import { put } from "@vercel/blob";
 import type { VideoJob } from "@/generated/prisma/client";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
-import { avatarStatus, listVoices, submitAvatar } from "./heygen";
+import { avatarStatus, listVoices, submitAvatar, voiceNamedLike } from "./heygen";
 import { speechToText } from "./elevenlabs";
 import { fullNarration, parseVideoFormat, type AvatarCharacter, type AvatarSegment, type AvatarTrack, type HeygenVoice, type NarrationWord, type VideoScript } from "./types";
 
@@ -43,8 +43,7 @@ async function defaultVoiceFor(character: AvatarCharacter): Promise<HeygenVoice 
   } catch (e) {
     console.warn("[heygen] lista de vozes falhou:", e);
   }
-  const name = (character.name ?? "").trim().toLowerCase();
-  const same = name ? voices.find((v) => v.name.toLowerCase().startsWith(name)) : undefined;
+  const same = voiceNamedLike(character.name, voices);
   const pt = voices.find((v) => /portug|pt\b|brazil|brasil/i.test(v.language ?? ""));
   return same ?? pt ?? null;
 }

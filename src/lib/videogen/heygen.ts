@@ -136,31 +136,49 @@ async function listGroupLooks(): Promise<{ groups: string[]; list: AvatarCharact
 /** Nome de avatar próprio (instantâneo) do HeyGen: "Nome -- 17". */
 const OWN_NAME = /\s--\s*\d+\s*$/;
 
+/** Nome de voz do HeyGen sem o "(male)"/"(female)" que a listagem acrescenta. */
+const bareVoiceName = (v: HeygenVoice) => v.name.replace(/\s*\((?:male|female|unknown)\)\s*$/i, "").trim().toLowerCase();
+
 /**
- * Avatares pra escolher aqui (como as vozes do ElevenLabs). Fonte principal: `/v2/avatars`, a lista que o
- * Rodrigo reconhece ("Erick Melo -- 17", "-- 15"...: avatares instantâneos gravados por ele, mais as fotos
- * animadas). Essa lista traz também a biblioteca pública do HeyGen, que o Rodrigo NÃO quer ver: ficam só os
- * próprios (nome "Nome -- N", talking photos e nomes dos grupos da conta); a lista inteira só aparece se
- * nenhum for reconhecido. Os grupos da conta
- * (`/v2/avatar_group.list`) só servem pra reconhecer o que é próprio e como reserva se `/v2/avatars` estourar
- * o tempo (ele é grande e chegou a passar de 25 s na Vercel; por isso timeout de 50 s e cache).
+ * Voz de um avatar treinado: cada treino cria uma voz clonada com o MESMO nome ("Erick Melo -- 17" tem a voz
+ * "Erick Melo -- 17"). Nome igual primeiro; depois a voz cujo nome começa pelo do avatar.
+ */
+export function voiceNamedLike(name: string | undefined, voices: HeygenVoice[]): HeygenVoice | undefined {
+  const n = (name ?? "").trim().toLowerCase();
+  if (!n) return undefined;
+  return voices.find((v) => bareVoiceName(v) === n) ?? voices.find((v) => bareVoiceName(v).startsWith(n));
+}
+
+/**
+ * Avatares pra escolher aqui (como as vozes do ElevenLabs). Fonte: `/v2/avatars`, a lista que o Rodrigo reconhece
+ * ("Erick Melo", "Erick Melo -- 15"... "-- 20": os avatares de vídeo treinados por ele). Essa lista traz TAMBÉM a
+ * biblioteca pública do HeyGen (milhares de talking photos e avatares, que ele NÃO quer ver — medido em 03/11/2026:
+ * 8.149 talking photos públicas e só 7 avatares próprios, repetidos), então ficam só os próprios: nome "Nome -- N"
+ * ou nome igual/prefixo de um grupo de avatar da conta (`/v2/avatar_group.list`), sem repetição de id. Se nada for
+ * reconhecido, mostra a lista inteira. Os grupos também servem de reserva se `/v2/avatars` estourar o tempo (ele é
+ * grande e chegou a passar de 25 s na Vercel; por isso timeout de 50 s e cache). `/v2/avatars` não traz
+ * `default_voice_id`, então a voz é a de mesmo nome (`voiceNamedLike`), guardada em `defaultVoiceId`.
  */
 export async function listCharacters(): Promise<AvatarCharacter[]> {
   if (cache && Date.now() - cache.at < LIST_TTL_MS) return cache.list;
-  const [all, grouped] = await Promise.allSettled([listAllAvatars(), listGroupLooks()]);
-  const groupNames = grouped.status === "fulfilled" ? grouped.value.groups : [];
+  const [all, grouped, voicesRes] = await Promise.allSettled([listAllAvatars(), listGroupLooks(), listVoices()]);
+  const groupNames = grouped.status === "fulfilled" ? grouped.value.groups.map((g) => g.toLowerCase()) : [];
+  const voices = voicesRes.status === "fulfilled" ? voicesRes.value : [];
   let out: AvatarCharacter[];
   if (all.status === "fulfilled") {
-    const own = (c: AvatarCharacter) =>
-      c.kind === "talking_photo" || OWN_NAME.test(c.name ?? "") || groupNames.some((g) => (c.name ?? "").toLowerCase().startsWith(g.toLowerCase()));
-    const mine = all.value.filter(own);
-    // só os próprios; se o reconhecimento falhar em tudo (conta sem avatar próprio), mostra a lista inteira
+    const own = (c: AvatarCharacter) => {
+      const n = (c.name ?? "").trim().toLowerCase();
+      return OWN_NAME.test(n) || groupNames.some((g) => n === g || n.startsWith(`${g} `) || n.startsWith(`${g} --`));
+    };
+    const seen = new Set<string>();
+    const mine = all.value.filter((c) => own(c) && !seen.has(c.id) && seen.add(c.id));
     out = mine.length > 0 ? mine : all.value;
   } else {
     console.warn("[heygen] /v2/avatars falhou, usando os grupos da conta:", all.reason);
     if (grouped.status !== "fulfilled") throw all.reason;
     out = grouped.value.list;
   }
+  for (const c of out) if (!c.defaultVoiceId) c.defaultVoiceId = voiceNamedLike(c.name, voices)?.id;
   cache = { at: Date.now(), list: out };
   return out;
 }
