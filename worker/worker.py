@@ -18,6 +18,7 @@ import contextlib
 import functools
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -181,15 +182,46 @@ def segment_for(segments, start, end):
     return best
 
 
+@functools.lru_cache(maxsize=32)
+def detect_bars(mp4):
+    """Barras pretas gravadas DENTRO do vídeo base (o HeyGen encaixa um avatar gravado na horizontal num
+    quadro 9:16 com preto em cima e embaixo). Devolve "crop=w:h:x:y" só da área útil, ou None se não há
+    barras. Mede com cropdetect nos 4 primeiros segundos; só aceita um corte centrado (barras simétricas),
+    para não cortar cenário escuro de verdade."""
+    try:
+        probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                                "-of", "csv=p=0", str(mp4)], capture_output=True, text=True, timeout=60, check=True)
+        fw, fh = (int(v) for v in probe.stdout.strip().split(",")[:2])
+        out = subprocess.run(["ffmpeg", "-v", "info", "-t", "4", "-i", str(mp4), "-vf", "cropdetect=24:2:0", "-f", "null", "-"],
+                             capture_output=True, text=True, timeout=120)
+        crops = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", out.stderr)
+        if not crops:
+            return None
+        w, h, x, y = (int(v) for v in crops[-1])
+    except Exception as e:  # noqa: BLE001 - sem ffprobe/cropdetect, segue sem cortar
+        print(f"[base] cropdetect falhou ({e}); sem corte de barras")
+        return None
+    if w <= 0 or h <= 0 or (w >= fw * 0.97 and h >= fh * 0.97):
+        return None  # sem barras relevantes
+    centered = abs((fw - w) / 2 - x) <= 8 and abs((fh - h) / 2 - y) <= 8
+    if not centered or w < fw * 0.5 or h < fh * 0.25:
+        return None  # corte estranho: melhor manter o vídeo inteiro
+    print(f"[base] barras pretas no vídeo base: área útil {w}x{h} em {fw}x{fh}")
+    return f"crop={w}:{h}:{x}:{y}"
+
+
 def extract_base_frames(mp4, out_dir, offset, seconds):
     """Quadros do vídeo base a partir de `offset` (s), no tamanho do quadro e no FPS do render.
-    Diferente do vídeo de banco, o tempo aqui é o da fala: o quadro k é o instante offset + k/FPS."""
+    Diferente do vídeo de banco, o tempo aqui é o da fala: o quadro k é o instante offset + k/FPS.
+    Barras pretas gravadas no vídeo (avatar horizontal num quadro vertical) são cortadas antes: a área
+    útil é escalada para ocupar a tela toda, centralizada (corta as laterais no vertical)."""
     from render.common import FPS, H, W
     out_dir = Path(out_dir)
     shutil.rmtree(out_dir, ignore_errors=True)
     out_dir.mkdir(parents=True)
     w, h = int(W * BASE_ZOOM) // 2 * 2, int(H * BASE_ZOOM) // 2 * 2
-    vf = f"fps={FPS},scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
+    bars = detect_bars(str(mp4))
+    vf = f"{bars + ',' if bars else ''}fps={FPS},scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{max(offset, 0):.3f}", "-t", f"{seconds:.2f}",
                     "-i", str(mp4), "-an", "-vf", vf, "-q:v", "3", str(out_dir / "%04d.jpg")], check=True, timeout=600)
     if not (out_dir / "0001.jpg").exists():
