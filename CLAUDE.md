@@ -391,6 +391,19 @@ reais encontradas ao construir o projeto, não só a estrutura.
   vai-e-volta); cena avatar não gera imagem. A API do Higgsfield (`api.higgsfield.ai`, `Authorization: Key ID:SECRET`, POST no modelo →
   `status_url` → `video.url`) e o nome do modelo de avatar ficam em variáveis de ambiente (`HIGGSFIELD_*`), porque não deu para ler a
   documentação deles daqui (domínio bloqueado) — confirmar o modelo e os nomes de campo com a chave real.
+  **Criação em 5 passos (03/11/2026, estudo de usabilidade aprovado pelo Rodrigo)**: a tela `/videogen` é um questionário
+  (Formato → Quem fala → Conteúdo → Visual → Revisão) em que cada passo só abre depois do anterior e os campos mudam conforme
+  **quem fala** (`VideoJob.speaker`: `ai_voice` voz do ElevenLabs, `ai_avatar` voz + avatar do Higgsfield, `upload` áudio/vídeo
+  enviado). Nada é gasto antes do "Criar vídeo" da revisão (que mostra um custo estimado). No `upload`, o arquivo sobe antes do
+  job (`videogen/base/<rand>/`, `uploadBaseFile()`), o POST de jobs recebe `baseUrl`/`baseKind`/`baseUseVideo` e já transcreve e
+  monta as cenas (`applyBaseSpeech()` em `baseVideo.ts`); áudio = só narração, vídeo = trilha fixa (`AvatarTrack` upload) ou só o
+  áudio, a critério do usuário; sem campos de tema/voz/duração, e `fixedSpeech(job)` (em `types.ts`) é a checagem única de "fala
+  gravada" (script/narração/PATCH/editor). No `ai_avatar`, a foto vem do perfil de quem fala (`VideoProfile.avatarUrl`) ou é
+  enviada no passo 2 (`VideoJob.avatarImageUrl`). O editor mostra só as etapas do caminho (`STEPS_BY_SPEAKER` em
+  `VideoJobEditor.tsx`): voz por IA = Tema/Roteiro/Narração/Render/Pronto; avatar = … Narração → **Avatar** → Render (o botão
+  "Aprovar e gerar avatar" do controle de etapas é o que manda o áudio pro Higgsfield: a narração sempre é aprovada antes);
+  enviado = Envio/Cenas/Render/Pronto. `BaseVideoPanel.tsx` virou o card do caminho (Avatar ou Sua gravação), sem seletor de modo.
+  Vídeos antigos: a migration deduz `speaker` do vídeo base.
   **Notícia vira vídeo**: botão "Criar vídeo" em `/noticia/[id]` abre `/videogen?noticia=<id>`; o POST de jobs recebe
   `articleId` (coluna `VideoJob.articleId`, sem FK), `articleSource()` (`src/lib/videogen/articleSource.ts`) monta o texto
   da notícia e ele entra no prompt como NOTÍCIA DE BASE (só os fatos dela); "gerar de novo" relê a notícia. As imagens

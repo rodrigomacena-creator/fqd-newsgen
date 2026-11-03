@@ -10,9 +10,8 @@ import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { CostPanel } from "@/components/videogen/CostPanel";
 import { BriefingImages } from "@/components/videogen/BriefingImages";
 import { SceneStudio } from "@/components/videogen/SceneStudio";
-import { BaseVideoPanel } from "@/components/videogen/BaseVideoPanel";
+import { BaseVideoPanel, avatarPhoto, jobApi } from "@/components/videogen/BaseVideoPanel";
 import {
-  FLOW_STEPS,
   AutoTextarea,
   CopyButton,
   Icon,
@@ -34,8 +33,11 @@ import { mergePronunciations } from "@/lib/videogen/pronunciation";
 import { uploadImage } from "@/lib/videogen/uploadImage";
 import {
   MAX_BRIEFING_IMAGES,
+  SPEAKER_LABEL,
   WORDS_PER_SECOND,
+  fixedSpeech,
   fullNarration,
+  type Speaker,
   type BriefingImage,
   type Pronunciation,
   type VideoScene,
@@ -43,7 +45,14 @@ import {
 } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
-type Busy = null | "save" | "script" | "narration" | "queue" | "preview" | "delete" | "storyboard";
+type Busy = null | "save" | "script" | "narration" | "avatar" | "queue" | "preview" | "delete" | "storyboard";
+
+/** Etapas do editor por caminho (quem fala). A primeira é a criação, já feita. */
+const STEPS_BY_SPEAKER: Record<Speaker, readonly string[]> = {
+  ai_voice: ["Tema", "Roteiro", "Narração", "Render", "Pronto"],
+  ai_avatar: ["Tema", "Roteiro", "Narração", "Avatar", "Render", "Pronto"],
+  upload: ["Envio", "Cenas", "Render", "Pronto"],
+};
 
 export function VideoJobEditor({ id }: { id: string }) {
   const router = useRouter();
@@ -176,6 +185,24 @@ export function VideoJobEditor({ id }: { id: string }) {
     if (dirty && !(await save())) return;
     const data = await call("narration", `/api/videogen/jobs/${id}/narration`, { method: "POST" });
     if (data) applyJob(data.job);
+  }
+
+  /** Avatar por IA: manda a narração aprovada (e a foto) pro Higgsfield. */
+  async function startAvatar(scope: "all" | "marked", imageUrl: string | null) {
+    if (dirty && !(await save())) throw new Error("Não deu para salvar as alterações.");
+    setBusy("avatar");
+    setError(null);
+    try {
+      applyJob(
+        await jobApi(`/api/videogen/jobs/${id}/avatar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: "higgsfield", imageUrl, scope }),
+        })
+      );
+    } finally {
+      setBusy(null);
+    }
   }
 
   const [boardScene, setBoardScene] = useState<number | null>(null);
@@ -340,14 +367,38 @@ export function VideoJobEditor({ id }: { id: string }) {
   const estimate = noNarration ? script?.scenes.reduce((sum, s) => sum + s.durationS, 0) ?? 0 : wordCount / WORDS_PER_SECOND;
 
   const hasNarrationNow = noNarration || Boolean(job.narrationUrl);
-  // vídeo base do usuário: a narração é a fala dele
-  const fromUpload = job.avatar?.source === "upload" && job.avatar.narrationUrl === job.narrationUrl;
+  // fala enviada (áudio/vídeo): a narração é a gravação
+  const fromUpload = fixedSpeech(job);
+  const speaker: Speaker = fromUpload ? "upload" : job.speaker === "upload" ? "ai_voice" : job.speaker;
+  const steps = STEPS_BY_SPEAKER[speaker];
   const flowDone = job.status === "done" && Boolean(job.videoUrl);
-  // 1 = revisar roteiro, 2 = ouvir narração/enviar, 3 = render, 4 = pronto
-  const flowCurrent = flowDone ? 4 : locked ? 3 : script && hasNarrationNow ? (noNarration ? 3 : 2) : 1;
+  const avatarValid = Boolean(job.avatar && job.narrationUrl && job.avatar.narrationUrl === job.narrationUrl);
+  const avatarGenerating = avatarValid && job.avatar?.status === "generating";
+  // avatar por IA: depois da narração aprovada vem a etapa do avatar; pronto (ou falhou) libera o render
+  const avatarPending = speaker === "ai_avatar" && !(avatarValid && job.avatar?.status !== "generating");
+  // índice da etapa atual na lista do caminho
+  const flowCurrent = flowDone
+    ? steps.length - 1
+    : locked
+      ? steps.length - 2
+      : speaker === "upload"
+        ? 1
+        : !script || !hasNarrationNow
+          ? 1
+          : speaker === "ai_avatar"
+            ? avatarPending
+              ? avatarGenerating
+                ? 3
+                : 2
+              : 4
+            : noNarration
+              ? 3
+              : 2;
 
   const stepBar = (
     <StepBar
+      steps={steps}
+      speaker={speaker}
       step={flowCurrent}
       job={job}
       hasScript={Boolean(script)}
@@ -355,8 +406,10 @@ export function VideoJobEditor({ id }: { id: string }) {
       renderable={renderable}
       busy={busy}
       dirty={dirty}
+      avatarImage={avatarPhoto(job, person)}
       onGenerateScript={regenerateScript}
       onNarration={generateNarration}
+      onStartAvatar={(img) => startAvatar("all", img).catch((e) => setError(e instanceof Error ? e.message : "Erro ao gerar o avatar."))}
       onQueue={() => queue()}
       onPreview={() => queue(false, "preview")}
       onUnqueue={() => queue(true)}
@@ -377,7 +430,9 @@ export function VideoJobEditor({ id }: { id: string }) {
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight text-balance sm:text-3xl">{script?.title || job.topic}</h1>
           <p className="mt-2 text-sm text-text-secondary">
-            {profileLine} · {pattern ? pattern.nome : stylesLoaded ? "Estilo removido" : "…"} · alvo {job.durationS}s{job.format === "16:9" ? " · horizontal 16:9 (YouTube)" : ""}
+            {SPEAKER_LABEL[speaker]} · {profileLine} · {pattern ? pattern.nome : stylesLoaded ? "Estilo removido" : "…"} ·{" "}
+            {fromUpload ? `${(job.narrationDurationS ?? 0).toFixed(0)}s` : `alvo ${job.durationS}s`}
+            {job.format === "16:9" ? " · horizontal 16:9 (YouTube)" : ""}
           </p>
           {pattern?.kind === "free" && <FreeStyleSummary spec={script?.styleSpec} notes={job.styleNotes} />}
         </div>
@@ -582,6 +637,9 @@ export function VideoJobEditor({ id }: { id: string }) {
                     {busy === "narration" ? <Spinner /> : <Icon name="refresh" className="h-4 w-4" />}
                     {busy === "narration" ? "Gerando narração…" : "Gerar narração de novo"}
                   </button>
+                  {speaker === "ai_avatar" && avatarValid && (
+                    <p className="mt-2 text-xs text-text-secondary">Gerar a narração de novo descarta o avatar: ele precisa falar o áudio novo.</p>
+                  )}
                 </div>
               ) : (
                 <p className="mt-3 text-xs text-text-secondary">
@@ -597,7 +655,7 @@ export function VideoJobEditor({ id }: { id: string }) {
             </section>
           )}
 
-          {script && !noNarration && pattern?.kind !== "builtin" && (
+          {script && !noNarration && speaker !== "ai_voice" && (
             <BaseVideoPanel
               job={job}
               script={script}
@@ -607,6 +665,7 @@ export function VideoJobEditor({ id }: { id: string }) {
               onSave={save}
               onJob={applyJob}
               onAvatarProgress={setJob}
+              onStartAvatar={startAvatar}
             />
           )}
 
@@ -712,6 +771,8 @@ function Shell({ children, top }: { children: React.ReactNode; top?: React.React
  * barra de salvar antiga.
  */
 function StepBar({
+  steps,
+  speaker,
   step,
   job,
   hasScript,
@@ -719,14 +780,19 @@ function StepBar({
   renderable,
   busy,
   dirty,
+  avatarImage,
   onGenerateScript,
   onNarration,
+  onStartAvatar,
   onQueue,
   onPreview,
   onUnqueue,
   onSave,
   onDiscard,
 }: {
+  /** Nomes das etapas do caminho deste vídeo (a primeira é a criação, já feita). */
+  steps: readonly string[];
+  speaker: Speaker;
   step: number;
   job: VideoJobDTO;
   hasScript: boolean;
@@ -734,8 +800,11 @@ function StepBar({
   renderable: boolean;
   busy: Busy;
   dirty: boolean;
+  /** Foto que o avatar vai usar (sem ela, o avatar não pode ser gerado). */
+  avatarImage: string | null;
   onGenerateScript: () => void;
   onNarration: () => void;
+  onStartAvatar: (imageUrl: string | null) => void;
   onQueue: () => void;
   onPreview: () => void;
   onUnqueue: () => void;
@@ -748,19 +817,42 @@ function StepBar({
   const actionClass = "w-full sm:w-auto";
   // Botão principal em tinta (preto no claro, claro no escuro): o vermelho sai da faixa.
   const ink = "!bg-foreground !text-background hover:!bg-foreground/85 btn-glow";
+  const avatar = job.avatar;
+  const avatarValid = Boolean(avatar && job.narrationUrl && avatar.narrationUrl === job.narrationUrl);
+  const avatarState = speaker === "ai_avatar" ? (avatarValid ? avatar!.status : "none") : "ready";
+  const avatarDone = avatar?.segments.filter((s) => s.status === "completed").length ?? 0;
 
   let title: string;
   let hint = "";
   let action: React.ReactNode = null;
   let progress: number | null = null;
 
+  const renderActions = (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <button
+        type="button"
+        onClick={onPreview}
+        disabled={busy !== null}
+        title="Render rápido para conferir ritmo e cortes (menos fluido, sem trilha). As imagens ficam para o render final."
+        className={`${actionClass} ${secondaryButton} bg-background/70`}
+      >
+        {busy === "preview" ? <Spinner /> : <Icon name="play" className="h-4 w-4" />}
+        {busy === "preview" ? "Enviando…" : "Prévia rápida"}
+      </button>
+      <button type="button" onClick={onQueue} disabled={busy !== null} aria-busy={busy === "queue"} className={`${actionClass} ${primaryButton} ${ink}`}>
+        {busy === "queue" ? <Spinner /> : <Icon name="arrow" className="h-4 w-4" />}
+        {busy === "queue" ? "Enviando…" : "Enviar para render"}
+      </button>
+    </div>
+  );
+
   if (!hasScript) {
-    title = "Gerar o roteiro";
-    hint = "A IA escreve as cenas a partir do tema; depois você revisa.";
+    title = speaker === "upload" ? "Montar as cenas" : "Gerar o roteiro";
+    hint = speaker === "upload" ? "A fala da gravação é dividida em cenas; depois você revisa." : "A IA escreve as cenas a partir do tema; depois você revisa.";
     action = (
       <button type="button" onClick={onGenerateScript} disabled={busy !== null} aria-busy={busy === "script"} className={`${actionClass} ${primaryButton} ${ink}`}>
         {busy === "script" ? <Spinner /> : <Icon name="sparkles" className="h-4 w-4" />}
-        {busy === "script" ? "Gerando roteiro…" : "Gerar roteiro"}
+        {busy === "script" ? "Gerando…" : speaker === "upload" ? "Montar cenas" : "Gerar roteiro"}
       </button>
     );
   } else if (!hasNarration) {
@@ -800,31 +892,59 @@ function StepBar({
   } else if (!renderable) {
     title = "Estilo removido";
     hint = "O estilo deste vídeo foi excluído, então ele não pode mais ir para o render.";
-  } else {
-    title = job.status === "failed" ? "O render falhou. Tente de novo" : noNarration ? "Envie para o render" : "Ouça a narração e envie para o render";
-    hint = `Se a voz estiver boa, envie: o servidor gera as imagens, a trilha e monta o mp4. Se não, ajuste e gere de novo.${savingNote}`;
+  } else if (avatarState === "none") {
+    // avatar por IA: a narração precisa ser aprovada antes de ir pro Higgsfield
+    title = "Ouça a narração: aprove ou gere de novo";
+    hint = avatarImage
+      ? `Aprovar manda só este áudio para o Higgsfield gerar o avatar. Se a voz não estiver boa, gere a narração de novo no card ao lado.${savingNote}`
+      : "Falta a foto do avatar: envie uma no card Avatar (ou cadastre no perfil de quem fala).";
     action = (
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <button type="button" onClick={onNarration} disabled={busy !== null} className={`${actionClass} ${secondaryButton} bg-background/70`}>
+          {busy === "narration" ? <Spinner /> : <Icon name="refresh" className="h-4 w-4" />}
+          {busy === "narration" ? "Gerando…" : "Gerar de novo"}
+        </button>
         <button
           type="button"
-          onClick={onPreview}
-          disabled={busy !== null}
-          title="Render rápido para conferir ritmo e cortes (menos fluido, sem trilha). As imagens ficam para o render final."
-          className={`${actionClass} ${secondaryButton} bg-background/70`}
+          onClick={() => onStartAvatar(avatarImage)}
+          disabled={busy !== null || !avatarImage}
+          aria-busy={busy === "avatar"}
+          className={`${actionClass} ${primaryButton} ${ink}`}
         >
-          {busy === "preview" ? <Spinner /> : <Icon name="play" className="h-4 w-4" />}
-          {busy === "preview" ? "Enviando…" : "Prévia rápida"}
-        </button>
-        <button type="button" onClick={onQueue} disabled={busy !== null} aria-busy={busy === "queue"} className={`${actionClass} ${primaryButton} ${ink}`}>
-          {busy === "queue" ? <Spinner /> : <Icon name="arrow" className="h-4 w-4" />}
-          {busy === "queue" ? "Enviando…" : "Enviar para render"}
+          {busy === "avatar" ? <Spinner /> : <Icon name="check" className="h-4 w-4" />}
+          {busy === "avatar" ? "Enviando ao Higgsfield…" : "Aprovar e gerar avatar"}
         </button>
       </div>
     );
+  } else if (avatarState === "generating") {
+    title = `Gerando o avatar · ${avatarDone} de ${avatar!.segments.length} trecho(s)`;
+    hint = "O Higgsfield anima a foto falando a narração aprovada. Leva alguns minutos; você pode continuar editando as cenas.";
+  } else if (avatarState === "failed") {
+    title = "Parte do avatar falhou";
+    hint = "Tente de novo os trechos que falharam no card Avatar, ou troque as cenas afetadas para imagem e envie para o render.";
+    action = renderActions;
+  } else {
+    title =
+      job.status === "failed"
+        ? "O render falhou. Tente de novo"
+        : speaker === "ai_avatar"
+          ? "Avatar pronto: escolha as cenas e envie para o render"
+          : speaker === "upload"
+            ? "Revise as cenas e envie para o render"
+            : noNarration
+              ? "Envie para o render"
+              : "Ouça a narração e envie para o render";
+    hint =
+      speaker === "ai_avatar"
+        ? `Na timeline, a faixa Avatar diz em que cenas aparece você e em quais aparece imagem.${savingNote}`
+        : speaker === "upload"
+          ? `A fala é a da gravação. Ajuste o texto da tela e as imagens; depois envie.${savingNote}`
+          : `Se a voz estiver boa, envie: o servidor gera as imagens, a trilha e monta o mp4. Se não, ajuste e gere de novo.${savingNote}`;
+    action = renderActions;
   }
 
   const stateOf = (i: number) => (done || i < step ? "done" : i === step ? "current" : "todo");
-  const skipped = (i: number) => noNarration && i === 2;
+  const skipped = (i: number) => noNarration && steps[i] === "Narração";
   // Quanto do segmento da etapa atual já foi feito (no render, o progresso real).
   const currentFill = progress !== null ? Math.max(8, progress) : job.status === "queued" ? 15 : 50;
 
@@ -838,6 +958,7 @@ function StepBar({
   const faint = `text-[#7d786c] [[data-theme=dark]_&]:text-[#9a917f]`;
   const track = `bg-[#d8cfbc] [[data-theme=dark]_&]:bg-[#4a4335]`;
   const filled = done ? `bg-[#2f7d4f] [[data-theme=dark]_&]:bg-[#4caf72]` : "bg-foreground";
+  const cols = steps.length === 4 ? "grid-cols-4" : steps.length === 6 ? "grid-cols-6" : "grid-cols-5";
 
   return (
     <section aria-label="Etapas do vídeo" className={`sticky top-[69px] z-[9] w-full border-y ${band} shadow-[0_10px_24px_-14px_rgba(0,0,0,0.25)]`}>
@@ -873,32 +994,32 @@ function StepBar({
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-3.5 sm:px-6 lg:flex-row lg:items-center lg:gap-8">
         {/* trilho de etapas */}
         <div className="w-full shrink-0 lg:w-[420px]">
-          <div aria-hidden className="grid grid-cols-5 gap-1">
-            {FLOW_STEPS.map((s, i) => {
+          <div aria-hidden className={`grid ${cols} gap-1`}>
+            {steps.map((label, i) => {
               const st = stateOf(i);
               return (
-                <span key={s.label} className={`relative h-[5px] overflow-hidden rounded-full ${track} ${skipped(i) ? "opacity-40" : ""}`}>
+                <span key={label} className={`relative h-[5px] overflow-hidden rounded-full ${track} ${skipped(i) ? "opacity-40" : ""}`}>
                   {st === "done" && !skipped(i) && <span className={`absolute inset-0 ${filled}`} />}
                   {st === "current" && !done && <span className={`absolute inset-y-0 left-0 ${filled} transition-[width] duration-700`} style={{ width: `${currentFill}%` }} />}
                 </span>
               );
             })}
           </div>
-          <ol className="mt-2 grid grid-cols-5 gap-1 text-[11px] sm:text-xs">
-            {FLOW_STEPS.map((s, i) => {
+          <ol className={`mt-2 grid ${cols} gap-1 text-[11px] sm:text-xs`}>
+            {steps.map((label, i) => {
               const st = stateOf(i);
               const skip = skipped(i);
               const current = st === "current" && !done;
               return (
                 <li
-                  key={s.label}
+                  key={label}
                   aria-current={current ? "step" : undefined}
                   className={`flex min-w-0 items-center gap-1.5 truncate ${
-                    current ? "font-bold text-foreground" : done && i === FLOW_STEPS.length - 1 ? `font-bold ${muted}` : st === "done" ? muted : faint
+                    current ? "font-bold text-foreground" : done && i === steps.length - 1 ? `font-bold ${muted}` : st === "done" ? muted : faint
                   } ${skip ? "line-through opacity-60" : ""}`}
                 >
                   {current && <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-yellow" />}
-                  {s.label}
+                  {label}
                   <span className="sr-only">
                     {skip ? " (não se aplica)" : st === "done" ? " (concluída)" : current ? " (etapa atual)" : " (próxima)"}
                   </span>
@@ -909,7 +1030,7 @@ function StepBar({
         </div>
         <div className="min-w-0 flex-1" aria-live="polite">
           <p className={`text-[11px] font-semibold uppercase tracking-[0.1em] ${done ? muted : `text-[#6f6a5e] [[data-theme=dark]_&]:text-[#a89f8c]`}`}>
-            {done ? "Concluído" : `Passo ${step + 1} de ${FLOW_STEPS.length}`}
+            {done ? "Concluído" : `Passo ${step + 1} de ${steps.length} · ${SPEAKER_LABEL[speaker]}`}
           </p>
           <p className="mt-0.5 text-[15px] font-semibold leading-snug">{title}</p>
           {hint && <p className={`mt-0.5 hidden text-xs sm:block ${muted}`}>{hint}</p>}

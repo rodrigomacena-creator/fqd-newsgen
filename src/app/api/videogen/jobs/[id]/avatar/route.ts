@@ -4,11 +4,10 @@ import { deleteBlobIfOwned } from "@/lib/blobStorage";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { advanceAvatar, discardAvatarFiles, parseAvatar, startHiggsfield } from "@/lib/videogen/avatar";
 import { higgsfieldConfigured } from "@/lib/videogen/higgsfield";
-import { speechToText } from "@/lib/videogen/elevenlabs";
-import { scriptFromTranscript, transcriptWords } from "@/lib/videogen/baseVideo";
+import { applyBaseSpeech } from "@/lib/videogen/baseVideo";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { getProfile, isAllowedImageUrl } from "@/lib/videogen/profiles";
-import type { AvatarTrack, VideoScript } from "@/lib/videogen/types";
+import { fixedSpeech, type VideoScript } from "@/lib/videogen/types";
 
 export const maxDuration = 300;
 
@@ -36,12 +35,12 @@ export async function GET(_request: Request, ctx: Ctx) {
  * Cria o vídeo base.
  * { source: "higgsfield", imageUrl?, scope?: "all" | "marked" }: avatar falando a narração atual
  *   (foto do perfil da pessoa, ou a enviada). "all" = a fala inteira; "marked" = só as cenas marcadas.
- * { source: "upload", videoUrl, durationS? }: vídeo do usuário (já no Blob). A fala dele é
- *   transcrita, vira a narração, e o roteiro é refeito em cima dela.
+ * { source: "upload", videoUrl, durationS?, useVideo? }: áudio/vídeo do usuário (já no Blob). A fala
+ *   é transcrita, vira a narração, e o roteiro é refeito em cima dela. `useVideo: false` = só o áudio.
  */
 export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
-  let body: { source?: string; imageUrl?: string; scope?: string; videoUrl?: string; durationS?: number };
+  let body: { source?: string; imageUrl?: string; scope?: string; videoUrl?: string; durationS?: number; useVideo?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -64,7 +63,7 @@ export async function POST(request: Request, ctx: Ctx) {
       }
       let imageUrl = typeof body.imageUrl === "string" ? body.imageUrl.trim() : "";
       if (imageUrl && !isAllowedImageUrl(imageUrl)) return NextResponse.json({ error: "Foto do avatar inválida." }, { status: 400 });
-      if (!imageUrl) imageUrl = (await getProfile(job.personId, "person"))?.avatarUrl ?? "";
+      if (!imageUrl) imageUrl = job.avatarImageUrl || ((await getProfile(job.personId, "person"))?.avatarUrl ?? "");
       if (!imageUrl) {
         return NextResponse.json({ error: "Envie uma foto do avatar (ou cadastre uma no perfil de quem fala)." }, { status: 400 });
       }
@@ -78,48 +77,20 @@ export async function POST(request: Request, ctx: Ctx) {
       if (!marked && script.scenes[0]) script.scenes[0].avatar = true;
       const updated = await prisma.videoJob.update({
         where: { id },
-        data: { avatar: JSON.stringify(avatar), ...(marked ? {} : { script: JSON.stringify(script) }), error: null },
+        data: { avatar: JSON.stringify(avatar), speaker: "ai_avatar", ...(marked ? {} : { script: JSON.stringify(script) }), error: null },
       });
       return NextResponse.json({ job: serializeVideoJob(updated) });
     }
 
     if (body.source === "upload") {
       const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl.trim() : "";
-      if (!videoUrl || !isAllowedImageUrl(videoUrl) || !videoUrl.includes(`/videogen/${id}/base/`)) {
-        return NextResponse.json({ error: "Vídeo inválido." }, { status: 400 });
+      if (!videoUrl || !isAllowedImageUrl(videoUrl) || !(videoUrl.includes(`/videogen/${id}/base/`) || videoUrl.includes("/videogen/base/"))) {
+        return NextResponse.json({ error: "Arquivo inválido." }, { status: 400 });
       }
-      const { words: raw } = await speechToText(videoUrl);
-      const words = transcriptWords(raw);
-      if (words.length < 2) {
-        await deleteBlobIfOwned(videoUrl);
-        return NextResponse.json({ error: "Não encontrei fala no vídeo. Envie um vídeo com alguém falando." }, { status: 400 });
-      }
-      const durationS = Math.max(Number(body.durationS) || 0, words.at(-1)![2] + 0.3);
-      const { script: next, usd } = await scriptFromTranscript(job, words, durationS);
+      const isVideo = /\.(mp4|mov|webm)(\?|$)/i.test(videoUrl.split("?")[0]);
+      const { data, usd } = await applyBaseSpeech(job, videoUrl, { useVideo: isVideo && body.useVideo !== false, durationS: Number(body.durationS) || 0 });
       await appendCosts(id, [costEntry("script", "openrouter", { usd })]);
-      const avatar: AvatarTrack = {
-        source: "upload",
-        status: "ready",
-        narrationUrl: videoUrl,
-        segments: [{ start: 0, end: durationS, status: "completed", videoUrl }],
-        durationS,
-        createdAt: new Date().toISOString(),
-      };
-      const prev = parseAvatar(job.avatar);
-      if (prev) await discardAvatarFiles(prev, videoUrl);
-      if (job.narrationUrl !== videoUrl) await deleteBlobIfOwned(job.narrationUrl);
-      const updated = await prisma.videoJob.update({
-        where: { id },
-        data: {
-          avatar: JSON.stringify(avatar),
-          script: JSON.stringify(next),
-          narrationUrl: videoUrl,
-          narrationWords: JSON.stringify(words),
-          narrationDurationS: Math.round(durationS * 100) / 100,
-          status: "script_ready",
-          error: null,
-        },
-      });
+      const updated = await prisma.videoJob.update({ where: { id }, data });
       return NextResponse.json({ job: serializeVideoJob(updated) });
     }
     return NextResponse.json({ error: "Escolha avatar (Higgsfield) ou vídeo seu." }, { status: 400 });
@@ -135,14 +106,16 @@ export async function DELETE(_request: Request, ctx: Ctx) {
   if (!job) return NextResponse.json({ error: "Vídeo não encontrado." }, { status: 404 });
   if (busy(job.status)) return NextResponse.json({ error: "O vídeo está na fila de render." }, { status: 409 });
   const avatar = parseAvatar(job.avatar);
-  if (!avatar) return NextResponse.json({ job: serializeVideoJob(job) });
-  const wasNarration = avatar.source === "upload" && avatar.narrationUrl === job.narrationUrl;
-  await discardAvatarFiles(avatar);
+  if (!avatar && !fixedSpeech(job)) return NextResponse.json({ job: serializeVideoJob(job) });
+  const wasNarration = fixedSpeech(job);
+  if (avatar) await discardAvatarFiles(avatar);
+  if (wasNarration) await deleteBlobIfOwned(job.narrationUrl);
   const updated = await prisma.videoJob.update({
     where: { id },
     data: {
       avatar: null,
-      ...(wasNarration ? { narrationUrl: null, narrationWords: null, narrationDurationS: null } : {}),
+      // sem a fala enviada, o vídeo volta a ser narrado por IA
+      ...(wasNarration ? { narrationUrl: null, narrationWords: null, narrationDurationS: null, speaker: "ai_voice" } : {}),
     },
   });
   return NextResponse.json({ job: serializeVideoJob(updated) });

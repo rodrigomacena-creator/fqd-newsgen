@@ -6,7 +6,58 @@ import { recentFreeStyles, resolveStyle } from "./templates";
 import { jobProfiles, parseBriefingImages } from "./profiles";
 import { articleSource } from "./articleSource";
 import { realignToTranscript } from "./avatar";
-import type { NarrationWord, VideoScript } from "./types";
+import { speechToText } from "./elevenlabs";
+import { deleteBlobIfOwned } from "@/lib/blobStorage";
+import { discardAvatarFiles, parseAvatar } from "./avatar";
+import type { AvatarTrack, NarrationWord, VideoScript } from "./types";
+
+/**
+ * Aplica um áudio/vídeo enviado como a fala do vídeo: transcreve no ElevenLabs, monta o roteiro em
+ * cima da fala e devolve os campos do job a gravar. `useVideo` (só vídeo) = o vídeo também aparece
+ * nas cenas marcadas (trilha fixa); senão só o áudio dele vira a narração.
+ * Lança erro (e apaga o arquivo) se não houver fala.
+ */
+export async function applyBaseSpeech(
+  job: VideoJob,
+  url: string,
+  opts: { useVideo: boolean; durationS?: number }
+): Promise<{ data: Record<string, unknown>; usd: number }> {
+  const { words: raw } = await speechToText(url);
+  const words = transcriptWords(raw);
+  if (words.length < 2) {
+    await deleteBlobIfOwned(url);
+    throw new Error("Não encontrei fala no arquivo. Envie um áudio ou vídeo com alguém falando.");
+  }
+  const durationS = Math.max(Number(opts.durationS) || 0, words.at(-1)![2] + 0.3);
+  const { script, usd } = await scriptFromTranscript(job, words, durationS);
+  const avatar: AvatarTrack | null = opts.useVideo
+    ? {
+        source: "upload",
+        status: "ready",
+        narrationUrl: url,
+        segments: [{ start: 0, end: durationS, status: "completed", videoUrl: url }],
+        durationS,
+        createdAt: new Date().toISOString(),
+      }
+    : null;
+  if (!avatar) script.scenes = script.scenes.map((s) => ({ ...s, avatar: undefined }));
+  const prev = parseAvatar(job.avatar);
+  if (prev) await discardAvatarFiles(prev, url);
+  if (job.narrationUrl && job.narrationUrl !== url) await deleteBlobIfOwned(job.narrationUrl);
+  return {
+    usd,
+    data: {
+      speaker: "upload",
+      avatar: avatar ? JSON.stringify(avatar) : null,
+      script: JSON.stringify(script),
+      narrationUrl: url,
+      narrationWords: JSON.stringify(words),
+      narrationDurationS: Math.round(durationS * 100) / 100,
+      status: "script_ready",
+      error: null,
+    },
+  };
+}
 
 /** Roteiro dividido em cenas a partir da fala transcrita do vídeo base. */
 export async function scriptFromTranscript(job: VideoJob, words: NarrationWord[], durationS: number): Promise<{ script: VideoScript; usd: number }> {

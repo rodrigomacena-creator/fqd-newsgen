@@ -90,6 +90,8 @@ model VideoJob {
   companyId          String? // VideoProfile (kind company) para quem é o conteúdo
   briefingImages     String? // JSON string: BriefingImage[] (imagens enviadas pelo usuário, usadas nas cenas sem gerar)
   avatar             String? // JSON string: AvatarTrack (vídeo base: avatar do Higgsfield ou vídeo do usuário; ver src/lib/videogen/avatar.ts)
+  speaker            String    @default("ai_voice") // quem fala: "ai_voice" (voz do ElevenLabs) | "ai_avatar" (voz + avatar do Higgsfield) | "upload" (áudio/vídeo enviado)
+  avatarImageUrl     String? // foto escolhida na criação para o avatar (Blob); sem ela usa a do perfil de quem fala
   error              String?
   startedAt          DateTime?
   finishedAt         DateTime?

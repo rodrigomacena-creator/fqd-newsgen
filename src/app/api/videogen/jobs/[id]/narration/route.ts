@@ -6,9 +6,8 @@ import { textToSpeechWithTimestamps } from "@/lib/videogen/elevenlabs";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { alignDisplayWords, mergePronunciations, spokenText } from "@/lib/videogen/pronunciation";
-import { fullNarration, type VideoScript } from "@/lib/videogen/types";
+import { fixedSpeech, fullNarration, type VideoScript } from "@/lib/videogen/types";
 import { jobProfiles } from "@/lib/videogen/profiles";
-import { parseAvatar } from "@/lib/videogen/avatar";
 
 export const maxDuration = 120;
 
@@ -22,10 +21,9 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
     return NextResponse.json({ error: "O vídeo está na fila de render." }, { status: 409 });
   }
 
-  const base = parseAvatar(job.avatar);
-  if (base?.source === "upload" && base.narrationUrl === job.narrationUrl) {
+  if (fixedSpeech(job)) {
     return NextResponse.json(
-      { error: "Este vídeo usa um vídeo seu como base: a fala vem dele. Remova o vídeo base para narrar no ElevenLabs." },
+      { error: "A fala deste vídeo vem do áudio/vídeo que você enviou. Tire a gravação para narrar no ElevenLabs." },
       { status: 409 }
     );
   }

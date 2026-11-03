@@ -99,3 +99,36 @@ export async function uploadBaseVideo(file: File, jobId: string, onProgress?: (p
   });
   return blob.url;
 }
+
+export type BaseKind = "video" | "audio";
+
+/** Tipo do arquivo enviado como fala ("video" ou "audio"), ou null se não for aceito. */
+export function baseKind(file: File): BaseKind | null {
+  if (VIDEO_TYPES[file.type]) return "video";
+  if (AUDIO_TYPES[audioType(file)]) return "audio";
+  return null;
+}
+
+export function baseProblem(file: File): string | null {
+  const kind = baseKind(file);
+  if (!kind) return `"${file.name}" não é um vídeo (MP4, MOV, WebM) nem um áudio (MP3, WAV, M4A, OGG).`;
+  if (file.size > MAX_VIDEO_MB * 1024 * 1024) return `"${file.name}" passa de ${MAX_VIDEO_MB} MB.`;
+  return null;
+}
+
+/** Sobe o áudio/vídeo com a fala (passo "Quem fala" da criação) direto do navegador pro Vercel Blob. */
+export async function uploadBaseFile(file: File, onProgress?: (pct: number) => void): Promise<{ url: string; kind: BaseKind }> {
+  const problem = baseProblem(file);
+  if (problem) throw new Error(problem);
+  const kind = baseKind(file)!;
+  const type = kind === "video" ? file.type : audioType(file);
+  const ext = kind === "video" ? VIDEO_TYPES[file.type] : AUDIO_TYPES[type];
+  const blob = await upload(`videogen/base/${randomId()}/${slug(file.name)}.${ext}`, file, {
+    access: "public",
+    handleUploadUrl: "/api/videogen/uploads",
+    contentType: type,
+    multipart: file.size > 20 * 1024 * 1024,
+    onUploadProgress: onProgress ? (e) => onProgress(e.percentage) : undefined,
+  });
+  return { url: blob.url, kind };
+}

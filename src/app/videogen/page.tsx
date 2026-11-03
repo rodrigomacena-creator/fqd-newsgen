@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
@@ -10,18 +10,22 @@ import { ScriptLoader } from "@/components/videogen/ScriptLoader";
 import { TopicAiModal } from "@/components/videogen/TopicAiModal";
 import { VoiceCloneModal } from "@/components/videogen/VoiceCloneModal";
 import { formatUsd } from "@/components/videogen/CostPanel";
-import { FlowSteps, Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
+import { mediaDuration } from "@/components/videogen/BaseVideoPanel";
+import { Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
 import type { VideoPattern } from "@/lib/videogen/patterns";
 import { FREE_STYLE_ID } from "@/lib/videogen/freeStyle";
 import { useStyles } from "@/lib/videogen/useStyles";
 import { useProfiles } from "@/lib/videogen/useProfiles";
+import { uploadBaseFile, uploadImage, type BaseKind } from "@/lib/videogen/uploadImage";
 import {
   DEFAULT_VOICE_ID,
   DURATION_OPTIONS,
   LANDSCAPE_DURATION_OPTIONS,
+  SPEAKER_LABEL,
   WORDS_PER_SECOND,
   type BriefingImage,
+  type Speaker,
   type VideoFormat,
   type VideoProfileDTO,
 } from "@/lib/videogen/types";
@@ -32,16 +36,73 @@ const TRAIN_VOICE = "__treinar-voz__";
 const MAX_BATCH = 10;
 const noopSubscribe = () => () => {};
 
+/** Os 5 passos da criação. A ordem importa: a resposta de "Quem fala" decide os campos dos passos seguintes. */
+const STEPS = [
+  { id: "formato", title: "Formato" },
+  { id: "quem-fala", title: "Quem fala" },
+  { id: "conteudo", title: "Conteúdo" },
+  { id: "visual", title: "Visual" },
+  { id: "revisao", title: "Revisão" },
+] as const;
+
+const SPEAKER_OPTIONS: { id: Speaker; title: string; help: string }[] = [
+  { id: "ai_voice", title: "Voz por IA", help: "A IA escreve o roteiro e a voz do perfil narra no ElevenLabs. As cenas mostram imagens." },
+  { id: "ai_avatar", title: "Avatar por IA", help: "Igual à voz por IA, e o Higgsfield anima a sua foto falando. Você escolhe, cena a cena, avatar ou imagem." },
+  { id: "upload", title: "Submeter áudio / vídeo", help: "Um áudio ou vídeo já gravado. A sua fala vira a narração; não há etapa de voz." },
+];
+
+/** Preços de referência para a estimativa da revisão (ordem de grandeza, não cobrança). */
+const USD_PER_CREDIT = 22 / 100_000;
+const EST = {
+  script: 0.08,
+  transcriptionPerMin: 0.01,
+  narrationPerS: 14 * USD_PER_CREDIT, // ≈ 14 caracteres falados por segundo
+  musicPerS: 13.75 * USD_PER_CREDIT,
+  image: 0.04,
+  secondsPerScene: 4,
+};
+
 export default function VideoGenPage() {
   const router = useRouter();
   const { voices, loading: loadingVoices, error: voicesError, addVoice } = useVoices();
   const [trainingVoice, setTrainingVoice] = useState(false);
 
+  // ----- passo 1: formato -----
+  const [format, setFormat] = useState<VideoFormat>("9:16");
+  const landscape = format === "16:9";
+
+  // ----- passo 2: quem fala -----
+  const [speaker, setSpeaker] = useState<Speaker>("ai_voice");
+  const { people, companies, loaded: profilesLoaded, setProfiles } = useProfiles();
+  // null = ainda não escolheu (usa o perfil padrão); "" = nenhum
+  const [chosenPerson, setChosenPerson] = useState<string | null>(null);
+  const [chosenCompany, setChosenCompany] = useState<string | null>(null);
+  const personId = chosenPerson ?? people.find((p) => p.isDefault)?.id ?? people[0]?.id ?? "";
+  const companyId = chosenCompany ?? companies.find((p) => p.isDefault)?.id ?? companies[0]?.id ?? "";
+  const person = people.find((p) => p.id === personId);
+  const company = companies.find((p) => p.id === companyId);
+  // A voz segue a da pessoa até o usuário trocar à mão.
+  const [chosenVoice, setChosenVoice] = useState<{ id: string; name: string } | null>(null);
+  const voiceId = chosenVoice?.id ?? person?.voiceId ?? DEFAULT_VOICE_ID;
+  const voiceName = chosenVoice?.name ?? (person?.voiceId ? person.voiceName || person.name : "Macena");
+  // avatar por IA: foto enviada só para este vídeo (senão a do perfil)
+  const [avatarPhoto, setAvatarPhoto] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const avatarImage = avatarPhoto ?? person?.avatarUrl ?? null;
+  // áudio/vídeo enviado
+  const [base, setBase] = useState<{ url: string; kind: BaseKind; name: string; durationS: number } | null>(null);
+  const [baseUseVideo, setBaseUseVideo] = useState(true);
+  const [baseProgress, setBaseProgress] = useState<number | null>(null);
+  const baseInput = useRef<HTMLInputElement>(null);
+
+  // ----- passo 3: conteúdo -----
   const [topic, setTopic] = useState("");
   const [topicAi, setTopicAi] = useState(false);
   // vários temas de uma vez: um vídeo (roteiro) por linha
   const [batch, setBatch] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number; failed: string[] } | null>(null);
+  const [extraInstructions, setExtraInstructions] = useState("");
   // /videogen?noticia=<id> (botão "Criar vídeo" da notícia): o roteiro sai da notícia
   const wantedArticle = useSyncExternalStore(
     noopSubscribe,
@@ -65,6 +126,9 @@ export default function VideoGenPage() {
     .map((t) => t.trim())
     .filter(Boolean)
     .slice(0, MAX_BATCH);
+  const isBatch = batch && !article && speaker !== "upload";
+
+  // ----- passo 4: visual -----
   const { styles: allStyles, loaded: stylesLoaded, getStyle, removeStyle } = useStyles();
   // Os estilos embutidos antigos só continuam valendo para vídeos já criados; os novos usam os gerados.
   const styles = allStyles.filter((s) => s.kind !== "builtin");
@@ -78,26 +142,21 @@ export default function VideoGenPage() {
   );
   const patternId =
     chosenPattern ?? (wantedPattern && styles.some((s) => s.id === wantedPattern) ? wantedPattern : FREE_STYLE_ID);
-  const { people, companies, loaded: profilesLoaded, setProfiles } = useProfiles();
-  // null = ainda não escolheu (usa o perfil padrão); "" = nenhum
-  const [chosenPerson, setChosenPerson] = useState<string | null>(null);
-  const [chosenCompany, setChosenCompany] = useState<string | null>(null);
-  const personId = chosenPerson ?? people.find((p) => p.isDefault)?.id ?? people[0]?.id ?? "";
-  const companyId = chosenCompany ?? companies.find((p) => p.isDefault)?.id ?? companies[0]?.id ?? "";
-  const person = people.find((p) => p.id === personId);
-  // A voz segue a da pessoa até o usuário trocar à mão.
-  const [chosenVoice, setChosenVoice] = useState<{ id: string; name: string } | null>(null);
-  const voiceId = chosenVoice?.id ?? person?.voiceId ?? DEFAULT_VOICE_ID;
-  const voiceName = chosenVoice?.name ?? (person?.voiceId ? person.voiceName || person.name : "Macena");
+  const pattern = getStyle(patternId);
+  const [styleNotes, setStyleNotes] = useState("");
   const [briefingImages, setBriefingImages] = useState<BriefingImage[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [durationS, setDurationS] = useState(15);
-  // formato: vertical (Reels/Shorts) é o padrão; horizontal (YouTube) é opcional
-  const [format, setFormat] = useState<VideoFormat>("9:16");
-  const [extraInstructions, setExtraInstructions] = useState("");
-  const [styleNotes, setStyleNotes] = useState("");
+  const durationOptions = landscape ? LANDSCAPE_DURATION_OPTIONS : DURATION_OPTIONS;
+
+  // ----- navegação entre passos -----
+  // `reached` = até que passo a pessoa já chegou; passos depois dele ficam fechados.
+  const [reached, setReached] = useState(0);
+  const [stepError, setStepError] = useState<Record<number, string | null>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ----- lista de vídeos -----
   const [jobs, setJobs] = useState<VideoJobDTO[] | null>(null);
   const [totalJobs, setTotalJobs] = useState(0);
   const [showAll, setShowAll] = useState(false);
@@ -130,15 +189,72 @@ export default function VideoGenPage() {
     return () => clearInterval(t);
   }, [anyRendering]);
 
-  const pattern = getStyle(patternId);
-  const landscape = format === "16:9";
-  const durationOptions = landscape ? LANDSCAPE_DURATION_OPTIONS : DURATION_OPTIONS;
-
   /** Troca o formato (o horizontal ganha durações maiores). */
   function chooseFormat(next: VideoFormat) {
     setFormat(next);
     const options = next === "16:9" ? LANDSCAPE_DURATION_OPTIONS : DURATION_OPTIONS;
     if (!options.includes(durationS)) setDurationS(next === "16:9" ? 60 : 15);
+  }
+
+  /** O que falta para fechar o passo `i` (null = pode continuar). */
+  function problem(i: number): string | null {
+    if (i === 1) {
+      if (speaker === "ai_avatar" && !avatarImage) return "Envie uma foto para o avatar ou cadastre uma no perfil de quem fala.";
+      if (speaker === "upload" && !base) return "Envie o áudio ou o vídeo com a sua fala.";
+      if (baseProgress !== null) return "Espere o envio terminar.";
+    }
+    if (i === 2 && speaker !== "upload" && !article) {
+      if (isBatch && batchTopics.length === 0) return "Escreva ao menos um tema (um por linha).";
+      if (!isBatch && !topic.trim()) return "Escreva o tema do vídeo.";
+    }
+    if (i === 3 && uploadingImages) return "Espere as imagens terminarem de enviar.";
+    return null;
+  }
+
+  function goTo(i: number) {
+    document.getElementById(`passo-${STEPS[i].id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function next(i: number) {
+    const p = problem(i);
+    setStepError((e) => ({ ...e, [i]: p }));
+    if (p) return;
+    setReached((r) => Math.max(r, i + 1));
+    // o passo seguinte só existe no DOM depois do render
+    setTimeout(() => goTo(i + 1), 50);
+  }
+
+  /** Voltar a um passo anterior: os seguintes continuam abertos (as respostas ficam). */
+  function edit(i: number) {
+    goTo(i);
+  }
+
+  async function pickBase(file: File | undefined) {
+    if (!file) return;
+    setStepError((e) => ({ ...e, 1: null }));
+    try {
+      const durationS = await mediaDuration(file);
+      setBaseProgress(0);
+      const { url, kind } = await uploadBaseFile(file, (p) => setBaseProgress(p));
+      setBase({ url, kind, name: file.name, durationS });
+    } catch (err) {
+      setStepError((e) => ({ ...e, 1: err instanceof Error ? err.message : "Falha ao enviar o arquivo." }));
+    } finally {
+      setBaseProgress(null);
+    }
+  }
+
+  async function pickPhoto(file: File | undefined) {
+    if (!file) return;
+    setUploadingPhoto(true);
+    setStepError((e) => ({ ...e, 1: null }));
+    try {
+      setAvatarPhoto(await uploadImage(file, "perfis"));
+    } catch (err) {
+      setStepError((e) => ({ ...e, 1: err instanceof Error ? err.message : "Falha ao enviar a foto." }));
+    } finally {
+      setUploadingPhoto(false);
+    }
   }
 
   function payload(t: string, withImages: boolean) {
@@ -155,17 +271,17 @@ export default function VideoGenPage() {
       briefingImages: withImages ? briefingImages : [],
       articleId: article?.id ?? null,
       format,
+      speaker,
+      avatarImageUrl: speaker === "ai_avatar" ? avatarPhoto : null,
+      ...(speaker === "upload" && base
+        ? { baseUrl: base.url, baseKind: base.kind, baseDurationS: base.durationS, baseUseVideo: base.kind === "video" && baseUseVideo }
+        : {}),
     };
   }
 
   /** Vários temas: gera um roteiro por linha, um de cada vez, e mostra os vídeos na lista. */
   async function submitBatch() {
     const list = batchTopics;
-    if (list.length === 0) {
-      setError("Escreva ao menos um tema (um por linha).");
-      document.getElementById("topic")?.focus();
-      return;
-    }
     setLoading(true);
     setError(null);
     const failed: string[] = [];
@@ -195,18 +311,16 @@ export default function VideoGenPage() {
     document.getElementById("seus-videos")?.scrollIntoView({ behavior: "smooth" });
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (batch && !article) return submitBatch();
-    if (!topic.trim() && !article) {
-      setError("Escreva o tema do vídeo.");
-      document.getElementById("topic")?.focus();
-      return;
+  async function create() {
+    for (let i = 0; i < 4; i++) {
+      const p = problem(i);
+      if (p) {
+        setStepError((e) => ({ ...e, [i]: p }));
+        goTo(i);
+        return;
+      }
     }
-    if (uploadingImages) {
-      setError("Espere as imagens terminarem de enviar.");
-      return;
-    }
+    if (isBatch) return submitBatch();
     setLoading(true);
     setError(null);
     try {
@@ -216,7 +330,7 @@ export default function VideoGenPage() {
         body: JSON.stringify(payload(topic, true)),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Não foi possível gerar o roteiro. Tente de novo.");
+      if (!res.ok) throw new Error(data.error || "Não foi possível criar o vídeo. Tente de novo.");
       router.push(`/videogen/${data.job.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado. Tente de novo.");
@@ -245,16 +359,46 @@ export default function VideoGenPage() {
     }
   }
 
+  // ----- resumo e estimativa (passo 5) -----
+  const effectiveDuration = speaker === "upload" && base ? Math.max(5, Math.round(base.durationS || durationS)) : durationS;
+  const scenes = Math.max(2, Math.round(effectiveDuration / EST.secondsPerScene));
+  const estimate: { label: string; usd: number | null }[] = [];
+  if (speaker === "upload") estimate.push({ label: "transcrição + cenas", usd: EST.script + (EST.transcriptionPerMin * effectiveDuration) / 60 });
+  else estimate.push({ label: "roteiro", usd: EST.script });
+  if (speaker !== "upload" && !pattern?.semNarracao) estimate.push({ label: "narração", usd: EST.narrationPerS * effectiveDuration });
+  if (speaker === "ai_avatar") estimate.push({ label: "avatar (Higgsfield)", usd: null });
+  estimate.push({ label: `imagens (≈${scenes} cenas)`, usd: EST.image * scenes });
+  estimate.push({ label: "trilha", usd: EST.musicPerS * effectiveDuration });
+  const estimateTotal = estimate.reduce((sum, e) => sum + (e.usd ?? 0), 0);
+  const perVideo = isBatch ? batchTopics.length || 1 : 1;
+
+  const summaries: (string | null)[] = [
+    landscape ? "Horizontal 16:9" : "Vertical 9:16",
+    reached > 1
+      ? speaker === "upload"
+        ? base
+          ? `${SPEAKER_LABEL.upload} · ${base.name}`
+          : SPEAKER_LABEL.upload
+        : `${SPEAKER_LABEL[speaker]} · ${person?.name ?? "—"}`
+      : null,
+    reached > 2 ? (article ? "Notícia" : isBatch ? `${batchTopics.length} temas` : speaker === "upload" ? (topic.trim() ? "Contexto" : "Sem contexto") : "Tema") : null,
+    reached > 3 ? `${pattern?.nome ?? "…"}${speaker === "upload" ? "" : ` · ${effectiveDuration}s`}` : null,
+    null,
+  ];
+
+  const locked = (i: number) => i > reached;
+  const busy = loading;
+
   return (
     <div className="flex min-h-full flex-col">
       <Header wide />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="max-w-2xl">
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">VideoGen</h1>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Novo vídeo</h1>
             <p className="mt-2 text-text-secondary">
-              Cada vídeo passa por 5 etapas. Aqui você faz a primeira; nada é cobrado de narração ou render antes de você revisar o roteiro.
+              Cinco perguntas, uma de cada vez. Os campos mudam conforme a resposta anterior, e nada é cobrado antes do último passo.
             </p>
           </div>
           {jobs && jobs.length > 0 && (
@@ -264,135 +408,141 @@ export default function VideoGenPage() {
           )}
         </div>
 
-        <div className="mt-6">
-          <FlowSteps current={0} />
-        </div>
+        <div className="mt-8 grid gap-8 lg:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[200px_minmax(0,1fr)_360px] lg:items-start">
+          {/* trilho dos passos */}
+          <nav aria-label="Passos" className="lg:sticky lg:top-24">
+            <ol className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-1.5">
+              {STEPS.map((s, i) => {
+                const state = i < reached ? "done" : i === reached ? "current" : "todo";
+                return (
+                  <li key={s.id} className="min-w-0 shrink-0 lg:shrink">
+                    <button
+                      type="button"
+                      onClick={() => !locked(i) && goTo(i)}
+                      disabled={locked(i)}
+                      aria-current={state === "current" ? "step" : undefined}
+                      className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed ${
+                        state === "current" ? "bg-surface font-semibold ring-1 ring-border" : state === "done" ? "hover:bg-surface" : "text-text-secondary"
+                      }`}
+                    >
+                      <span
+                        aria-hidden
+                        className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                          state === "done" ? "bg-success" : state === "current" ? "bg-foreground ring-4 ring-foreground/15" : "bg-border"
+                        }`}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate">
+                          {i + 1} · {s.title}
+                        </span>
+                        {summaries[i] && state === "done" && <span className="hidden truncate text-xs font-normal text-text-secondary lg:block">{summaries[i]}</span>}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
 
-        <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
-          <form onSubmit={handleSubmit} noValidate className="min-w-0 space-y-5" aria-busy={loading}>
-            <section className={cardClass}>
-              <div className="flex items-baseline justify-between gap-2">
-                <label htmlFor="topic" className={sectionTitle}>
-                  {article ? (
-                    <>Ângulo do vídeo <span className="text-xs font-normal text-text-secondary">(opcional)</span></>
-                  ) : batch ? (
-                    <>Temas <span aria-hidden>*</span></>
-                  ) : (
-                    <>
-                      Tema <span aria-hidden>*</span>
-                      <span className="sr-only"> (obrigatório)</span>
-                    </>
-                  )}
-                </label>
-                <div className="flex items-center gap-3">
-                  {!article && !batch && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (reached >= 4) void create();
+              else next(reached);
+            }}
+            noValidate
+            className="min-w-0 space-y-5"
+            aria-busy={loading}
+          >
+            {/* ---------- 1 · Formato ---------- */}
+            <Step index={0} title="Formato" reached={reached} error={stepError[0]} onNext={next} onEdit={edit} busy={busy}>
+              <div role="radiogroup" aria-label="Formato" className="grid gap-2 sm:grid-cols-2">
+                {(
+                  [
+                    { id: "9:16", title: "Vertical 9:16", hint: "Reels, Shorts e TikTok (padrão)" },
+                    { id: "16:9", title: "Horizontal 16:9", hint: "Vídeo normal do YouTube" },
+                  ] as const
+                ).map((f) => {
+                  const active = format === f.id;
+                  return (
                     <button
+                      key={f.id}
                       type="button"
-                      onClick={() => setTopicAi(true)}
-                      disabled={loading}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-accent-yellow hover:underline disabled:opacity-50"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => chooseFormat(f.id)}
+                      disabled={busy}
+                      className={`flex min-h-14 items-center gap-3 rounded-xl border px-3 py-2 text-left transition ${
+                        active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"
+                      }`}
                     >
-                      <Icon name="sparkles" className="h-3.5 w-3.5" /> Criar com IA
+                      <span
+                        aria-hidden
+                        className={`shrink-0 rounded-[4px] border-2 ${active ? "border-accent-yellow" : "border-text-secondary/50"} ${
+                          f.id === "9:16" ? "h-7 w-4" : "h-4 w-7"
+                        }`}
+                      />
+                      <span className="min-w-0">
+                        <span className={`block text-sm ${active ? "font-semibold" : "font-medium"}`}>{f.title}</span>
+                        <span className="block text-xs text-text-secondary">{f.hint}</span>
+                      </span>
                     </button>
-                  )}
-                  {!article && (
-                    <button
-                      type="button"
-                      onClick={() => setBatch((b) => !b)}
-                      disabled={loading}
-                      aria-pressed={batch}
-                      className="text-xs font-semibold text-accent-yellow hover:underline disabled:opacity-50"
-                    >
-                      {batch ? "Só um tema" : "Vários temas de uma vez"}
-                    </button>
-                  )}
-                  <span className="text-xs tabular-nums text-text-secondary">
-                    {batch && !article ? `${batchTopics.length}/${MAX_BATCH} temas` : `${topic.length}/${MAX_TOPIC}`}
-                  </span>
-                </div>
+                  );
+                })}
               </div>
-              {topicAi && <TopicAiModal durationS={durationS} onUse={setTopic} onClose={() => setTopicAi(false)} />}
-              {wantedArticle && (article || articleError) && (
-                <div className="mt-3 flex items-center gap-3 rounded-xl border border-accent-yellow/40 bg-accent-yellow/10 p-3">
-                  {article?.coverImage && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={article.coverImage} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-accent-yellow">
-                      {article ? "Vídeo a partir da notícia" : "Notícia"}
-                    </p>
-                    <p className="truncate text-sm font-semibold">{article ? article.title : articleError}</p>
-                  </div>
-                  {article && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setArticle(null);
-                        window.history.replaceState(null, "", "/videogen");
-                      }}
-                      disabled={loading}
-                      className="shrink-0 text-xs font-medium text-text-secondary hover:text-foreground"
-                    >
-                      Remover
-                    </button>
-                  )}
-                </div>
+              {landscape && (
+                <p className="mt-2 text-xs text-text-secondary">
+                  No horizontal dá para usar o estilo livre e os seus templates. A imagem fica ao lado do texto nas cenas com card.
+                </p>
               )}
-              <textarea
-                id="topic"
-                required={!article}
-                maxLength={batch && !article ? MAX_TOPIC * MAX_BATCH : MAX_TOPIC}
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                disabled={loading}
-                aria-describedby="topic-help"
-                rows={batch && !article ? 6 : 3}
-                placeholder={
-                  article
-                    ? "Opcional. Ex.: foque no impacto para quem tem loja online"
-                    : batch
-                      ? "Um tema por linha (até 10). Ex.:\nPor que o GEO importa mais que o SEO\nComo o Google AI Mode muda as buscas"
-                      : "Ex.: Por que o GEO vai importar mais que o SEO em 2027"
-                }
-                className={`mt-3 resize-y ${fieldClass}`}
-              />
-              <p id="topic-help" className="mt-1.5 text-xs text-text-secondary">
-                {article
-                  ? "O roteiro conta a notícia usando só os fatos dela. Se quiser, diga o ângulo ou o público."
-                  : batch
-                    ? "Cada linha vira um vídeo com as mesmas escolhas abaixo (pessoa, estilo, duração). Os roteiros ficam em \u201cSeus vídeos\u201d para revisar um por um."
-                    : "Uma frase basta. Quanto mais específico (público, ângulo, exemplo), melhor o roteiro."}
-              </p>
-            </section>
+            </Step>
 
-            <fieldset className={cardClass} disabled={loading}>
-              <legend className="sr-only">Quem fala e para qual empresa</legend>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className={sectionTitle} aria-hidden>
-                  Quem fala e para quem
-                </h2>
-                <Link
-                  href="/videogen/perfis"
-                  className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-accent-yellow hover:underline"
-                >
-                  <Icon name="edit" className="h-4 w-4" /> Gerenciar perfis
-                </Link>
+            {/* ---------- 2 · Quem fala ---------- */}
+            <Step index={1} title="Quem fala no vídeo" reached={reached} error={stepError[1]} onNext={next} onEdit={edit} busy={busy}>
+              <div role="radiogroup" aria-label="Quem fala" className="grid gap-2 md:grid-cols-3">
+                {SPEAKER_OPTIONS.map((o) => {
+                  const active = speaker === o.id;
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      disabled={busy}
+                      onClick={() => {
+                        setSpeaker(o.id);
+                        setStepError((e) => ({ ...e, 1: null }));
+                        if (o.id === "upload") setBatch(false);
+                      }}
+                      className={`flex min-h-24 flex-col gap-1 rounded-xl border p-3 text-left transition ${
+                        active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 text-sm font-semibold">
+                        <Icon name={o.id === "ai_voice" ? "mic" : o.id === "ai_avatar" ? "user" : "up"} className="h-4 w-4 text-accent-yellow" />
+                        {o.title}
+                      </span>
+                      <span className="text-xs text-text-secondary">{o.help}</span>
+                    </button>
+                  );
+                })}
               </div>
-              <div className="mt-3 grid gap-5 sm:grid-cols-2">
+
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
                 <ProfileSelect
                   id="person"
-                  label="Quem fala no vídeo"
+                  label={speaker === "upload" ? "Tom de quem fala (perfil)" : "Quem fala"}
                   icon="user"
                   emptyLabel="Nenhuma pessoa cadastrada"
                   profiles={people}
                   value={personId}
                   loaded={profilesLoaded}
-                  extraOption={{ value: TRAIN_VOICE, label: "+ Treinar nova voz…" }}
+                  extraOption={speaker === "upload" ? undefined : { value: TRAIN_VOICE, label: "+ Treinar nova voz…" }}
                   onChange={(id) => {
                     if (id === TRAIN_VOICE) return setTrainingVoice(true);
                     setChosenPerson(id);
                     setChosenVoice(null);
+                    setAvatarPhoto(null);
                   }}
                 />
                 {trainingVoice && (
@@ -408,9 +558,273 @@ export default function VideoGenPage() {
                     }}
                   />
                 )}
+                {speaker !== "upload" ? (
+                  <div>
+                    <label htmlFor="voice" className="flex items-center gap-1.5 text-sm font-medium">
+                      <Icon name="mic" className="h-4 w-4 text-text-secondary" /> Voz (ElevenLabs)
+                    </label>
+                    <div className="mt-2">
+                      <VoiceSelect
+                        id="voice"
+                        voices={voices}
+                        value={voiceId}
+                        onChange={(v) => setChosenVoice({ id: v.id, name: v.name })}
+                        disabled={busy}
+                        loading={loadingVoices}
+                        error={voicesError}
+                      />
+                    </div>
+                    {person?.voiceId && !chosenVoice && <p className="mt-1.5 text-xs text-text-secondary">Voz do perfil {person.name}.</p>}
+                  </div>
+                ) : (
+                  <p className="self-end text-xs text-text-secondary">Sem seletor de voz: a voz é a da sua gravação. O perfil só dá o tom do texto na tela.</p>
+                )}
+              </div>
+
+              {speaker === "ai_avatar" && (
+                <div className="mt-5 flex items-center gap-4 rounded-xl border border-border bg-background/60 p-3">
+                  <span className="flex h-24 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-2">
+                    {avatarImage ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarImage} alt="Foto do avatar" className="h-full w-full object-cover" />
+                    ) : (
+                      <Icon name="user" className="h-6 w-6 text-text-secondary" />
+                    )}
+                  </span>
+                  <div className="min-w-0 text-sm">
+                    <p className="font-medium">Foto do avatar</p>
+                    <p className="mt-0.5 text-xs text-text-secondary">
+                      {avatarPhoto
+                        ? "Foto enviada só para este vídeo."
+                        : avatarImage
+                          ? `Foto do perfil ${person?.name ?? ""}. Fica junto da voz em Perfis.`
+                          : "O perfil de quem fala não tem foto. Envie uma agora (JPG, PNG ou WebP, rosto de frente)."}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => photoInput.current?.click()} disabled={busy || uploadingPhoto} className={`!min-h-9 ${secondaryButton}`}>
+                        {uploadingPhoto ? <Spinner /> : <Icon name="up" className="h-4 w-4" />}
+                        {avatarImage ? "Usar outra foto" : "Enviar foto"}
+                      </button>
+                      {avatarPhoto && (
+                        <button type="button" onClick={() => setAvatarPhoto(null)} disabled={busy} className="text-xs text-text-secondary hover:text-foreground">
+                          Voltar à do perfil
+                        </button>
+                      )}
+                      <Link href="/videogen/perfis" className="inline-flex items-center text-xs font-medium text-accent-yellow hover:underline">
+                        Cadastrar no perfil
+                      </Link>
+                    </div>
+                    <input
+                      ref={photoInput}
+                      type="file"
+                      accept="image/png,image/webp,image/jpeg"
+                      className="sr-only"
+                      tabIndex={-1}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        void pickPhoto(f);
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {speaker === "upload" && (
+                <div className="mt-5 space-y-3">
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-border bg-background/60 p-3">
+                    <Icon name={base?.kind === "audio" ? "wave" : "film"} className="h-6 w-6 shrink-0 text-accent-yellow" />
+                    <div className="min-w-0 flex-1 text-sm">
+                      {base ? (
+                        <>
+                          <p className="truncate font-medium">{base.name}</p>
+                          <p className="text-xs text-text-secondary">
+                            {base.kind === "video" ? "Vídeo" : "Áudio"}
+                            {base.durationS ? ` · ${formatClock(base.durationS)}` : ""} · a fala é transcrita ao criar o vídeo
+                          </p>
+                        </>
+                      ) : baseProgress !== null ? (
+                        <p className="text-xs text-text-secondary" aria-live="polite">
+                          Enviando… {Math.round(baseProgress)}%
+                        </p>
+                      ) : (
+                        <>
+                          <p className="font-medium">Áudio ou vídeo com a sua fala</p>
+                          <p className="text-xs text-text-secondary">MP4, MOV, WebM, MP3, WAV, M4A ou OGG, até 500 MB.</p>
+                        </>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => baseInput.current?.click()} disabled={busy || baseProgress !== null} className={`!min-h-9 ${base ? secondaryButton : primaryButton}`}>
+                      {baseProgress !== null ? <Spinner /> : <Icon name="up" className="h-4 w-4" />}
+                      {base ? "Trocar arquivo" : "Escolher arquivo"}
+                    </button>
+                    <input
+                      ref={baseInput}
+                      type="file"
+                      accept="video/mp4,video/quicktime,video/webm,audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/ogg,audio/webm"
+                      className="sr-only"
+                      tabIndex={-1}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        void pickBase(f);
+                      }}
+                    />
+                  </div>
+                  {base?.kind === "video" && (
+                    <fieldset>
+                      <legend className="text-sm font-medium">Como usar o vídeo</legend>
+                      <div role="radiogroup" className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {(
+                          [
+                            { v: true, t: "Vídeo nas cenas", h: "Trilha fixa com você; as imagens entram por cima nas cenas que você marcar." },
+                            { v: false, t: "Só o áudio", h: "A fala vira a narração e as cenas mostram as imagens do estilo." },
+                          ] as const
+                        ).map((o) => (
+                          <button
+                            key={String(o.v)}
+                            type="button"
+                            role="radio"
+                            aria-checked={baseUseVideo === o.v}
+                            onClick={() => setBaseUseVideo(o.v)}
+                            disabled={busy}
+                            className={`rounded-xl border p-3 text-left transition ${
+                              baseUseVideo === o.v ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"
+                            }`}
+                          >
+                            <span className="block text-sm font-medium">{o.t}</span>
+                            <span className="block text-xs text-text-secondary">{o.h}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
+                  )}
+                </div>
+              )}
+            </Step>
+
+            {/* ---------- 3 · Conteúdo ---------- */}
+            <Step index={2} title="Conteúdo" reached={reached} error={stepError[2]} onNext={next} onEdit={edit} busy={busy}>
+              {speaker === "upload" ? (
+                <>
+                  <label htmlFor="topic" className="block text-sm font-medium">
+                    Contexto <span className="font-normal text-text-secondary">(opcional)</span>
+                  </label>
+                  <textarea
+                    id="topic"
+                    maxLength={MAX_TOPIC}
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    disabled={busy}
+                    rows={3}
+                    placeholder="Ex.: é um trecho sobre GEO vs. SEO; destacar os 3 números que eu cito"
+                    className={`mt-2 resize-y ${fieldClass}`}
+                  />
+                  <p className="mt-1.5 text-xs text-text-secondary">
+                    O conteúdo é a sua fala: ela é transcrita e dividida em cenas, palavra por palavra. Aqui você só diz do que se trata e o que destacar na tela.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <label htmlFor="topic" className="block text-sm font-medium">
+                      {article ? (
+                        <>
+                          Ângulo do vídeo <span className="font-normal text-text-secondary">(opcional)</span>
+                        </>
+                      ) : isBatch ? (
+                        <>Temas</>
+                      ) : (
+                        <>Tema</>
+                      )}
+                    </label>
+                    <div className="flex items-center gap-3">
+                      {!article && !isBatch && (
+                        <button
+                          type="button"
+                          onClick={() => setTopicAi(true)}
+                          disabled={busy}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-accent-yellow hover:underline disabled:opacity-50"
+                        >
+                          <Icon name="sparkles" className="h-3.5 w-3.5" /> Criar com IA
+                        </button>
+                      )}
+                      {!article && (
+                        <button
+                          type="button"
+                          onClick={() => setBatch((b) => !b)}
+                          disabled={busy}
+                          aria-pressed={isBatch}
+                          className="text-xs font-semibold text-accent-yellow hover:underline disabled:opacity-50"
+                        >
+                          {isBatch ? "Só um tema" : "Vários temas de uma vez"}
+                        </button>
+                      )}
+                      <span className="text-xs tabular-nums text-text-secondary">
+                        {isBatch ? `${batchTopics.length}/${MAX_BATCH} temas` : `${topic.length}/${MAX_TOPIC}`}
+                      </span>
+                    </div>
+                  </div>
+                  {topicAi && <TopicAiModal durationS={durationS} onUse={setTopic} onClose={() => setTopicAi(false)} />}
+                  {wantedArticle && (article || articleError) && (
+                    <div className="mt-3 flex items-center gap-3 rounded-xl border border-accent-yellow/40 bg-accent-yellow/10 p-3">
+                      {article?.coverImage && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={article.coverImage} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-accent-yellow">
+                          {article ? "Vídeo a partir da notícia" : "Notícia"}
+                        </p>
+                        <p className="truncate text-sm font-semibold">{article ? article.title : articleError}</p>
+                      </div>
+                      {article && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setArticle(null);
+                            window.history.replaceState(null, "", "/videogen");
+                          }}
+                          disabled={busy}
+                          className="shrink-0 text-xs font-medium text-text-secondary hover:text-foreground"
+                        >
+                          Remover
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <textarea
+                    id="topic"
+                    required={!article}
+                    maxLength={isBatch ? MAX_TOPIC * MAX_BATCH : MAX_TOPIC}
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    disabled={busy}
+                    aria-describedby="topic-help"
+                    rows={isBatch ? 6 : 3}
+                    placeholder={
+                      article
+                        ? "Opcional. Ex.: foque no impacto para quem tem loja online"
+                        : isBatch
+                          ? "Um tema por linha (até 10). Ex.:\nPor que o GEO importa mais que o SEO\nComo o Google AI Mode muda as buscas"
+                          : "Ex.: Por que o GEO vai importar mais que o SEO em 2027"
+                    }
+                    className={`mt-2 resize-y ${fieldClass}`}
+                  />
+                  <p id="topic-help" className="mt-1.5 text-xs text-text-secondary">
+                    {article
+                      ? "O roteiro conta a notícia usando só os fatos dela. Se quiser, diga o ângulo ou o público."
+                      : isBatch
+                        ? "Cada linha vira um vídeo com as mesmas escolhas (quem fala, estilo, duração). Os roteiros ficam em “Seus vídeos” para revisar um por um."
+                        : "Uma frase basta. Quanto mais específico (público, ângulo, exemplo), melhor o roteiro."}
+                  </p>
+                </>
+              )}
+
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
                 <ProfileSelect
                   id="company"
-                  label="Para qual empresa"
+                  label="Para qual empresa (marca, CTA, logo)"
                   icon="building"
                   emptyLabel="Nenhuma empresa cadastrada"
                   profiles={companies}
@@ -418,87 +832,43 @@ export default function VideoGenPage() {
                   loaded={profilesLoaded}
                   onChange={setChosenCompany}
                 />
-              </div>
-            </fieldset>
-
-            {!(batch && !article) && (
-            <section className={cardClass} aria-labelledby="briefing-images-title">
-              <div className="flex items-baseline justify-between gap-2">
-                <h2 id="briefing-images-title" className={sectionTitle}>
-                  Imagens do briefing
-                </h2>
-                <span className="text-xs text-text-secondary">opcional</span>
-              </div>
-              <p className="mt-1 text-xs text-text-secondary">
-                Fotos do produto, do cliente, prints… A IA olha as imagens para escrever o roteiro e usa elas nas cenas em vez de gerar.
-              </p>
-              <div className="mt-3">
-                <BriefingImages images={briefingImages} onChange={setBriefingImages} disabled={loading} onBusyChange={setUploadingImages} />
-              </div>
-            </section>
-            )}
-
-            <fieldset className={cardClass} disabled={loading}>
-              <legend className="sr-only">Estilo visual</legend>
-              <div className="mb-5">
-                <span id="format-label" className="block text-sm font-medium">
-                  Formato
-                </span>
-                <div role="radiogroup" aria-labelledby="format-label" className="mt-2 grid gap-2 sm:grid-cols-2">
-                  {(
-                    [
-                      { id: "9:16", title: "Vertical 9:16", hint: "Reels, Shorts e TikTok (padrão)" },
-                      { id: "16:9", title: "Horizontal 16:9", hint: "Vídeo normal do YouTube" },
-                    ] as const
-                  ).map((f) => {
-                    const active = format === f.id;
-                    return (
-                      <button
-                        key={f.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        onClick={() => chooseFormat(f.id)}
-                        className={`flex min-h-14 items-center gap-3 rounded-xl border px-3 py-2 text-left transition ${
-                          active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"
-                        }`}
-                      >
-                        <span
-                          aria-hidden
-                          className={`shrink-0 rounded-[4px] border-2 ${active ? "border-accent-yellow" : "border-text-secondary/50"} ${
-                            f.id === "9:16" ? "h-7 w-4" : "h-4 w-7"
-                          }`}
-                        />
-                        <span className="min-w-0">
-                          <span className={`block text-sm ${active ? "font-semibold" : "font-medium"}`}>{f.title}</span>
-                          <span className="block text-xs text-text-secondary">{f.hint}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
+                <div>
+                  <label htmlFor="extra" className="block text-sm font-medium">
+                    Instruções extras <span className="font-normal text-text-secondary">(opcional)</span>
+                  </label>
+                  <textarea
+                    id="extra"
+                    rows={2}
+                    maxLength={2000}
+                    value={extraInstructions}
+                    onChange={(e) => setExtraInstructions(e.target.value)}
+                    disabled={busy}
+                    placeholder={speaker === "upload" ? "Ex.: texto da tela curto, sem emojis" : "Ex.: tom mais provocador, terminar com 'comenta GEO'"}
+                    className={`mt-2 resize-y ${fieldClass}`}
+                  />
                 </div>
-                {landscape && (
-                  <p className="mt-1.5 text-xs text-text-secondary">
-                    No horizontal dá para usar o estilo livre e os seus templates. A imagem fica ao lado do texto nas cenas com card.
-                  </p>
-                )}
               </div>
+              <p className="mt-3 text-xs text-text-secondary">
+                <Link href="/videogen/perfis" className="font-medium text-accent-yellow hover:underline">
+                  Gerenciar perfis
+                </Link>{" "}
+                · pessoas (tom, voz, foto do avatar) e empresas (marca, site, @, logo).
+              </p>
+            </Step>
+
+            {/* ---------- 4 · Visual ---------- */}
+            <Step index={3} title="Visual" reached={reached} error={stepError[3]} onNext={next} onEdit={edit} busy={busy}>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className={sectionTitle} aria-hidden>
-                  Estilo visual
-                </h2>
+                <span className="text-sm font-medium">Estilo</span>
                 <div className="flex flex-wrap items-center gap-x-4">
                   <button
                     type="button"
                     onClick={() => setManagingStyles(true)}
-                    className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-text-secondary hover:text-foreground"
+                    className="inline-flex min-h-9 items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-foreground"
                   >
                     <Icon name="edit" className="h-4 w-4" /> Gerenciar estilos
                   </button>
-                  <Link
-                    href="/videogen/templates"
-                    className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-accent-yellow hover:underline"
-                  >
+                  <Link href="/videogen/templates" className="inline-flex min-h-9 items-center gap-1.5 text-xs font-medium text-accent-yellow hover:underline">
                     <Icon name="plus" className="h-4 w-4" /> Montar template a partir de um vídeo
                   </Link>
                 </div>
@@ -513,7 +883,7 @@ export default function VideoGenPage() {
                   onClose={() => setManagingStyles(false)}
                 />
               )}
-              <div className="mt-4 grid gap-5 sm:grid-cols-[200px_minmax(0,1fr)]">
+              <div className="mt-3 grid gap-5 sm:grid-cols-[200px_minmax(0,1fr)]">
                 <StylePreview style={pattern} />
                 <div
                   className="grid max-h-[400px] content-start gap-2 overflow-y-auto overscroll-contain rounded-xl pr-1 [scrollbar-width:thin]"
@@ -527,25 +897,11 @@ export default function VideoGenPage() {
                         key={p.id}
                         className={`flex items-center gap-3 rounded-xl border p-2 pr-3 transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent-yellow/40 cursor-pointer ${active ? "border-accent-yellow bg-accent-yellow/5" : "border-border hover:border-border-hover"}`}
                       >
-                        <input
-                          type="radio"
-                          name="pattern"
-                          value={p.id}
-                          checked={active}
-                          onChange={() => setPatternId(p.id)}
-                          className="sr-only"
-                        />
+                        <input type="radio" name="pattern" value={p.id} checked={active} onChange={() => setPatternId(p.id)} disabled={busy} className="sr-only" />
                         <span className="relative flex h-16 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-2">
                           {p.kind === "free" && <Icon name="sparkles" className="h-4 w-4 text-accent-yellow" />}
                           {p.sampleUrl && (
-                            <video
-                              src={`${p.sampleUrl}#t=1.5`}
-                              muted
-                              playsInline
-                              preload="metadata"
-                              aria-hidden
-                              className="h-full w-full object-cover"
-                            />
+                            <video src={`${p.sampleUrl}#t=1.5`} muted playsInline preload="metadata" aria-hidden className="h-full w-full object-cover" />
                           )}
                         </span>
                         <span className="min-w-0 flex-1">
@@ -554,9 +910,7 @@ export default function VideoGenPage() {
                           {(p.kind !== "builtin" || p.semNarracao) && (
                             <span className="mt-1 flex flex-wrap gap-1">
                               {p.kind === "free" && (
-                                <span className="rounded-full bg-accent-yellow/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-yellow">
-                                  livre
-                                </span>
+                                <span className="rounded-full bg-accent-yellow/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-yellow">livre</span>
                               )}
                               {p.kind === "template" && (
                                 <span className="rounded-full bg-accent-yellow/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-yellow">
@@ -596,7 +950,7 @@ export default function VideoGenPage() {
                     maxLength={1500}
                     value={styleNotes}
                     onChange={(e) => setStyleNotes(e.target.value)}
-                    disabled={loading}
+                    disabled={busy}
                     aria-describedby="style-notes-help"
                     placeholder="Ex.: clima retrô anos 80, cores neon, cortes rápidos com glitch, câmera tremida, trilha synthwave animada"
                     className={`mt-2 resize-y ${fieldClass}`}
@@ -606,38 +960,26 @@ export default function VideoGenPage() {
                   </p>
                 </div>
               )}
-            </fieldset>
 
-            <fieldset className={cardClass} disabled={loading}>
-              <legend className="sr-only">Voz e duração</legend>
-              <h2 className={sectionTitle} aria-hidden>
-                Voz e duração
-              </h2>
-              <div className="mt-4 grid gap-5 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="voice" className="block text-sm font-medium">
-                    Voz
-                  </label>
-                  <div className="mt-2">
-                    <VoiceSelect
-                      id="voice"
-                      voices={voices}
-                      value={voiceId}
-                      onChange={(v) => setChosenVoice({ id: v.id, name: v.name })}
-                      disabled={loading || pattern?.semNarracao}
-                      loading={loadingVoices}
-                      error={voicesError}
-                    />
+              {!isBatch && (
+                <div className="mt-5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-medium">Imagens do briefing</span>
+                    <span className="text-xs text-text-secondary">opcional</span>
                   </div>
-                  {pattern?.semNarracao ? (
-                    <p className="mt-1 text-xs text-text-secondary">Este estilo não usa narração.</p>
-                  ) : (
-                    person?.voiceId && !chosenVoice && <p className="mt-1 text-xs text-text-secondary">Voz do perfil {person.name}.</p>
-                  )}
+                  <p className="mt-1 text-xs text-text-secondary">
+                    Fotos do produto, do cliente, prints… {speaker === "upload" ? "Entram nas cenas no lugar das imagens geradas." : "A IA olha as imagens para escrever o roteiro e usa elas nas cenas em vez de gerar."}
+                  </p>
+                  <div className="mt-3">
+                    <BriefingImages images={briefingImages} onChange={setBriefingImages} disabled={busy} onBusyChange={setUploadingImages} />
+                  </div>
                 </div>
-                <div>
+              )}
+
+              {speaker !== "upload" ? (
+                <div className="mt-5">
                   <span id="duration-label" className="block text-sm font-medium">
-                    Duração
+                    Duração alvo
                   </span>
                   <div role="radiogroup" aria-labelledby="duration-label" className="mt-2 flex flex-wrap gap-1.5">
                     {durationOptions.map((d) => (
@@ -647,6 +989,7 @@ export default function VideoGenPage() {
                         role="radio"
                         aria-checked={d === durationS}
                         onClick={() => setDurationS(d)}
+                        disabled={busy}
                         className={`min-h-11 min-w-12 rounded-lg border px-3 text-sm tabular-nums transition ${
                           d === durationS
                             ? "border-accent-yellow bg-accent-yellow/10 font-semibold text-accent-yellow"
@@ -661,69 +1004,104 @@ export default function VideoGenPage() {
                     <p className="mt-1.5 text-xs text-text-secondary">≈ {Math.round(durationS * WORDS_PER_SECOND)} palavras de narração.</p>
                   )}
                 </div>
-              </div>
-            </fieldset>
+              ) : (
+                <p className="mt-5 text-xs text-text-secondary">
+                  Sem duração: o vídeo tem o tamanho da sua gravação{base?.durationS ? ` (${formatClock(base.durationS)})` : ""}.
+                </p>
+              )}
+            </Step>
 
-            <details className={`group ${cardClass}`}>
-              <summary className="flex min-h-6 cursor-pointer list-none items-center justify-between gap-2">
-                <span className={sectionTitle}>Instruções extras</span>
-                <span className="text-xs text-text-secondary">
-                  {extraInstructions.trim() ? "preenchido" : "opcional"}
-                  <span aria-hidden className="ml-2 inline-block transition group-open:rotate-90">
-                    ›
+            {/* ---------- 5 · Revisão ---------- */}
+            <Step index={4} title="Revisão" reached={reached} error={null} onNext={next} onEdit={edit} busy={busy} last>
+              <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[140px_minmax(0,1fr)]">
+                <dt className="text-text-secondary">Formato</dt>
+                <dd>
+                  {landscape ? "Horizontal 16:9 (YouTube)" : "Vertical 9:16 (Reels / Shorts)"}
+                  {speaker === "upload" && base?.durationS ? ` · ${formatClock(base.durationS)}` : ` · alvo ${durationS}s`}
+                </dd>
+                <dt className="text-text-secondary">Quem fala</dt>
+                <dd>
+                  {SPEAKER_LABEL[speaker]}
+                  {speaker === "upload" && base ? ` · ${base.name}${base.kind === "video" ? (baseUseVideo ? " · vídeo nas cenas" : " · só o áudio") : ""}` : ""}
+                  {speaker !== "upload" ? ` · ${person?.name ?? "—"} · voz ${voiceName}` : person ? ` · tom de ${person.name}` : ""}
+                  {speaker === "ai_avatar" ? (avatarImage ? " · foto ok" : " · sem foto") : ""}
+                </dd>
+                <dt className="text-text-secondary">Conteúdo</dt>
+                <dd className="[overflow-wrap:anywhere]">
+                  {article
+                    ? `Notícia: ${article.title}`
+                    : isBatch
+                      ? `${batchTopics.length} temas (um vídeo por linha)`
+                      : speaker === "upload"
+                        ? topic.trim()
+                          ? `A sua fala · contexto: ${topic.trim()}`
+                          : "A sua fala, transcrita e dividida em cenas"
+                        : topic.trim() || "—"}
+                  {company ? ` · para ${company.name}` : ""}
+                </dd>
+                <dt className="text-text-secondary">Visual</dt>
+                <dd>
+                  {pattern?.nome ?? "…"}
+                  {pattern?.kind === "free" && styleNotes.trim() ? ` · ${styleNotes.trim().slice(0, 80)}` : ""}
+                  {briefingImages.length && !isBatch ? ` · ${briefingImages.length} foto(s) sua(s)` : ""}
+                </dd>
+              </dl>
+
+              <div className="mt-5 rounded-xl border border-border bg-background/60 p-4">
+                <p className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-sm font-semibold">Custo estimado{isBatch ? " por vídeo" : ""}</span>
+                  <span className="text-sm font-semibold tabular-nums">
+                    ≈ {formatUsd(estimateTotal)}
+                    {speaker === "ai_avatar" ? " + Higgsfield" : ""}
+                    {isBatch && perVideo > 1 ? ` × ${perVideo}` : ""}
                   </span>
-                </span>
-              </summary>
-              <label htmlFor="extra" className="sr-only">
-                Instruções extras
-              </label>
-              <textarea
-                id="extra"
-                rows={2}
-                maxLength={2000}
-                value={extraInstructions}
-                onChange={(e) => setExtraInstructions(e.target.value)}
-                disabled={loading}
-                placeholder="Ex.: tom mais provocador, terminar com 'comenta GEO'"
-                className={`mt-3 resize-y ${fieldClass}`}
-              />
-            </details>
-
-            {error && (
-              <div role="alert" className="flex gap-2 rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
-                <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
-                <span className="min-w-0 [overflow-wrap:anywhere]">{error}</span>
+                </p>
+                <p className="mt-1 text-xs text-text-secondary">
+                  {estimate.map((e) => `${e.label} ${e.usd === null ? "(preço do Higgsfield)" : `≈ ${formatUsd(e.usd)}`}`).join(" · ")}. Ordem de grandeza; o
+                  gasto real aparece no vídeo.
+                </p>
+                <p className="mt-2 text-xs text-text-secondary">
+                  {speaker === "upload"
+                    ? "Ao criar, a fala é transcrita e dividida em cenas. Depois: revisar as cenas → render → pronto."
+                    : speaker === "ai_avatar"
+                      ? "Ao criar, só o roteiro é gerado. Depois: revisar → narração (aprovar ou gerar de novo) → avatar com o áudio aprovado → render → pronto."
+                      : "Ao criar, só o roteiro é gerado. Depois: revisar → narração (aprovar ou gerar de novo) → render → pronto."}
+                </p>
               </div>
-            )}
 
-            {loading ? (
-              <div className="rounded-2xl border border-border bg-surface px-4 py-3">
-                {batchProgress && (
-                  <p className="mb-2 text-sm font-semibold" aria-live="polite">
-                    Gerando roteiro {Math.min(batchProgress.done + 1, batchProgress.total)} de {batchProgress.total}…
+              {error && (
+                <div role="alert" className="mt-4 flex gap-2 rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
+                  <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{error}</span>
+                </div>
+              )}
+
+              {loading ? (
+                <div className="mt-4 rounded-2xl border border-border bg-background px-4 py-3">
+                  {batchProgress && (
+                    <p className="mb-2 text-sm font-semibold" aria-live="polite">
+                      Gerando roteiro {Math.min(batchProgress.done + 1, batchProgress.total)} de {batchProgress.total}…
+                    </p>
+                  )}
+                  <ScriptLoader label={speaker === "upload" ? "Transcrevendo a fala e montando as cenas" : "Escrevendo o roteiro"} />
+                  <p className="mt-2 text-center text-xs text-text-secondary" aria-live="polite">
+                    {speaker === "upload" ? "Leva cerca de 30 a 60 segundos." : "Leva cerca de 20 a 40 segundos. Depois você revisa tudo antes de gastar com narração e render."}
                   </p>
-                )}
-                <ScriptLoader />
-              </div>
-            ) : (
-              <button type="submit" className={`w-full py-3.5 ${primaryButton}`}>
-                {batch && !article ? `Gerar ${batchTopics.length || ""} roteiro${batchTopics.length === 1 ? "" : "s"}` : "Gerar roteiro"}{" "}
-                <Icon name="arrow" className="h-4 w-4" />
-              </button>
-            )}
-            {!loading && (
-              <p className="text-center text-xs text-text-secondary">
-                Próximo: você revisa o roteiro, depois gera a narração e manda para o render.
-              </p>
-            )}
-            {loading && (
-              <p className="text-center text-xs text-text-secondary" aria-live="polite">
-                Leva cerca de 20 a 40 segundos. Depois você revisa tudo antes de gastar com narração e render.
-              </p>
-            )}
+                </div>
+              ) : (
+                <button type="submit" disabled={reached < 4} className={`mt-4 w-full py-3.5 ${primaryButton}`}>
+                  {isBatch
+                    ? `Criar ${batchTopics.length || ""} vídeo${batchTopics.length === 1 ? "" : "s"}`
+                    : speaker === "upload"
+                      ? "Criar vídeo: transcrever e montar as cenas"
+                      : "Criar vídeo: gerar o roteiro"}{" "}
+                  <Icon name="arrow" className="h-4 w-4" />
+                </button>
+              )}
+            </Step>
           </form>
 
-          <aside id="seus-videos" className="min-w-0 scroll-mt-24" aria-labelledby="seus-videos-title">
+          <aside id="seus-videos" className="min-w-0 scroll-mt-24 lg:col-start-2 xl:col-start-3 xl:row-start-1" aria-labelledby="seus-videos-title">
             <h2 id="seus-videos-title" className={sectionTitle}>
               Seus vídeos
             </h2>
@@ -737,7 +1115,7 @@ export default function VideoGenPage() {
               <div className={`mt-3 text-center ${cardClass}`}>
                 <Icon name="film" className="mx-auto h-8 w-8 text-text-secondary" />
                 <p className="mt-2 text-sm font-medium">Nenhum vídeo ainda</p>
-                <p className="mt-1 text-xs text-text-secondary">Preencha o tema e gere o primeiro roteiro.</p>
+                <p className="mt-1 text-xs text-text-secondary">Responda os 5 passos e crie o primeiro.</p>
               </div>
             ) : (
               <ul className="mt-3 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface">
@@ -755,18 +1133,19 @@ export default function VideoGenPage() {
                             {title}
                           </span>
                           <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
-                          <StatusBadge
-                            status={job.status}
-                            progress={job.progress}
-                            label={job.error && job.status === "draft" ? "Erro no roteiro" : undefined}
-                          />
-                          <span>
-                            {getStyle(job.patternId)?.nome ?? (stylesLoaded ? "Estilo removido" : "…")} · {job.durationS}s{job.format === "16:9" ? " · horizontal" : ""}
-                          </span>
-                          <span>
-                            {formatDate(job.createdAt)}
-                            {job.costSummary && job.costSummary.totalUsd > 0 && ` · ≈ ${formatUsd(job.costSummary.totalUsd)}`}
-                          </span>
+                            <StatusBadge
+                              status={job.status}
+                              progress={job.progress}
+                              label={job.error && job.status === "draft" ? "Erro no roteiro" : undefined}
+                            />
+                            <span>
+                              {getStyle(job.patternId)?.nome ?? (stylesLoaded ? "Estilo removido" : "…")} · {job.durationS}s{job.format === "16:9" ? " · horizontal" : ""}
+                              {job.speaker !== "ai_voice" ? ` · ${SPEAKER_LABEL[job.speaker].toLowerCase()}` : ""}
+                            </span>
+                            <span>
+                              {formatDate(job.createdAt)}
+                              {job.costSummary && job.costSummary.totalUsd > 0 && ` · ≈ ${formatUsd(job.costSummary.totalUsd)}`}
+                            </span>
                           </span>
                         </span>
                       </Link>
@@ -802,6 +1181,90 @@ export default function VideoGenPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+/** 0:42 a partir de segundos. */
+function formatClock(s: number) {
+  const m = Math.floor(s / 60);
+  return `${m}:${String(Math.round(s - m * 60)).padStart(2, "0")}`;
+}
+
+/**
+ * Um passo do questionário. Fechado até a pessoa chegar nele; aberto, mostra os campos e o botão
+ * "Continuar" (o último mostra só o conteúdo, que já traz o botão de criar).
+ */
+function Step({
+  index,
+  title,
+  reached,
+  error,
+  busy,
+  last = false,
+  onNext,
+  onEdit,
+  children,
+}: {
+  index: number;
+  title: string;
+  reached: number;
+  error: string | null | undefined;
+  busy: boolean;
+  last?: boolean;
+  onNext: (i: number) => void;
+  onEdit: (i: number) => void;
+  children: ReactNode;
+}) {
+  const state = index < reached ? "done" : index === reached ? "current" : "locked";
+  const id = `passo-${STEPS[index].id}`;
+  if (state === "locked") {
+    return (
+      <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-24 rounded-2xl border border-dashed border-border px-5 py-4 opacity-70 sm:px-6">
+        <h2 id={`${id}-title`} className="flex items-center gap-3 text-sm font-semibold text-text-secondary">
+          <span aria-hidden className="flex h-7 w-7 items-center justify-center rounded-full border border-border text-xs">
+            {index + 1}
+          </span>
+          {title}
+          <span className="ml-auto text-xs font-normal">depois do passo {index}</span>
+        </h2>
+      </section>
+    );
+  }
+  return (
+    <section id={id} aria-labelledby={`${id}-title`} className={`scroll-mt-24 ${cardClass} ${state === "current" ? "ring-1 ring-foreground/30" : ""}`}>
+      <div className="flex items-center justify-between gap-3">
+        <h2 id={`${id}-title`} className="flex items-center gap-3 text-base font-semibold">
+          <span
+            aria-hidden
+            className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+              state === "done" ? "bg-success text-white" : "bg-foreground text-background"
+            }`}
+          >
+            {state === "done" ? <Icon name="check" className="h-3.5 w-3.5" /> : index + 1}
+          </span>
+          {title}
+        </h2>
+        {state === "done" && (
+          <button type="button" onClick={() => onEdit(index)} className="text-xs font-medium text-text-secondary hover:text-foreground">
+            <span className="sr-only">{title}: </span>respondido
+          </button>
+        )}
+      </div>
+      <div className="mt-4">{children}</div>
+      {error && (
+        <p role="alert" className="mt-3 flex gap-2 rounded-lg bg-accent-red/10 px-3 py-2 text-sm text-accent-red">
+          <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </p>
+      )}
+      {!last && state === "current" && (
+        <div className="mt-5 flex justify-end">
+          <button type="button" onClick={() => onNext(index)} disabled={busy} className={primaryButton}>
+            Continuar <Icon name="arrow" className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 

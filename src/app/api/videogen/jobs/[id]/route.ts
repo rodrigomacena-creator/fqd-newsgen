@@ -4,8 +4,7 @@ import { deleteBlobIfOwned, deleteBlobsByPrefix } from "@/lib/blobStorage";
 import { cleanBriefingImages, parseBriefingImages } from "@/lib/videogen/profiles";
 import { normalizeScript } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
-import { fullNarration } from "@/lib/videogen/types";
-import { parseAvatar } from "@/lib/videogen/avatar";
+import { fixedSpeech, fullNarration } from "@/lib/videogen/types";
 
 export async function GET(_request: Request, ctx: RouteContext<"/api/videogen/jobs/[id]">) {
   const { id } = await ctx.params;
@@ -46,14 +45,13 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/videogen/j
     data.script = JSON.stringify(script);
     data.status = "script_ready";
   }
-  // vídeo base do usuário: a fala vem do vídeo, então o texto falado não pode mudar
-  const base = parseAvatar(job.avatar);
-  const fromUpload = base?.source === "upload" && base.narrationUrl === job.narrationUrl;
+  // fala enviada (áudio/vídeo): o texto falado não pode mudar
+  const fromUpload = fixedSpeech(job);
   if (fromUpload && narrationChanged) {
     const before = job.script ? fullNarration(normalizeScript(JSON.parse(job.script))) : "";
     if (before !== fullNarration(normalizeScript(body.script))) {
       return NextResponse.json(
-        { error: "A fala deste vídeo vem do vídeo que você enviou e não pode ser editada. Mude o texto da tela, as imagens e o avatar à vontade." },
+        { error: "A fala deste vídeo vem do áudio/vídeo que você enviou e não pode ser editada. Mude o texto da tela e as imagens à vontade." },
         { status: 400 }
       );
     }
@@ -106,6 +104,9 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/videogen
   await deleteBlobsByPrefix(`videogen/${id}/`);
   // imagens do briefing sobem antes do job existir (outra pasta); a cena usa as mesmas URLs
   await Promise.all(parseBriefingImages(job.briefingImages).map((i) => deleteBlobIfOwned(i.url)));
+  // áudio/vídeo enviado na criação e foto do avatar deste vídeo ficam fora da pasta do job
+  if (job.narrationUrl?.includes("/videogen/base/")) await deleteBlobIfOwned(job.narrationUrl);
+  if (job.avatarImageUrl) await deleteBlobIfOwned(job.avatarImageUrl);
   await prisma.videoJob.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

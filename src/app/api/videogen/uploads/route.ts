@@ -8,6 +8,8 @@ const IMAGE_PATH = /^videogen\/(briefing|perfis)\/[a-z0-9]{8,32}\/[a-z0-9-]{1,60
 const AUDIO_PATH = /^videogen\/vozes\/[a-z0-9]{8,32}\/[a-z0-9-]{1,60}\.(mp3|wav|m4a|ogg|webm)$/;
 // vídeo base: vídeo pronto do usuário que vira a trilha fixa das cenas (fica na pasta do job)
 const VIDEO_PATH = /^videogen\/[a-z0-9]{16,40}\/base\/[a-z0-9-]{1,60}\.(mp4|mov|webm)$/;
+// áudio/vídeo enviado no passo "Quem fala" da criação (sobe antes do job existir)
+const BASE_PATH = /^videogen\/base\/[a-z0-9]{8,32}\/[a-z0-9-]{1,60}\.(mp4|mov|webm|mp3|wav|m4a|ogg)$/;
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const AUDIO_CONTENT_TYPES = ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/wave", "audio/mp4", "audio/x-m4a", "audio/ogg", "audio/webm"];
@@ -29,6 +31,14 @@ export async function POST(request: Request) {
           return {
             allowedContentTypes: AUDIO_CONTENT_TYPES,
             maximumSizeInBytes: MAX_AUDIO_BYTES,
+            addRandomSuffix: true,
+            validUntil: Date.now() + 60 * 60 * 1000,
+          };
+        }
+        if (BASE_PATH.test(pathname)) {
+          return {
+            allowedContentTypes: ["video/mp4", "video/quicktime", "video/webm", ...AUDIO_CONTENT_TYPES],
+            maximumSizeInBytes: MAX_VIDEO_BYTES,
             addRandomSuffix: true,
             validUntil: Date.now() + 60 * 60 * 1000,
           };

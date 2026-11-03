@@ -66,6 +66,20 @@ export interface AvatarSegment {
   error?: string;
 }
 
+/** Quem fala no vídeo (escolhido no passo 2 da criação). */
+export type Speaker = "ai_voice" | "ai_avatar" | "upload";
+export const parseSpeaker = (v: unknown): Speaker => (v === "ai_avatar" || v === "upload" ? v : "ai_voice");
+export const SPEAKER_LABEL: Record<Speaker, string> = {
+  ai_voice: "Voz por IA",
+  ai_avatar: "Avatar por IA",
+  upload: "Áudio / vídeo enviado",
+};
+
+/** Fala gravada (áudio/vídeo enviado): a narração é a transcrição e o texto falado não se edita. */
+export function fixedSpeech(job: { speaker: string; narrationUrl: string | null; narrationWords: unknown }): boolean {
+  return job.speaker === "upload" && Boolean(job.narrationUrl) && Boolean(job.narrationWords);
+}
+
 export const AVATAR_SOURCE_LABEL: Record<AvatarTrack["source"], string> = {
   higgsfield: "Avatar (Higgsfield)",
   upload: "Vídeo seu",

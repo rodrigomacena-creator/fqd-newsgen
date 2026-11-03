@@ -4,8 +4,10 @@ import { recentFreeStyles, resolveStyle } from "@/lib/videogen/templates";
 import { generateVideoScript, VIDEOGEN_TEXT_MODEL } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
-import { DEFAULT_VOICE_ID, MAX_DURATION_S, parseVideoFormat } from "@/lib/videogen/types";
-import { cleanBriefingImages, getProfile } from "@/lib/videogen/profiles";
+import { DEFAULT_VOICE_ID, MAX_DURATION_S, parseSpeaker, parseVideoFormat } from "@/lib/videogen/types";
+import { cleanBriefingImages, getProfile, isAllowedImageUrl } from "@/lib/videogen/profiles";
+import { applyBaseSpeech } from "@/lib/videogen/baseVideo";
+import { deleteBlobIfOwned } from "@/lib/blobStorage";
 import { MAX_STYLE_NOTES } from "@/lib/videogen/freeStyle";
 import { articleSource } from "@/lib/videogen/articleSource";
 
@@ -43,6 +45,16 @@ export async function POST(request: Request) {
     articleId?: string;
     /** "9:16" (padrão, Reels/Shorts) ou "16:9" (YouTube horizontal). */
     format?: string;
+    /** Quem fala: "ai_voice" (padrão), "ai_avatar" (voz + avatar do Higgsfield) ou "upload" (áudio/vídeo enviado). */
+    speaker?: string;
+    /** Avatar por IA: foto escolhida para este vídeo (sem ela, a do perfil de quem fala). */
+    avatarImageUrl?: string;
+    /** Áudio/vídeo enviado (já no Blob, pasta videogen/base/). */
+    baseUrl?: string;
+    baseKind?: string;
+    baseDurationS?: number;
+    /** Vídeo enviado: também aparece nas cenas (trilha fixa) ou só o áudio vira a narração. */
+    baseUseVideo?: boolean;
   };
   try {
     body = await request.json();
@@ -50,9 +62,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
   }
 
+  const speaker = parseSpeaker(body.speaker);
+  const baseUrl = speaker === "upload" ? (typeof body.baseUrl === "string" ? body.baseUrl.trim() : "") : "";
+  if (speaker === "upload" && (!baseUrl || !isAllowedImageUrl(baseUrl) || !baseUrl.includes("/videogen/base/"))) {
+    return NextResponse.json({ error: "Envie o áudio ou o vídeo com a fala." }, { status: 400 });
+  }
+  const baseKind = body.baseKind === "audio" ? "audio" : "video";
+  const avatarImageUrl = speaker === "ai_avatar" && typeof body.avatarImageUrl === "string" ? body.avatarImageUrl.trim() : "";
+  if (avatarImageUrl && !isAllowedImageUrl(avatarImageUrl)) return NextResponse.json({ error: "Foto do avatar inválida." }, { status: 400 });
   const article = await articleSource(body.articleId?.trim());
   if (body.articleId?.trim() && !article) return NextResponse.json({ error: "Notícia não encontrada." }, { status: 404 });
-  const topic = (body.topic?.trim() || article?.title || "").slice(0, MAX_TOPIC);
+  // com fala enviada o tema é só contexto (o conteúdo é a própria fala)
+  const topic = (body.topic?.trim() || article?.title || (speaker === "upload" ? "Fala enviada" : "")).slice(0, MAX_TOPIC);
   if (!topic) return NextResponse.json({ error: "Informe o tema do vídeo." }, { status: 400 });
   const style = await resolveStyle(body.patternId?.trim() ?? "");
   if (!style) return NextResponse.json({ error: "Escolha um estilo válido." }, { status: 400 });
@@ -61,6 +82,12 @@ export async function POST(request: Request) {
   // o horizontal usa o motor genérico (estilo livre e templates); os embutidos são desenhados para 9:16
   if (format === "16:9" && pattern.kind === "builtin") {
     return NextResponse.json({ error: "O formato horizontal funciona no estilo livre e nos templates montados." }, { status: 400 });
+  }
+  if (speaker !== "ai_voice" && pattern.kind === "builtin") {
+    return NextResponse.json({ error: "Avatar e vídeo enviado funcionam no estilo livre e nos templates montados." }, { status: 400 });
+  }
+  if (speaker === "ai_avatar" && !avatarImageUrl && !(await getProfile(body.personId?.trim(), "person"))?.avatarUrl) {
+    return NextResponse.json({ error: "Envie uma foto para o avatar (ou cadastre uma no perfil de quem fala)." }, { status: 400 });
   }
   const durationS = Math.min(MAX_DURATION_S[format], Math.max(5, Math.round(Number(body.durationS) || 15)));
   const textModel = body.textModel?.trim() || VIDEOGEN_TEXT_MODEL;
@@ -89,9 +116,30 @@ export async function POST(request: Request) {
       styleNotes,
       articleId: article?.id ?? null,
       format,
+      speaker,
+      avatarImageUrl: avatarImageUrl || null,
       costs: "[]",
     },
   });
+
+  // fala enviada: transcreve e monta as cenas em cima dela (sem etapa de narração)
+  if (speaker === "upload") {
+    try {
+      const { data, usd } = await applyBaseSpeech(job, baseUrl, {
+        useVideo: baseKind === "video" && body.baseUseVideo !== false,
+        durationS: Number(body.baseDurationS) || 0,
+      });
+      await appendCosts(job.id, [costEntry("script", "openrouter", { usd })]);
+      const updated = await prisma.videoJob.update({ where: { id: job.id }, data });
+      return NextResponse.json({ job: serializeVideoJob(updated) });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao transcrever a fala.";
+      // sem fala não há vídeo: apaga o rascunho (o arquivo já foi apagado quando não há fala)
+      await deleteBlobIfOwned(baseUrl);
+      await prisma.videoJob.delete({ where: { id: job.id } }).catch(() => {});
+      return NextResponse.json({ error: message }, { status: 502 });
+    }
+  }
 
   try {
     const { script, usd } = await generateVideoScript({

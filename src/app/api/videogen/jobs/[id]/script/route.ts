@@ -8,7 +8,7 @@ import { jobProfiles, parseBriefingImages } from "@/lib/videogen/profiles";
 import { articleSource } from "@/lib/videogen/articleSource";
 import { parseAvatar } from "@/lib/videogen/avatar";
 import { scriptFromTranscript } from "@/lib/videogen/baseVideo";
-import type { NarrationWord } from "@/lib/videogen/types";
+import { fixedSpeech, type NarrationWord } from "@/lib/videogen/types";
 
 export const maxDuration = 300;
 
@@ -23,12 +23,13 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
   const style = await resolveStyle(job.patternId);
   if (!style) return NextResponse.json({ error: "O estilo deste vídeo não existe mais." }, { status: 400 });
 
-  // vídeo base do usuário: refaz a divisão da fala gravada em cenas (a narração continua a do vídeo)
-  const base = parseAvatar(job.avatar);
-  if (base?.source === "upload" && base.narrationUrl === job.narrationUrl && job.narrationWords) {
+  // fala enviada (áudio/vídeo): refaz a divisão da fala gravada em cenas (a narração continua a mesma)
+  if (fixedSpeech(job)) {
     try {
-      const words = JSON.parse(job.narrationWords) as NarrationWord[];
-      const { script, usd } = await scriptFromTranscript(job, words, job.narrationDurationS ?? base.durationS);
+      const base = parseAvatar(job.avatar);
+      const words = JSON.parse(job.narrationWords!) as NarrationWord[];
+      const { script, usd } = await scriptFromTranscript(job, words, job.narrationDurationS ?? base?.durationS ?? words.at(-1)![2]);
+      if (!base) script.scenes = script.scenes.map((s) => ({ ...s, avatar: undefined }));
       await appendCosts(id, [costEntry("script", "openrouter", { usd })]);
       const updated = await prisma.videoJob.update({
         where: { id },
