@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { heygenConfigured, listCharacters } from "@/lib/videogen/heygen";
 
+export const maxDuration = 60;
+
 /** Avatares e fotos animadas cadastrados na conta do HeyGen (pra escolher quem aparece no vídeo). */
 export async function GET() {
   const cfg = heygenConfigured();

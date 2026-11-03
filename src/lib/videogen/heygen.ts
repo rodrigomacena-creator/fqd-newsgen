@@ -57,21 +57,31 @@ async function call<T>(path: string, init: RequestInit = {}, base = API): Promis
   return (data.data ?? data) as T;
 }
 
-/** Avatares e fotos falantes cadastrados na conta do HeyGen (pra escolher aqui, como as vozes do ElevenLabs). */
+/** Lista do HeyGen em cache por 10 min (a lista pública deles é grande e lenta). */
+let cache: { at: number; list: AvatarCharacter[] } | null = null;
+const LIST_TTL_MS = 10 * 60 * 1000;
+const LIST_TIMEOUT_MS = 25_000;
+
+/**
+ * Avatares e fotos falantes da conta do HeyGen (pra escolher aqui, como as vozes do ElevenLabs).
+ * As fotos animadas (talking photos, sempre do próprio usuário) vêm primeiro; depois os avatares.
+ */
 export async function listCharacters(): Promise<AvatarCharacter[]> {
+  if (cache && Date.now() - cache.at < LIST_TTL_MS) return cache.list;
   const d = await call<{
-    avatars?: { avatar_id: string; avatar_name?: string; preview_image_url?: string }[];
+    avatars?: { avatar_id: string; avatar_name?: string; preview_image_url?: string; premium?: boolean }[];
     talking_photos?: { talking_photo_id: string; talking_photo_name?: string; preview_image_url?: string }[];
-  }>("/v2/avatars");
+  }>("/v2/avatars", { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
   const out: AvatarCharacter[] = [];
-  for (const a of d.avatars ?? []) {
-    if (a.avatar_id) out.push({ kind: "avatar", id: a.avatar_id, name: a.avatar_name || a.avatar_id, previewUrl: a.preview_image_url || undefined });
-  }
   for (const t of d.talking_photos ?? []) {
     if (t.talking_photo_id) {
       out.push({ kind: "talking_photo", id: t.talking_photo_id, name: t.talking_photo_name || "Foto animada", previewUrl: t.preview_image_url || undefined });
     }
   }
+  for (const a of d.avatars ?? []) {
+    if (a.avatar_id) out.push({ kind: "avatar", id: a.avatar_id, name: a.avatar_name || a.avatar_id, previewUrl: a.preview_image_url || undefined });
+  }
+  cache = { at: Date.now(), list: out };
   return out;
 }
 

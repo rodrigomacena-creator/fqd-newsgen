@@ -208,6 +208,11 @@ export function VideoJobEditor({ id }: { id: string }) {
           body: JSON.stringify({ source: "heygen", character: who?.character ?? null, imageUrl: who?.imageUrl ?? null, scope }),
         })
       );
+    } catch (e) {
+      // falhou (crédito, foto...): a narração já está aprovada, então abre a etapa Avatar para tentar de novo por lá
+      const avatarIdx = stages.indexOf("avatar");
+      if (avatarIdx > current) setStored(avatarIdx);
+      throw e;
     } finally {
       setBusy(null);
     }

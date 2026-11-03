@@ -31,7 +31,7 @@ export function AvatarCharacterSelect({
       <select
         id={id}
         value={value?.id ?? PHOTO_OPTION}
-        disabled={disabled || loading}
+        disabled={disabled}
         onChange={(e) => onChange(list.find((c) => c.id === e.target.value) ?? null)}
         className={`${fieldClass} bg-background text-foreground`}
       >
@@ -50,7 +50,7 @@ export function AvatarCharacterSelect({
         )}
       </select>
       <p className="mt-1 text-xs text-text-secondary">
-        {loading ? "Carregando os avatares da conta do HeyGen…" : error ? `Lista do HeyGen indisponível (${error}). Dá para usar a foto.` : list.length === 0 ? "Nenhum avatar na conta do HeyGen ainda: crie lá ou use a foto." : "Avatares criados na sua conta do HeyGen. Ou use a foto: ela vira uma foto animada lá."}
+        {loading ? "Buscando os avatares da conta do HeyGen… (dá para usar a foto enquanto isso)" : error ? `Lista do HeyGen indisponível (${error}). Dá para usar a foto.` : list.length === 0 ? "Nenhum avatar na conta do HeyGen ainda: crie lá ou use a foto." : "Avatares criados na sua conta do HeyGen. Ou use a foto: ela vira uma foto animada lá."}
       </p>
     </div>
   );
