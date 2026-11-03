@@ -11,11 +11,13 @@ import type { VideoScript } from "@/lib/videogen/types";
 export const maxDuration = 300;
 
 const PARALLEL = 4;
+const MAX_CUSTOM_PROMPT = 1500;
 
 /**
  * Gera as imagens do storyboard. Sem corpo: todas as cenas que ainda não têm prévia válida (e busca
  * os vídeos de banco das cenas com stockQuery). { scene: n } (índice a partir de 0): gera de novo só
  * aquela cena. { scene: n, action: "next_video" }: troca o vídeo de banco; "use_image": volta para imagem.
+ * { scene: n, prompt }: a cena passa a usar a imagem gerada com esse prompt (sai foto/vídeo/avatar da cena).
  */
 export async function POST(request: Request, ctx: RouteContext<"/api/videogen/jobs/[id]/storyboard">) {
   try {
@@ -28,7 +30,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/jo
 
 async function handle(request: Request, ctx: RouteContext<"/api/videogen/jobs/[id]/storyboard">) {
   const { id } = await ctx.params;
-  const body = (await request.json().catch(() => ({}))) as { scene?: number; action?: "next_video" | "use_image" };
+  const body = (await request.json().catch(() => ({}))) as { scene?: number; action?: "next_video" | "use_image"; prompt?: string };
   const job = await prisma.videoJob.findUnique({ where: { id } });
   if (!job) return NextResponse.json({ error: "Vídeo não encontrado." }, { status: 404 });
   if (!job.script) return NextResponse.json({ error: "Gere o roteiro antes do storyboard." }, { status: 400 });
@@ -37,6 +39,23 @@ async function handle(request: Request, ctx: RouteContext<"/api/videogen/jobs/[i
   }
   const script = JSON.parse(job.script) as VideoScript;
   const one = Number.isInteger(body.scene) ? Number(body.scene) : null;
+  const customPrompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+  if (one !== null && customPrompt) {
+    const sc = script.scenes[one];
+    if (!sc) return NextResponse.json({ error: "Slide não encontrado." }, { status: 404 });
+    if (customPrompt.length < 3 || customPrompt.length > MAX_CUSTOM_PROMPT) {
+      return NextResponse.json({ error: `O prompt precisa ter entre 3 e ${MAX_CUSTOM_PROMPT} caracteres.` }, { status: 400 });
+    }
+    sc.imagePrompt = customPrompt;
+    if (!sc.visual.trim()) sc.visual = customPrompt;
+    delete sc.imageUrl;
+    delete sc.stock;
+    delete sc.stockQuery;
+    delete sc.avatar;
+    if (sc.layout === "text_only") delete sc.layout;
+    // grava antes de gerar: no fim o roteiro é relido e a prévia só vale se o prompt salvo for o mesmo
+    await prisma.videoJob.update({ where: { id }, data: { script: JSON.stringify(script) } });
+  }
   if (one !== null && body.action && script.scenes[one]) {
     const sc = script.scenes[one];
     if (body.action === "use_image") {

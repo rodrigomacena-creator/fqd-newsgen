@@ -790,6 +790,11 @@ export function SceneStudio({
 
 const EMPTY: VideoScene = { narration: "", onScreen: "", visual: "", imagePrompt: "", durationS: 2 };
 
+/** Slide novo em branco na posição `at` (roteiro com direção de movimento: já nasce com uma). */
+export function blankScene(scenes: VideoScene[], at: number): VideoScene {
+  return scenes.some((sc) => sc.direction) ? { ...EMPTY, direction: defaultDirection(at) } : { ...EMPTY };
+}
+
 const darkIconButton =
   "inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition hover:bg-surface-2 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent";
 const studioField =

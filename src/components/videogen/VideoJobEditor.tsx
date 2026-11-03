@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { CostPanel } from "@/components/videogen/CostPanel";
-import { SceneStudio } from "@/components/videogen/SceneStudio";
+import { SceneStudio, blankScene } from "@/components/videogen/SceneStudio";
 import { BaseVideoPanel, avatarWho, jobApi } from "@/components/videogen/BaseVideoPanel";
 import {
   AutoTextarea,
@@ -222,13 +222,13 @@ export function VideoJobEditor({ id }: { id: string }) {
   }
 
   const [boardScene, setBoardScene] = useState<number | null>(null);
-  async function generateStoryboard(scene?: number, action?: "next_video" | "use_image") {
+  async function generateStoryboard(scene?: number, action?: "next_video" | "use_image", prompt?: string) {
     if (dirty && !(await save())) return;
     setBoardScene(scene ?? null);
     const data = await call("storyboard", `/api/videogen/jobs/${id}/storyboard`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(scene === undefined ? {} : { scene, action }),
+      body: JSON.stringify(scene === undefined ? {} : { scene, action, ...(prompt ? { prompt } : {}) }),
     });
     setBoardScene(null);
     if (data?.job) applyJob(data.job);
@@ -339,6 +339,12 @@ export function VideoJobEditor({ id }: { id: string }) {
         : s
     );
     setDirty(true);
+  }
+
+  /** Storyboard: slide novo, em branco, no fim da lista. */
+  function addSlide() {
+    if (!script) return;
+    insertScene(script.scenes.length, blankScene(script.scenes, script.scenes.length));
   }
 
   function removeScene(index: number) {
@@ -504,6 +510,9 @@ export function VideoJobEditor({ id }: { id: string }) {
               busy={busy === "storyboard"}
               busyScene={boardScene}
               onGenerate={generateStoryboard}
+              onGenerateWithPrompt={(scene, prompt) => generateStoryboard(scene, undefined, prompt)}
+              onAdd={addSlide}
+              onRemove={removeScene}
               onUpload={setSceneImage}
               onUploadClip={setSceneClip}
               onUseGenerated={backToGenerated}
@@ -1314,6 +1323,9 @@ function Storyboard({
   busy,
   busyScene,
   onGenerate,
+  onGenerateWithPrompt,
+  onAdd,
+  onRemove,
   onUpload,
   onUploadClip,
   onUseGenerated,
@@ -1325,6 +1337,9 @@ function Storyboard({
   busy: boolean;
   busyScene: number | null;
   onGenerate: (scene?: number, action?: "next_video" | "use_image") => void;
+  onGenerateWithPrompt: (scene: number, prompt: string) => void;
+  onAdd: () => void;
+  onRemove: (scene: number) => void;
   onUpload: (scene: number, url: string) => string | null;
   onUploadClip: (scene: number, url: string) => void;
   onUseGenerated: (scene: number) => void;
@@ -1333,6 +1348,21 @@ function Storyboard({
   const [target, setTarget] = useState<number | null>(null);
   const [uploading, setUploading] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // slide cujo prompt está sendo escrito (modal) e o texto
+  const [promptFor, setPromptFor] = useState<number | null>(null);
+  const [promptText, setPromptText] = useState("");
+
+  function openPrompt(i: number) {
+    const sc = scenes[i];
+    setPromptText(sc.imageUrl || sc.stock ? "" : sc.imagePrompt);
+    setPromptFor(i);
+  }
+
+  function submitPrompt() {
+    if (promptFor === null || promptText.trim().length < 3) return;
+    onGenerateWithPrompt(promptFor, promptText.trim());
+    setPromptFor(null);
+  }
 
   function pick(i: number) {
     setTarget(i);
@@ -1439,7 +1469,7 @@ function Storyboard({
                 )}
               </div>
               {/* mesmas linhas em todo card (situação, ação principal, foto sua) para os botões ficarem alinhados */}
-              <div className="mt-1 grid grid-rows-[20px_32px_32px] gap-0.5">
+              <div className="mt-1 grid grid-rows-[20px_32px_32px_32px_32px] gap-0.5">
                 <p className="flex items-center justify-center text-[11px] text-text-secondary">
                   {sc.imageUrl ? "Sua imagem" : sc.stock?.source === "upload" ? "Seu vídeo" : sc.stock ? "Vídeo de banco" : sc.layout === "text_only" ? "Só texto" : generated ? "Imagem da IA" : "Sem imagem"}
                 </p>
@@ -1470,6 +1500,18 @@ function Storyboard({
                 >
                   <Icon name="up" className="h-3.5 w-3.5" /> {sc.imageUrl || sc.stock?.source === "upload" ? "Trocar arquivo" : "Upload de imagem / vídeo"}
                 </button>
+                <button type="button" onClick={() => openPrompt(i)} disabled={disabled} className={boardAction}>
+                  <Icon name="edit" className="h-3.5 w-3.5" /> Gerar por prompt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRemove(i)}
+                  disabled={disabled || scenes.length <= 1}
+                  title={scenes.length <= 1 ? "O vídeo precisa de ao menos um slide." : undefined}
+                  className="inline-flex items-center justify-center gap-1 rounded-lg text-[11px] text-text-secondary hover:bg-accent-red/10 hover:text-accent-red disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-secondary"
+                >
+                  <Icon name="trash" className="h-3.5 w-3.5" /> Excluir slide
+                </button>
                 {sc.stock && sc.stock.source !== "upload" && !sc.imageUrl && (
                   <button
                     type="button"
@@ -1484,7 +1526,68 @@ function Storyboard({
             </li>
           );
         })}
+        <li className={`shrink-0 snap-start ${landscape ? "w-[176px] sm:w-[208px]" : "w-[108px] sm:w-[124px]"}`}>
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={disabled}
+            className={`flex w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border px-2 text-center text-[11px] font-medium text-text-secondary transition hover:border-accent-yellow hover:text-accent-yellow disabled:opacity-50 ${landscape ? "aspect-video" : "aspect-[9/16]"}`}
+          >
+            <Icon name="plus" className="h-5 w-5" /> Adicionar slide
+          </button>
+        </li>
       </ol>
+      {promptFor !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Prompt da imagem do slide ${promptFor + 1}`}
+          onClick={() => setPromptFor(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        >
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl border border-border bg-surface p-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Imagem do slide {promptFor + 1}</h3>
+              <button type="button" onClick={() => setPromptFor(null)} aria-label="Fechar" className="text-text-secondary hover:text-foreground">
+                <Icon name="x" className="h-4 w-4" />
+              </button>
+            </div>
+            <label htmlFor="slide-prompt" className="mt-3 block text-sm font-medium">
+              Descreva a imagem
+            </label>
+            <textarea
+              id="slide-prompt"
+              autoFocus
+              rows={5}
+              maxLength={1500}
+              value={promptText}
+              onChange={(e) => setPromptText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setPromptFor(null);
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitPrompt();
+              }}
+              placeholder="Ex.: carro de Fórmula 1 vermelho acelerando numa curva ao pôr do sol, foto realista"
+              className="mt-2 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent-yellow"
+            />
+            <p className="mt-1.5 text-xs text-text-secondary">
+              Gera uma imagem só para este slide e substitui a atual (foto, vídeo ou imagem da IA). Pode escrever em português.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={() => setPromptFor(null)} className="w-full rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:bg-surface-2">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={submitPrompt}
+                disabled={promptText.trim().length < 3}
+                className="w-full rounded-lg bg-accent-yellow px-4 py-2.5 text-sm font-semibold text-accent-yellow-ink hover:bg-accent-yellow/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Gerar imagem (≈ US$ 0,04)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
