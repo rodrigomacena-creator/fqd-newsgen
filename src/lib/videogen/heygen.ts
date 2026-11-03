@@ -80,60 +80,85 @@ interface LookRow {
 /** Grupos de avatar são "photo avatar" (looks usados como talking_photo) ou avatar de vídeo (instant/studio). */
 const photoGroup = (g: GroupRow) => /photo/i.test(g.group_type ?? "");
 
+/** Lista de /v2/avatars (a que o Rodrigo quer: "Erick Melo -- 17", "-- 15"... são os avatares instantâneos dele). */
+async function listAllAvatars(): Promise<AvatarCharacter[]> {
+  const d = await call<{
+    avatars?: { avatar_id: string; avatar_name?: string; preview_image_url?: string; premium?: boolean; default_voice_id?: string }[];
+    talking_photos?: { talking_photo_id: string; talking_photo_name?: string; preview_image_url?: string; default_voice_id?: string }[];
+  }>("/v2/avatars", { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
+  const out: AvatarCharacter[] = [];
+  for (const t of d.talking_photos ?? []) {
+    if (t.talking_photo_id) {
+      out.push({ kind: "talking_photo", id: t.talking_photo_id, name: t.talking_photo_name || "Foto animada", previewUrl: t.preview_image_url || undefined, defaultVoiceId: t.default_voice_id || undefined });
+    }
+  }
+  for (const a of d.avatars ?? []) {
+    if (a.avatar_id) {
+      out.push({ kind: "avatar", id: a.avatar_id, name: a.avatar_name || a.avatar_id, previewUrl: a.preview_image_url || undefined, defaultVoiceId: a.default_voice_id || undefined });
+    }
+  }
+  return out;
+}
+
+/** Looks dos grupos de avatar da conta (`/v2/avatar_group.list?include_public=false` + looks de cada grupo). */
+async function listGroupLooks(): Promise<{ groups: string[]; list: AvatarCharacter[] }> {
+  const g = await call<{ avatar_group_list?: GroupRow[]; total_count?: number }>("/v2/avatar_group.list?include_public=false", {
+    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+  });
+  const groups = (g.avatar_group_list ?? []).filter((x) => x.id);
+  const looksPerGroup = await Promise.all(
+    groups.map(async (grp) => {
+      try {
+        const d = await call<{ avatar_list?: LookRow[] }>(`/v2/avatar_group/${encodeURIComponent(grp.id)}/avatars`, { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
+        return (d.avatar_list ?? []).filter((l) => l.id && !/fail|pending|processing/i.test(l.status ?? ""));
+      } catch (e) {
+        console.warn("[heygen] looks do grupo falharam:", grp.id, e);
+        return [];
+      }
+    })
+  );
+  const list: AvatarCharacter[] = [];
+  groups.forEach((grp, i) => {
+    const looks = looksPerGroup[i];
+    const kind: AvatarCharacter["kind"] = photoGroup(grp) ? "talking_photo" : "avatar";
+    if (looks.length === 0) {
+      list.push({ kind, id: grp.id, name: grp.name || grp.id, previewUrl: grp.preview_image || undefined, defaultVoiceId: grp.default_voice_id || undefined });
+      return;
+    }
+    for (const look of looks) {
+      const name = looks.length > 1 ? `${grp.name || "Avatar"} · ${look.name || look.id}` : grp.name || look.name || look.id;
+      list.push({ kind, id: look.id, name, previewUrl: look.image_url || grp.preview_image || undefined, defaultVoiceId: look.default_voice_id || grp.default_voice_id || undefined });
+    }
+  });
+  return { groups: groups.map((x) => x.name || "").filter(Boolean), list };
+}
+
+/** Nome de avatar próprio (instantâneo) do HeyGen: "Nome -- 17". */
+const OWN_NAME = /\s--\s*\d+\s*$/;
+
 /**
- * Avatares da CONTA do HeyGen (pra escolher aqui, como as vozes do ElevenLabs): os grupos de avatar
- * do usuário (`/v2/avatar_group.list?include_public=false`) e os looks de cada um. Se essa listagem
- * falhar, cai para `/v2/avatars` (lista geral, grande) só com as talking photos (que são do usuário).
+ * Avatares pra escolher aqui (como as vozes do ElevenLabs). Fonte principal: `/v2/avatars`, a lista que o
+ * Rodrigo reconhece ("Erick Melo -- 17", "-- 15"...: avatares instantâneos gravados por ele, mais as fotos
+ * animadas). Essa lista traz também a biblioteca pública do HeyGen, então os próprios vêm primeiro (nome
+ * "Nome -- N", talking photos e nomes dos grupos da conta) e o resto depois. Os grupos da conta
+ * (`/v2/avatar_group.list`) só servem pra reconhecer o que é próprio e como reserva se `/v2/avatars` estourar
+ * o tempo (ele é grande e chegou a passar de 25 s na Vercel; por isso timeout de 50 s e cache).
  */
 export async function listCharacters(): Promise<AvatarCharacter[]> {
   if (cache && Date.now() - cache.at < LIST_TTL_MS) return cache.list;
-  const out: AvatarCharacter[] = [];
-  try {
-    const g = await call<{ avatar_group_list?: GroupRow[]; total_count?: number }>("/v2/avatar_group.list?include_public=false", {
-      signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
-    });
-    const groups = (g.avatar_group_list ?? []).filter((x) => x.id);
-    const looksPerGroup = await Promise.all(
-      groups.map(async (grp) => {
-        try {
-          const d = await call<{ avatar_list?: LookRow[] }>(`/v2/avatar_group/${encodeURIComponent(grp.id)}/avatars`, { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
-          return (d.avatar_list ?? []).filter((l) => l.id && !/fail|pending|processing/i.test(l.status ?? ""));
-        } catch (e) {
-          console.warn("[heygen] looks do grupo falharam:", grp.id, e);
-          return [];
-        }
-      })
-    );
-    groups.forEach((grp, i) => {
-      const looks = looksPerGroup[i];
-      const kind: AvatarCharacter["kind"] = photoGroup(grp) ? "talking_photo" : "avatar";
-      if (looks.length === 0) {
-        out.push({ kind, id: grp.id, name: grp.name || grp.id, previewUrl: grp.preview_image || undefined, defaultVoiceId: grp.default_voice_id || undefined });
-        return;
-      }
-      for (const look of looks) {
-        const name = looks.length > 1 ? `${grp.name || "Avatar"} · ${look.name || look.id}` : grp.name || look.name || look.id;
-        out.push({ kind, id: look.id, name, previewUrl: look.image_url || grp.preview_image || undefined, defaultVoiceId: look.default_voice_id || grp.default_voice_id || undefined });
-      }
-    });
-  } catch (e) {
-    console.warn("[heygen] avatar_group.list falhou, usando /v2/avatars:", e);
-  }
-  if (out.length === 0) {
-    const d = await call<{
-      avatars?: { avatar_id: string; avatar_name?: string; preview_image_url?: string; premium?: boolean; default_voice_id?: string }[];
-      talking_photos?: { talking_photo_id: string; talking_photo_name?: string; preview_image_url?: string }[];
-    }>("/v2/avatars", { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
-    for (const t of d.talking_photos ?? []) {
-      if (t.talking_photo_id) {
-        out.push({ kind: "talking_photo", id: t.talking_photo_id, name: t.talking_photo_name || "Foto animada", previewUrl: t.preview_image_url || undefined });
-      }
-    }
-    for (const a of d.avatars ?? []) {
-      if (a.avatar_id) {
-        out.push({ kind: "avatar", id: a.avatar_id, name: a.avatar_name || a.avatar_id, previewUrl: a.preview_image_url || undefined, defaultVoiceId: a.default_voice_id || undefined });
-      }
-    }
+  const [all, grouped] = await Promise.allSettled([listAllAvatars(), listGroupLooks()]);
+  const groupNames = grouped.status === "fulfilled" ? grouped.value.groups : [];
+  let out: AvatarCharacter[];
+  if (all.status === "fulfilled") {
+    const own = (c: AvatarCharacter) =>
+      c.kind === "talking_photo" || OWN_NAME.test(c.name ?? "") || groupNames.some((g) => (c.name ?? "").toLowerCase().startsWith(g.toLowerCase()));
+    const mine = all.value.filter(own);
+    const rest = all.value.filter((c) => !own(c));
+    out = [...mine, ...rest];
+  } else {
+    console.warn("[heygen] /v2/avatars falhou, usando os grupos da conta:", all.reason);
+    if (grouped.status !== "fulfilled") throw all.reason;
+    out = grouped.value.list;
   }
   cache = { at: Date.now(), list: out };
   return out;

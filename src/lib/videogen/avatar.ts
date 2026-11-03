@@ -12,7 +12,7 @@
 import { put } from "@vercel/blob";
 import type { VideoJob } from "@/generated/prisma/client";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
-import { avatarStatus, submitAvatar } from "./heygen";
+import { avatarStatus, listVoices, submitAvatar } from "./heygen";
 import { speechToText } from "./elevenlabs";
 import { fullNarration, parseVideoFormat, type AvatarCharacter, type AvatarSegment, type AvatarTrack, type HeygenVoice, type NarrationWord, type VideoScript } from "./types";
 
@@ -31,11 +31,29 @@ export function parseAvatar(value: string | null): AvatarTrack | null {
  * Sem voz escolhida, usa a voz padrão do avatar no HeyGen.
  * Devolve a trilha com status "generating"; `advanceAvatar` acompanha e, pronto, transcreve.
  */
+/**
+ * Voz do avatar: a padrão dele no HeyGen; sem ela, a voz da conta com o mesmo nome (avatar instantâneo
+ * "Erick Melo -- 17" costuma ter a voz clonada "Erick Melo -- 17"), senão a primeira voz em português.
+ */
+async function defaultVoiceFor(character: AvatarCharacter): Promise<HeygenVoice | null> {
+  if (character.defaultVoiceId) return { id: character.defaultVoiceId, name: "Voz padrão do avatar" };
+  let voices: HeygenVoice[] = [];
+  try {
+    voices = await listVoices();
+  } catch (e) {
+    console.warn("[heygen] lista de vozes falhou:", e);
+  }
+  const name = (character.name ?? "").trim().toLowerCase();
+  const same = name ? voices.find((v) => v.name.toLowerCase().startsWith(name)) : undefined;
+  const pt = voices.find((v) => /portug|pt\b|brazil|brasil/i.test(v.language ?? ""));
+  return same ?? pt ?? null;
+}
+
 export async function startHeygen(job: VideoJob, script: VideoScript, character: AvatarCharacter, voice: HeygenVoice | null): Promise<AvatarTrack> {
   const text = fullNarration(script);
   if (!text) throw new Error("O roteiro não tem narração.");
-  const spoken = voice ?? (character.defaultVoiceId ? { id: character.defaultVoiceId, name: "Voz padrão do avatar" } : null);
-  if (!spoken) throw new Error("Este avatar não tem voz padrão no HeyGen: escolha uma voz.");
+  const spoken = voice ?? (await defaultVoiceFor(character));
+  if (!spoken) throw new Error("Este avatar não tem voz padrão no HeyGen e não achei uma voz com o nome dele.");
   const prev = parseAvatar(job.avatar);
   if (prev) await discardAvatarFiles(prev);
   const videoId = await submitAvatar(character, { type: "text", voiceId: spoken.id, text }, parseVideoFormat(job.format));

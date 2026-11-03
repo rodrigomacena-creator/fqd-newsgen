@@ -385,9 +385,13 @@ reais encontradas ao construir o projeto, não só a estrutura.
   (`VideoProfile.heygenAvatar`), na criação (`VideoJob.avatarCharacter`) ou no card Avatar; obrigatório) e da **voz padrão desse
   avatar** (`defaultVoiceId` que vem na listagem; `startHeygen` recusa avatar sem voz padrão). `VideoProfile.heygenVoice`/
   `VideoJob.voiceId` só servem de sobrescrita opcional vinda da API (sem UI). A listagem (`listCharacters()`, GET
-  `/api/videogen/avatars`, cache de 10 min, timeout 50 s) usa os **grupos de avatar da conta** (`/v2/avatar_group.list?include_public=false`
-  + `/v2/avatar_group/{id}/avatars`), porque `/v2/avatars` lista a biblioteca pública inteira e estourava o timeout na Vercel
-  (`/v2/avatars` fica só de fallback). As colunas `VideoProfile.avatarUrl`/`VideoJob.avatarImageUrl` (foto enviada) ficaram no banco
+  `/api/videogen/avatars`, cache de 10 min, timeout 50 s, `maxDuration = 60`) usa **`/v2/avatars`** (a lista que o Rodrigo
+  reconhece: os avatares instantâneos dele se chamam "Erick Melo -- 17", "-- 15"..., e foi assim que ele pediu em 03/11/2026 —
+  os looks dos grupos (`/v2/avatar_group.list`) têm outros nomes e não incluem esses ids). Como `/v2/avatars` traz a biblioteca
+  pública inteira, os próprios (talking photos, nome "Nome -- N" ou nome de grupo da conta) vêm primeiro e o resto depois; os
+  grupos só entram como reserva se `/v2/avatars` estourar o tempo. Avatar sem `default_voice_id`: `defaultVoiceFor()` em
+  `avatar.ts` procura uma voz da conta com o mesmo nome (a voz clonada "Erick Melo -- 17"), senão a primeira em português.
+  As colunas `VideoProfile.avatarUrl`/`VideoJob.avatarImageUrl` (foto enviada) ficaram no banco
   mas não são mais lidas nem gravadas. Seletor único: `AvatarCharacterSelect.tsx`.
   Um pedido só (`startHeygen`, `voice.type = "text"`); a trilha nasce com `narrationUrl: ""` e, quando
   o mp4 fica pronto (`advanceAvatar`, chamado pelo GET da rota a cada 8 s pela tela), ele é copiado pro Blob, a fala é
