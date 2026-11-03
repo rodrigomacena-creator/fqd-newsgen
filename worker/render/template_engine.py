@@ -411,7 +411,8 @@ class SceneVisual:
         else:
             fr = self.bg.copy()
         if self.clip is not None:
-            self.big = _filter(self.clip.at(local_t), self.spec["image"]["filter"], self.spec)
+            raw = self.clip.at(local_t)
+            self.big = raw if getattr(self.clip, "raw", False) else _filter(raw, self.spec["image"]["filter"], self.spec)
         if self.big is not None:
             bw, bh = self.big.size
             tw, th = (W, H) if self.layout == "fullbleed" else self._panel()
@@ -488,6 +489,23 @@ class StockClip:
             k %= period
             k = k if k < n else period - k
         k = min(k, n - 1)
+        if self._last[0] != k:
+            self._last = (k, Image.open(self.files[k]).convert("RGB"))
+        return self._last[1]
+
+
+class BaseClip(StockClip):
+    """Quadros do vídeo base (avatar falando / vídeo do usuário) de uma cena. O tempo é o da fala:
+    nunca vai e volta (quebraria o lipsync); antes do trecho começar ou depois de acabar, segura o quadro."""
+
+    raw = True  # sem o filtro de cor do estilo: a pessoa aparece com a cor real
+
+    def __init__(self, folder, lead=0.0):
+        super().__init__(folder)
+        self.lead = lead
+
+    def at(self, local_t):
+        k = min(max(int((local_t - self.lead) * FPS), 0), len(self.files) - 1)
         if self._last[0] != k:
             self._last = (k, Image.open(self.files[k]).convert("RGB"))
         return self._last[1]
@@ -1034,7 +1052,14 @@ def render(job, assets, out_path, on_progress=None):
         img = Image.open(path).convert("RGB") if path else None
         layout = sc.data.get("layout") if sc.data.get("layout") in SCENE_LAYOUTS else None
         clip = None
-        if assets.get("clips", {}).get(sc.index) and img is not None:
+        base = (assets.get("base_clips") or {}).get(sc.index)
+        if base and img is not None:  # vídeo base (avatar): tela cheia tocando o vídeo no tempo da fala
+            try:
+                clip = BaseClip(base[0], base[1])
+                layout = "fullbleed"
+            except Exception:
+                clip = None
+        if clip is None and assets.get("clips", {}).get(sc.index) and img is not None:
             try:
                 clip = StockClip(assets["clips"][sc.index])
             except Exception:

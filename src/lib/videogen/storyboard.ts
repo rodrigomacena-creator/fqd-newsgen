@@ -7,9 +7,9 @@ import type { VideoScene } from "./types";
 /** Mesmo modelo de imagem do worker (VIDEOGEN_IMAGE_MODEL em worker/providers.py). */
 export const VIDEOGEN_IMAGE_MODEL = process.env.VIDEOGEN_IMAGE_MODEL || "google/gemini-nano-banana-2.1";
 
-/** Cena que precisa de imagem gerada (sem foto do usuário, sem ser "só texto", com prompt). */
+/** Cena que precisa de imagem gerada (sem foto do usuário, sem ser "só texto" nem avatar, com prompt). */
 export function needsGeneratedImage(sc: VideoScene): boolean {
-  return !sc.imageUrl && !sc.stock && sc.layout !== "text_only" && Boolean(sc.imagePrompt.trim());
+  return !sc.imageUrl && !sc.stock && !sc.avatar && sc.layout !== "text_only" && Boolean(sc.imagePrompt.trim());
 }
 
 /** A prévia ainda vale (o prompt não mudou depois de gerada). */

@@ -113,6 +113,11 @@ export function profileInput(body: Record<string, unknown>, partial: boolean): {
     if (url && !isAllowedImageUrl(url)) return { error: "Logo inválido." };
     data.logoUrl = url || null;
   }
+  if (body.avatarUrl !== undefined) {
+    const url = typeof body.avatarUrl === "string" ? body.avatarUrl.trim() : "";
+    if (url && !isAllowedImageUrl(url)) return { error: "Foto do avatar inválida." };
+    data.avatarUrl = url || null;
+  }
   if (body.pronunciations !== undefined) data.pronunciations = JSON.stringify(cleanPronunciations(body.pronunciations));
   if (body.isDefault !== undefined) data.isDefault = body.isDefault === true;
   if (body.neutral !== undefined) data.neutral = body.neutral === true;

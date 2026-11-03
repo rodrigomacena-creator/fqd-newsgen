@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveStyle } from "@/lib/videogen/templates";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
+import { parseAvatar } from "@/lib/videogen/avatar";
+import { uncoveredScenes } from "@/lib/videogen/avatarPlan";
+import type { NarrationWord, VideoScript } from "@/lib/videogen/types";
 
 /**
  * Coloca o vídeo na fila de render (status "queued"). Quem renderiza é o worker na VPS,
@@ -27,6 +30,25 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/jo
   }
   if (job.status === "queued" || job.status === "rendering") {
     return NextResponse.json({ job: serializeVideoJob(job) });
+  }
+  // vídeo base (avatar/vídeo seu): só o motor genérico sabe intercalar, e as cenas marcadas precisam estar cobertas
+  const avatar = parseAvatar(job.avatar);
+  const script = JSON.parse(job.script) as VideoScript;
+  if (avatar && avatar.narrationUrl === job.narrationUrl && script.scenes.some((s) => s.avatar)) {
+    if (style.pattern.kind === "builtin") {
+      return NextResponse.json({ error: "O vídeo base só funciona no estilo livre e nos templates. Troque o estilo deste vídeo." }, { status: 400 });
+    }
+    if (avatar.status === "generating") {
+      return NextResponse.json({ error: "O avatar ainda está sendo gerado. Aguarde terminar para mandar para o render." }, { status: 409 });
+    }
+    const words = job.narrationWords ? (JSON.parse(job.narrationWords) as NarrationWord[]) : null;
+    const missing = uncoveredScenes(script, words, avatar, job.narrationDurationS ?? avatar.durationS);
+    if (missing.length) {
+      return NextResponse.json(
+        { error: `A(s) cena(s) ${missing.map((i) => i + 1).join(", ")} estão marcadas como avatar, mas ainda não têm avatar gerado. Gere os trechos que faltam ou troque essas cenas para imagem.` },
+        { status: 400 }
+      );
+    }
   }
 
   const updated = await prisma.videoJob.update({

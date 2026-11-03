@@ -162,6 +162,44 @@ def extract_clip_frames(mp4, out_dir, seconds):
 CLIP_ZOOM = 1.12  # folga do quadro do vídeo para o movimento de câmera
 
 
+def base_track(job):
+    """Trechos do vídeo base (avatar do Higgsfield ou vídeo do usuário) que valem para a narração atual.
+    [] quando não há vídeo base pronto: as cenas marcadas como avatar viram imagem, como antes."""
+    a = job.get("avatar") or {}
+    if a.get("status") != "ready" or not job.get("narrationUrl") or a.get("narrationUrl") != job.get("narrationUrl"):
+        return []
+    return [s for s in a.get("segments") or [] if s.get("status") == "completed" and s.get("videoUrl")]
+
+
+def segment_for(segments, start, end):
+    """Trecho que mais cobre o intervalo [start, end] da cena (None se nenhum encosta nele)."""
+    best, best_cover = None, 0.0
+    for s in segments:
+        cover = min(end, float(s["end"])) - max(start, float(s["start"]))
+        if cover > best_cover:
+            best, best_cover = s, cover
+    return best
+
+
+def extract_base_frames(mp4, out_dir, offset, seconds):
+    """Quadros do vídeo base a partir de `offset` (s), no tamanho do quadro e no FPS do render.
+    Diferente do vídeo de banco, o tempo aqui é o da fala: o quadro k é o instante offset + k/FPS."""
+    from render.common import FPS, H, W
+    out_dir = Path(out_dir)
+    shutil.rmtree(out_dir, ignore_errors=True)
+    out_dir.mkdir(parents=True)
+    w, h = int(W * BASE_ZOOM) // 2 * 2, int(H * BASE_ZOOM) // 2 * 2
+    vf = f"fps={FPS},scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{max(offset, 0):.3f}", "-t", f"{seconds:.2f}",
+                    "-i", str(mp4), "-an", "-vf", vf, "-q:v", "3", str(out_dir / "%04d.jpg")], check=True, timeout=600)
+    if not (out_dir / "0001.jpg").exists():
+        raise RuntimeError("ffmpeg não extraiu quadros do vídeo base")
+    return out_dir
+
+
+BASE_ZOOM = 1.06  # pouca folga: o rosto do avatar não pode sair do quadro com o movimento
+
+
 PREVIEW_FPS = 12  # prévia rápida: mesma resolução e layout, menos quadros (render ~2,5x mais rápido)
 
 
@@ -230,7 +268,9 @@ def _produce(job, workdir, report, costs, assets, preview):
 
     narration = None
     if job.get("narrationUrl"):
-        narration = download(job["narrationUrl"], workdir / "narracao.mp3")
+        ext = Path(job["narrationUrl"].split("?")[0]).suffix.lower()
+        # vídeo base do usuário: a narração é o próprio vídeo (o ffmpeg usa só o áudio dele)
+        narration = download(job["narrationUrl"], workdir / f"narracao{ext if ext in ('.mp4', '.mov', '.webm') else '.mp3'}")
 
     # imagens das cenas em paralelo + trilha ao mesmo tempo
     images = {}
@@ -242,6 +282,10 @@ def _produce(job, workdir, report, costs, assets, preview):
     spec_bg = ((job.get("templateSpec") or {}).get("background") or {}) if module is template_engine else {}
     if spec_img.get("layout") == "none" and spec_bg.get("kind") != "blurred_image":
         used -= {i for i, sc in enumerate(scenes) if not sc.get("layout") and not sc.get("imageUrl")}
+    # vídeo base: cenas marcadas como avatar mostram o vídeo, não geram imagem
+    base_segments = base_track(job) if module is template_engine else []
+    avatar_scenes = {i for i, sc in enumerate(scenes) if sc.get("avatar")} if base_segments else set()
+    used -= avatar_scenes
     def cached(fn, path, *a):
         return path if REUSE_ASSETS and path.exists() else fn(*a, path, costs=costs)
 
@@ -341,6 +385,35 @@ def _produce(job, workdir, report, costs, assets, preview):
         tl = build_timeline(script, job.get("narrationWords"))
         log(f"trilha: {len(beats)} batidas, cortes ajustados")
 
+    # vídeo base: quadros de cada cena com avatar, no tempo da fala (depois dos cortes na batida)
+    base_clips = {}
+    if avatar_scenes:
+        base_files = {}
+        for sc in tl.scenes:
+            if sc.index not in avatar_scenes:
+                continue
+            seg = segment_for(base_segments, sc.start, sc.end)
+            if seg is None:
+                log(f"cena {sc.index + 1}: sem trecho do vídeo base; usando imagem")
+                continue
+            try:
+                url = seg["videoUrl"]
+                if url not in base_files:
+                    base_files[url] = download(url, workdir / f"base_{len(base_files):02d}.mp4")
+                seg_start = float(seg["start"])
+                offset = sc.start - seg_start
+                clip_dir = extract_base_frames(base_files[url], workdir / f"cena_{sc.index:02d}_base", offset, sc.end - sc.start + 0.6)
+                base_clips[sc.index] = (clip_dir, max(0.0, -offset))
+                shutil.copyfile(clip_dir / "0001.jpg", workdir / f"cena_{sc.index:02d}.jpg")
+                images[sc.index] = workdir / f"cena_{sc.index:02d}.jpg"
+            except Exception as e:
+                log(f"cena {sc.index + 1}: vídeo base falhou ({e}); usando imagem")
+        missing = [i + 1 for i in sorted(avatar_scenes - set(base_clips)) if i not in images]
+        if missing:
+            raise RuntimeError(f"Cena(s) {', '.join(map(str, missing))} marcadas como avatar ficaram sem vídeo base nem imagem.")
+        log(f"vídeo base: {len(base_clips)} cena(s) com avatar")
+        report(52)
+
     video_only = workdir / "video_only.mp4"
     extra = {}
     if module is template_engine:
@@ -357,6 +430,7 @@ def _produce(job, workdir, report, costs, assets, preview):
         elif texture_url:
             extra["texture"] = download(texture_url, workdir / "textura.jpg")
         extra["clips"] = clips
+        extra["base_clips"] = base_clips
     duration = module.render(job, {"images": images, **extra}, str(video_only), on_progress=lambda p: report(50 + 40 * p))
     report(91)
 

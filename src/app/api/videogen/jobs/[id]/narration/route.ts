@@ -8,6 +8,7 @@ import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { alignDisplayWords, mergePronunciations, spokenText } from "@/lib/videogen/pronunciation";
 import { fullNarration, type VideoScript } from "@/lib/videogen/types";
 import { jobProfiles } from "@/lib/videogen/profiles";
+import { parseAvatar } from "@/lib/videogen/avatar";
 
 export const maxDuration = 120;
 
@@ -21,6 +22,13 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
     return NextResponse.json({ error: "O vídeo está na fila de render." }, { status: 409 });
   }
 
+  const base = parseAvatar(job.avatar);
+  if (base?.source === "upload" && base.narrationUrl === job.narrationUrl) {
+    return NextResponse.json(
+      { error: "Este vídeo usa um vídeo seu como base: a fala vem dele. Remova o vídeo base para narrar no ElevenLabs." },
+      { status: 409 }
+    );
+  }
   const script = JSON.parse(job.script) as VideoScript;
   const display = fullNarration(script);
   if (!display) return NextResponse.json({ error: "Este roteiro não tem narração." }, { status: 400 });

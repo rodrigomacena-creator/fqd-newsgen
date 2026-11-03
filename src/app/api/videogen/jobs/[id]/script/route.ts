@@ -6,6 +6,9 @@ import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { jobProfiles, parseBriefingImages } from "@/lib/videogen/profiles";
 import { articleSource } from "@/lib/videogen/articleSource";
+import { parseAvatar } from "@/lib/videogen/avatar";
+import { scriptFromTranscript } from "@/lib/videogen/baseVideo";
+import type { NarrationWord } from "@/lib/videogen/types";
 
 export const maxDuration = 300;
 
@@ -19,6 +22,23 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
   }
   const style = await resolveStyle(job.patternId);
   if (!style) return NextResponse.json({ error: "O estilo deste vídeo não existe mais." }, { status: 400 });
+
+  // vídeo base do usuário: refaz a divisão da fala gravada em cenas (a narração continua a do vídeo)
+  const base = parseAvatar(job.avatar);
+  if (base?.source === "upload" && base.narrationUrl === job.narrationUrl && job.narrationWords) {
+    try {
+      const words = JSON.parse(job.narrationWords) as NarrationWord[];
+      const { script, usd } = await scriptFromTranscript(job, words, job.narrationDurationS ?? base.durationS);
+      await appendCosts(id, [costEntry("script", "openrouter", { usd })]);
+      const updated = await prisma.videoJob.update({
+        where: { id },
+        data: { script: JSON.stringify(script), status: "script_ready", error: null },
+      });
+      return NextResponse.json({ job: serializeVideoJob(updated) });
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Erro ao gerar o roteiro." }, { status: 502 });
+    }
+  }
 
   try {
     const { person, company } = await jobProfiles(job);

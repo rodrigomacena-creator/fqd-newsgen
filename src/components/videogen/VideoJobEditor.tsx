@@ -10,6 +10,7 @@ import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { CostPanel } from "@/components/videogen/CostPanel";
 import { BriefingImages } from "@/components/videogen/BriefingImages";
 import { SceneStudio } from "@/components/videogen/SceneStudio";
+import { BaseVideoPanel } from "@/components/videogen/BaseVideoPanel";
 import {
   FLOW_STEPS,
   AutoTextarea,
@@ -339,6 +340,8 @@ export function VideoJobEditor({ id }: { id: string }) {
   const estimate = noNarration ? script?.scenes.reduce((sum, s) => sum + s.durationS, 0) ?? 0 : wordCount / WORDS_PER_SECOND;
 
   const hasNarrationNow = noNarration || Boolean(job.narrationUrl);
+  // vídeo base do usuário: a narração é a fala dele
+  const fromUpload = job.avatar?.source === "upload" && job.avatar.narrationUrl === job.narrationUrl;
   const flowDone = job.status === "done" && Boolean(job.videoUrl);
   // 1 = revisar roteiro, 2 = ouvir narração/enviar, 3 = render, 4 = pronto
   const flowCurrent = flowDone ? 4 : locked ? 3 : script && hasNarrationNow ? (noNarration ? 3 : 2) : 1;
@@ -428,6 +431,9 @@ export function VideoJobEditor({ id }: { id: string }) {
             onInsert={insertScene}
             onRemove={removeScene}
             onAddImage={(url) => changeBriefing([...briefing, { url }])}
+            avatar={job.avatar}
+            avatarValid={Boolean(job.avatar && job.narrationUrl && job.avatar.narrationUrl === job.narrationUrl)}
+            lockedNarration={fromUpload}
           />
         </div>
       )}
@@ -542,7 +548,7 @@ export function VideoJobEditor({ id }: { id: string }) {
 
         <aside className="min-w-0 space-y-6" aria-label="Narração, render e custo">
 
-          {script && !noNarration && (
+          {script && !noNarration && !fromUpload && (
             <section className={cardClass} aria-labelledby="narracao-title">
               <h2 id="narracao-title" className={sectionTitle}>
                 Narração
@@ -589,6 +595,19 @@ export function VideoJobEditor({ id }: { id: string }) {
                 onChange={(p) => update({ pronunciations: p })}
               />
             </section>
+          )}
+
+          {script && !noNarration && pattern?.kind !== "builtin" && (
+            <BaseVideoPanel
+              job={job}
+              script={script}
+              person={person}
+              disabled={disabled}
+              dirty={dirty}
+              onSave={save}
+              onJob={applyJob}
+              onAvatarProgress={setJob}
+            />
           )}
 
           <section className={cardClass} aria-labelledby="render-title">

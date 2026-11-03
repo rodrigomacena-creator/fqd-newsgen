@@ -7,7 +7,7 @@ import { SceneImage } from "./SceneImage";
 import { VoiceWave } from "./VoiceWave";
 import { sceneTiming } from "@/lib/videogen/sceneTiming";
 import { DIRECTION_FIELD_LABEL, DIRECTION_FIELDS, DIRECTION_OPTIONS, defaultDirection, type SceneDirection } from "@/lib/videogen/direction";
-import { CTA_EFFECTS, MAX_BRIEFING_IMAGES, type BriefingImage, type NarrationWord, type VideoScene, type VideoScript } from "@/lib/videogen/types";
+import { CTA_EFFECTS, MAX_BRIEFING_IMAGES, type AvatarTrack, type BriefingImage, type NarrationWord, type VideoScene, type VideoScript } from "@/lib/videogen/types";
 
 type Selection = number | "cta";
 
@@ -52,7 +52,16 @@ export function SceneStudio({
   onInsert,
   onRemove,
   onAddImage,
+  avatar = null,
+  avatarValid = false,
+  lockedNarration = false,
 }: {
+  /** Vídeo base (avatar/vídeo seu): ganha uma trilha fixa na timeline e cada cena escolhe avatar ou imagem. */
+  avatar?: AvatarTrack | null;
+  /** A trilha base é da narração atual (senão está desatualizada). */
+  avatarValid?: boolean;
+  /** A fala vem de um vídeo gravado: o texto falado não muda. */
+  lockedNarration?: boolean;
   script: VideoScript;
   briefing: BriefingImage[];
   narrationWords: NarrationWord[] | null;
@@ -71,6 +80,10 @@ export function SceneStudio({
 }) {
   const timing = useMemo(() => sceneTiming(script, narrationWords, noNarration), [script, narrationWords, noNarration]);
   const count = script.scenes.length;
+  const baseLabel = avatar?.source === "upload" ? "Vídeo" : "Avatar";
+  /** Trecho do vídeo base que cobre o instante t (null se não tem). */
+  const segmentAt = (t: number) =>
+    avatarValid ? avatar?.segments.find((g) => g.status === "completed" && g.videoUrl && t >= g.start - 0.05 && t < g.end + 0.05) ?? null : null;
   const [sel, setSel] = useState<Selection>(0);
   const selected: Selection = sel === "cta" || sel < count ? sel : Math.max(0, count - 1);
 
@@ -360,7 +373,9 @@ export function SceneStudio({
                 </Chip>
               </>
             )}
-            {shown !== "cta" && <Chip>{shownScene?.imageUrl ? "Sua foto" : shownPreview ? "Storyboard" : "Imagem por IA"}</Chip>}
+            {shown !== "cta" && (
+              <Chip>{avatar && shownScene?.avatar ? baseLabel : shownScene?.imageUrl ? "Sua foto" : shownPreview ? "Storyboard" : "Imagem por IA"}</Chip>
+            )}
             {!timing.measured && !noNarration && <Chip>estimado</Chip>}
           </div>
           <p className="mt-4 hidden max-w-md text-xs leading-relaxed text-text-secondary sm:block">
@@ -374,7 +389,14 @@ export function SceneStudio({
             landscape ? "aspect-video w-[180px] rounded-xl sm:w-[300px] sm:rounded-2xl" : "aspect-[9/16] w-[118px] rounded-[22px] sm:w-[210px] sm:rounded-[30px]"
           }`}
         >
-          {shownScene?.imageUrl || shownPreview ? (
+          {avatar && shownScene?.avatar && (segmentAt((shownBlock?.start ?? 0) + 0.05) || avatar.imageUrl) ? (
+            <BaseFrame
+              segment={segmentAt((shownBlock?.start ?? 0) + 0.05)}
+              poster={avatar.imageUrl}
+              time={playing ? time : (shownBlock?.start ?? 0) + 0.05}
+              playing={playing}
+            />
+          ) : shownScene?.imageUrl || shownPreview ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={shownScene?.imageUrl || shownPreview} alt="" className="absolute inset-0 h-full w-full object-cover" />
           ) : (
@@ -428,6 +450,9 @@ export function SceneStudio({
           <SceneInspector
             index={selected}
             total={count}
+            hasBase={Boolean(avatar)}
+            baseLabel={baseLabel}
+            lockedNarration={lockedNarration}
             scene={script.scenes[selected]}
             block={timing.scenes[selected]}
             measured={timing.measured}
@@ -533,6 +558,12 @@ export function SceneStudio({
                 <Icon name="scenes" className="h-4 w-4 shrink-0" />
                 {!narrow && <span>Cenas</span>}
               </div>
+              {avatar && (
+                <div className="flex h-12 items-center gap-1.5 border-b border-border px-3">
+                  <Icon name="user" className="h-4 w-4 shrink-0" />
+                  {!narrow && <span>{baseLabel}</span>}
+                </div>
+              )}
               {!noNarration && (
                 <div className="flex h-14 items-center gap-1.5 px-3">
                   <Icon name="wave" className="h-4 w-4 shrink-0" />
@@ -620,7 +651,10 @@ export function SceneStudio({
                           <Icon name="grip" className="h-4 w-4" />
                         </span>
                         <span className={`flex justify-between gap-1 font-mono text-[10px] font-semibold tabular-nums ${isSel || isDrag ? "text-[#E10600] [[data-theme=dark]_&]:text-[#FF6B66]" : "text-text-secondary"}`}>
-                          <span className="truncate">{String(i + 1).padStart(2, "0")}</span>
+                          <span className="truncate">
+                            {String(i + 1).padStart(2, "0")}
+                            {avatar && sc.avatar && <span className="ml-1 rounded bg-[#2D6CDF] px-1 font-sans text-[9px] uppercase text-white">{baseLabel}</span>}
+                          </span>
                           {durations[i] * px >= 72 && <span>{fmt(durations[i])}s</span>}
                         </span>
                         <span className={`mt-1 line-clamp-2 text-xs font-medium leading-snug ${isSel || isDrag ? "text-foreground" : "text-foreground/85"}`}>
@@ -658,6 +692,48 @@ export function SceneStudio({
                     <Icon name="plus" className="h-4 w-4" />
                   </button>
                 </div>
+
+                {/* vídeo base: trilha fixa por baixo das cenas; clique no trecho de uma cena troca avatar ↔ imagem */}
+                {avatar && (
+                  <div className="relative h-12 border-b border-border">
+                    {timing.scenes.map((b, i) => {
+                      const sc = script.scenes[i];
+                      const on = Boolean(sc?.avatar);
+                      const has = Boolean(segmentAt((b.start + b.end) / 2));
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          disabled={disabled}
+                          aria-pressed={on}
+                          onClick={() => onScene(i, { avatar: on ? undefined : true })}
+                          title={on ? `Cena ${i + 1}: mostra ${baseLabel === "Vídeo" ? "o vídeo" : "o avatar"}. Clique para usar imagem.` : `Cena ${i + 1}: mostra imagem. Clique para usar ${baseLabel === "Vídeo" ? "o vídeo" : "o avatar"}.`}
+                          className={`absolute top-1.5 bottom-1.5 flex items-center justify-center gap-1 overflow-hidden rounded-lg border px-1 text-[10px] font-semibold transition disabled:cursor-default ${
+                            on
+                              ? has
+                                ? "border-[#2D6CDF] bg-[#2D6CDF] text-white hover:bg-[#2459B8]"
+                                : "border-dashed border-[#2D6CDF] bg-[#2D6CDF]/10 text-[#2D6CDF]"
+                              : "border-border bg-[repeating-linear-gradient(135deg,transparent_0_5px,var(--border)_5px_6px)] text-text-secondary hover:border-[#2D6CDF] hover:text-[#2D6CDF]"
+                          }`}
+                          style={{ left: b.start * px + 2, width: Math.max((b.end - b.start) * px - 4, 14) }}
+                        >
+                          <Icon name={on ? "user" : "image"} className="h-3.5 w-3.5 shrink-0" />
+                          {(b.end - b.start) * px >= 64 && <span className="truncate">{on ? (has ? baseLabel : "sem avatar") : "Imagem"}</span>}
+                        </button>
+                      );
+                    })}
+                    {/* trechos já gerados (linha fina embaixo) */}
+                    {avatarValid &&
+                      avatar.segments.map((g, k) => (
+                        <span
+                          key={k}
+                          aria-hidden
+                          className={`absolute bottom-0.5 h-1 rounded-full ${g.status === "completed" ? "bg-[#2D6CDF]" : g.status === "failed" ? "bg-accent-red" : "animate-pulse bg-[#2D6CDF]/40"}`}
+                          style={{ left: g.start * px + 2, width: Math.max((g.end - g.start) * px - 4, 4) }}
+                        />
+                      ))}
+                  </div>
+                )}
 
                 {/* voz: onda sonora da narração (vermelha até o cursor) */}
                 {!noNarration && (
@@ -771,6 +847,9 @@ function InspectorHead({ title, meta, onPrev, onNext }: { title: ReactNode; meta
 function SceneInspector({
   index,
   total,
+  hasBase,
+  baseLabel,
+  lockedNarration,
   scene,
   block,
   measured,
@@ -790,6 +869,9 @@ function SceneInspector({
 }: {
   directed: boolean;
   onEnableDirection: () => void;
+  hasBase: boolean;
+  baseLabel: string;
+  lockedNarration: boolean;
   index: number;
   total: number;
   scene: VideoScene;
@@ -824,6 +906,39 @@ function SceneInspector({
         onNext={onNext}
       />
       <div className="space-y-4">
+        {hasBase && (
+          <div>
+            <p className={studioLabel}>Nesta cena aparece</p>
+            <div role="radiogroup" aria-label="Nesta cena aparece" className="mt-2 grid grid-cols-2 gap-1 rounded-xl border border-border bg-surface-2 p-1">
+              {[
+                { on: true, label: baseLabel === "Vídeo" ? "Seu vídeo" : "Você (avatar)", icon: "user" as const },
+                { on: false, label: "Imagem", icon: "image" as const },
+              ].map((o) => {
+                const active = Boolean(scene.avatar) === o.on;
+                return (
+                  <button
+                    key={o.label}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    disabled={disabled}
+                    onClick={() => onChange({ avatar: o.on ? true : undefined })}
+                    className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition ${
+                      active ? "bg-surface text-foreground shadow-sm ring-1 ring-border" : "text-text-secondary hover:text-foreground"
+                    }`}
+                  >
+                    <Icon name={o.icon} className="h-3.5 w-3.5" /> {o.label}
+                  </button>
+                );
+              })}
+            </div>
+            {scene.avatar && (
+              <p className="mt-1.5 text-[11px] text-text-secondary">
+                A cena mostra {baseLabel === "Vídeo" ? "o seu vídeo" : "o avatar falando"} em tela cheia, com o texto e a legenda do estilo por cima. A imagem abaixo só entra se não houver vídeo.
+              </p>
+            )}
+          </div>
+        )}
         {!noNarration && (
           <div>
             <label htmlFor={ids("narration")} className={studioLabel}>
@@ -834,9 +949,10 @@ function SceneInspector({
               minRows={2}
               value={scene.narration}
               onChange={(e) => onChange({ narration: e.target.value })}
-              disabled={disabled}
+              disabled={disabled || lockedNarration}
               className={`mt-1.5 ${studioField}`}
             />
+            {lockedNarration && <p className="mt-1.5 text-[11px] text-text-secondary">A fala vem do vídeo que você enviou e não muda aqui.</p>}
           </div>
         )}
         <div>
@@ -1227,4 +1343,32 @@ function CtaImagePicker({
       {error && <p className="mt-1 text-[11px] text-[#FF3B3B]">{error}</p>}
     </div>
   );
+}
+
+/** Prévia do vídeo base no palco: mostra o trecho no instante da cena (e acompanha quando toca). */
+function BaseFrame({
+  segment,
+  poster,
+  time,
+  playing,
+}: {
+  segment: { start: number; videoUrl?: string } | null;
+  poster?: string;
+  time: number;
+  playing: boolean;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v || !segment) return;
+    const want = Math.max(0, time - segment.start);
+    if (Math.abs(v.currentTime - want) > 0.3) v.currentTime = want;
+    if (playing && v.paused) void v.play().catch(() => {});
+    if (!playing && !v.paused) v.pause();
+  }, [segment, time, playing]);
+  if (!segment?.videoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return poster ? <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover" /> : null;
+  }
+  return <video ref={ref} key={segment.videoUrl} src={segment.videoUrl} muted playsInline preload="auto" poster={poster} className="absolute inset-0 h-full w-full object-cover" />;
 }

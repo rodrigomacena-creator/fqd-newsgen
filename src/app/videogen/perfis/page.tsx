@@ -35,6 +35,7 @@ interface Draft {
   instagram: string;
   cta: string;
   logoUrl: string;
+  avatarUrl: string;
   colors: string;
   pronunciations: Pronunciation[];
   isDefault: boolean;
@@ -55,6 +56,7 @@ function toDraft(p: VideoProfileDTO): Draft {
     instagram: p.instagram ?? "",
     cta: p.cta ?? "",
     logoUrl: p.logoUrl ?? "",
+    avatarUrl: p.avatarUrl ?? "",
     colors: p.colors ?? "",
     pronunciations: p.pronunciations,
     isDefault: p.isDefault,
@@ -76,6 +78,7 @@ function emptyDraft(kind: VideoProfileKind): Draft {
     instagram: "",
     cta: "",
     logoUrl: "",
+    avatarUrl: "",
     colors: "",
     pronunciations: [],
     isDefault: false,
@@ -294,6 +297,8 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
   const [error, setError] = useState<string | null>(null);
   const { voices, loading: loadingVoices, error: voicesError } = useVoices();
   const logoInput = useRef<HTMLInputElement>(null);
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const isPerson = d.kind === "person";
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setD((x) => ({ ...x, [key]: value }));
 
@@ -307,6 +312,19 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
       setError(err instanceof Error ? err.message : "Falha ao enviar o logo.");
     } finally {
       setUploadingLogo(false);
+    }
+  }
+
+  async function pickAvatar(file: File | undefined) {
+    if (!file) return;
+    setUploadingAvatar(true);
+    setError(null);
+    try {
+      set("avatarUrl", await uploadImage(file, "perfis"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao enviar a foto.");
+    } finally {
+      setUploadingAvatar(false);
     }
   }
 
@@ -431,6 +449,44 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
                 />
               </div>
               <p className="mt-1 text-xs text-text-secondary">Escolher esta pessoa no vídeo já seleciona essa voz.</p>
+              <div className="mt-4">
+                <span className={labelClass}>Foto do avatar (Higgsfield)</span>
+                <div className="mt-1.5 flex items-center gap-3">
+                  <span className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-2">
+                    {d.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={d.avatarUrl} alt="Foto do avatar" className="h-full w-full object-cover" />
+                    ) : (
+                      <Icon name="user" className="h-6 w-6 text-text-secondary" />
+                    )}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => avatarInput.current?.click()} disabled={uploadingAvatar} className={secondaryButton}>
+                      {uploadingAvatar ? <Spinner className="h-4 w-4" /> : <Icon name="up" className="h-4 w-4" />}
+                      {d.avatarUrl ? "Trocar" : "Enviar foto"}
+                    </button>
+                    {d.avatarUrl && (
+                      <button type="button" onClick={() => set("avatarUrl", "")} className={dangerButton}>
+                        Remover
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    ref={avatarInput}
+                    type="file"
+                    accept="image/png,image/webp,image/jpeg"
+                    className="sr-only"
+                    tabIndex={-1}
+                    onChange={(e) => {
+                      void pickAvatar(e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-text-secondary">
+                  Foto de frente, rosto bem visível, enquadrada do peito para cima. O Higgsfield anima esta foto falando com a voz acima.
+                </p>
+              </div>
             </div>
           ) : (
             <>

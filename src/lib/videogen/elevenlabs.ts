@@ -119,3 +119,30 @@ export async function cloneVoice(params: {
   if (!data.voice_id) throw new Error("ElevenLabs não devolveu o id da voz.");
   return data.voice_id;
 }
+
+export interface TranscriptWord {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * Transcreve um áudio/vídeo (ElevenLabs Speech to Text) e devolve as palavras com tempo.
+ * `source` = URL pública (o ElevenLabs baixa sozinho, sem passar o arquivo pela função) ou o arquivo.
+ */
+export async function speechToText(source: string | Blob, languageCode = "pt"): Promise<{ words: TranscriptWord[]; text: string }> {
+  const form = new FormData();
+  form.append("model_id", process.env.ELEVENLABS_STT_MODEL || "scribe_v1");
+  form.append("language_code", languageCode);
+  form.append("timestamps_granularity", "word");
+  form.append("tag_audio_events", "false");
+  if (typeof source === "string") form.append("cloud_storage_url", source);
+  else form.append("file", source, "audio");
+  const res = await fetch(`${API}/speech-to-text`, { method: "POST", headers: { "xi-api-key": apiKey() }, body: form });
+  if (!res.ok) throw new Error(`ElevenLabs não transcreveu o vídeo: ${await readError(res)}`);
+  const data = (await res.json()) as { text?: string; words?: { text: string; start: number; end: number; type?: string }[] };
+  const words = (data.words ?? [])
+    .filter((w) => (w.type ?? "word") === "word" && w.text.trim())
+    .map((w) => ({ text: w.text.trim(), start: Number(w.start) || 0, end: Number(w.end) || 0 }));
+  return { words, text: data.text ?? words.map((w) => w.text).join(" ") };
+}

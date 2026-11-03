@@ -76,3 +76,26 @@ export async function uploadAudio(file: File): Promise<string> {
   });
   return blob.url;
 }
+
+export const VIDEO_TYPES: Record<string, string> = { "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm" };
+export const MAX_VIDEO_MB = 500;
+
+export function videoProblem(file: File): string | null {
+  if (!VIDEO_TYPES[file.type]) return `"${file.name}" não é um vídeo aceito (MP4, MOV ou WebM).`;
+  if (file.size > MAX_VIDEO_MB * 1024 * 1024) return `"${file.name}" passa de ${MAX_VIDEO_MB} MB.`;
+  return null;
+}
+
+/** Sobe o vídeo base do usuário direto do navegador pro Vercel Blob (pasta do job). */
+export async function uploadBaseVideo(file: File, jobId: string, onProgress?: (pct: number) => void): Promise<string> {
+  const problem = videoProblem(file);
+  if (problem) throw new Error(problem);
+  const blob = await upload(`videogen/${jobId}/base/${slug(file.name)}.${VIDEO_TYPES[file.type]}`, file, {
+    access: "public",
+    handleUploadUrl: "/api/videogen/uploads",
+    contentType: file.type,
+    multipart: file.size > 20 * 1024 * 1024,
+    onUploadProgress: onProgress ? (e) => onProgress(e.percentage) : undefined,
+  });
+  return blob.url;
+}

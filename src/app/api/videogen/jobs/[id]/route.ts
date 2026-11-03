@@ -5,6 +5,7 @@ import { cleanBriefingImages, parseBriefingImages } from "@/lib/videogen/profile
 import { normalizeScript } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { fullNarration } from "@/lib/videogen/types";
+import { parseAvatar } from "@/lib/videogen/avatar";
 
 export async function GET(_request: Request, ctx: RouteContext<"/api/videogen/jobs/[id]">) {
   const { id } = await ctx.params;
@@ -45,10 +46,23 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/videogen/j
     data.script = JSON.stringify(script);
     data.status = "script_ready";
   }
+  // vídeo base do usuário: a fala vem do vídeo, então o texto falado não pode mudar
+  const base = parseAvatar(job.avatar);
+  const fromUpload = base?.source === "upload" && base.narrationUrl === job.narrationUrl;
+  if (fromUpload && narrationChanged) {
+    const before = job.script ? fullNarration(normalizeScript(JSON.parse(job.script))) : "";
+    if (before !== fullNarration(normalizeScript(body.script))) {
+      return NextResponse.json(
+        { error: "A fala deste vídeo vem do vídeo que você enviou e não pode ser editada. Mude o texto da tela, as imagens e o avatar à vontade." },
+        { status: 400 }
+      );
+    }
+    narrationChanged = false; // só as pronúncias mudaram: não valem para fala gravada
+  }
   if (body.voiceId?.trim() && body.voiceId.trim() !== job.voiceId) {
     data.voiceId = body.voiceId.trim();
     data.voiceName = body.voiceName?.trim() || body.voiceId.trim();
-    narrationChanged = true;
+    if (!fromUpload) narrationChanged = true;
   }
   let removedImages: string[] = [];
   if (body.briefingImages !== undefined) {

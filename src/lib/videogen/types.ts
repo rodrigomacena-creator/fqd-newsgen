@@ -25,6 +25,55 @@ export interface VideoScene {
   stockQuery?: string;
   /** Clipe de banco (Pixabay/Pexels) escolhido para a cena (o worker usa no lugar da imagem). */
   stock?: { url: string; thumb: string; id: number; query: string; pick?: number; source?: "pixabay" | "pexels" };
+  /** Mostra o vídeo base (avatar do Higgsfield ou vídeo do usuário) nesta cena em vez da imagem. */
+  avatar?: boolean;
+}
+
+// ---------- vídeo base (avatar falando / vídeo do usuário) ----------
+
+/**
+ * Trilha fixa de vídeo por baixo das cenas. "higgsfield": avatar gerado a partir de uma foto +
+ * a narração do ElevenLabs (lipsync, em trechos). "upload": vídeo pronto do usuário; a fala dele
+ * vira a narração (transcrita no ElevenLabs para ter o tempo das palavras).
+ * Vale só enquanto `narrationUrl` for a narração atual do job.
+ */
+export interface AvatarTrack {
+  source: "higgsfield" | "upload";
+  status: "generating" | "ready" | "failed";
+  /** Narração (ou o próprio vídeo, no upload) com que esta trilha está sincronizada. */
+  narrationUrl: string;
+  /** Higgsfield: foto animada. */
+  imageUrl?: string;
+  /** Modelo do Higgsfield usado. */
+  model?: string;
+  /** Trechos em sequência, cobrindo do 0 ao fim da fala (o upload tem um só). */
+  segments: AvatarSegment[];
+  durationS: number;
+  error?: string;
+  createdAt: string;
+}
+
+export interface AvatarSegment {
+  start: number;
+  end: number;
+  /** Higgsfield: trecho da narração enviado (mp3 no Blob). */
+  audioUrl?: string;
+  requestId?: string;
+  statusUrl?: string;
+  status: "queued" | "in_progress" | "completed" | "failed";
+  /** Vídeo do trecho no Blob (copiado do Higgsfield, cujo link expira). */
+  videoUrl?: string;
+  error?: string;
+}
+
+export const AVATAR_SOURCE_LABEL: Record<AvatarTrack["source"], string> = {
+  higgsfield: "Avatar (Higgsfield)",
+  upload: "Vídeo seu",
+};
+
+/** A trilha base vale para a narração atual? */
+export function avatarReady(avatar: AvatarTrack | null | undefined, narrationUrl: string | null): boolean {
+  return Boolean(avatar && avatar.status === "ready" && narrationUrl && avatar.narrationUrl === narrationUrl);
 }
 
 /** Imagem que o usuário subiu no briefing do vídeo (vai pra IA ver e pode ser usada nas cenas). */
@@ -53,6 +102,8 @@ export interface VideoProfileDTO {
   instagram: string | null;
   cta: string | null;
   logoUrl: string | null;
+  /** Pessoa: foto usada para gerar o avatar falando (Higgsfield). */
+  avatarUrl: string | null;
   colors: string | null;
   pronunciations: Pronunciation[];
   isDefault: boolean;

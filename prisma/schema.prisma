@@ -89,6 +89,7 @@ model VideoJob {
   personId           String? // VideoProfile (kind person) que fala no vídeo; sem FK de propósito (perfil apagado = genérico)
   companyId          String? // VideoProfile (kind company) para quem é o conteúdo
   briefingImages     String? // JSON string: BriefingImage[] (imagens enviadas pelo usuário, usadas nas cenas sem gerar)
+  avatar             String? // JSON string: AvatarTrack (vídeo base: avatar do Higgsfield ou vídeo do usuário; ver src/lib/videogen/avatar.ts)
   error              String?
   startedAt          DateTime?
   finishedAt         DateTime?
@@ -138,6 +139,7 @@ model VideoProfile {
   instagram      String? // @perfil (sem inventar quando vazio)
   cta            String? // CTA padrão
   logoUrl        String? // empresa: logo no Vercel Blob
+  avatarUrl      String? // pessoa: foto do avatar (Higgsfield) no Vercel Blob
   colors         String? // empresa: cores da marca (texto livre, ex.: "#E10600, preto")
   pronunciations String? // JSON: Pronunciation[] (ex.: nome da marca falado)
   isDefault      Boolean  @default(false)

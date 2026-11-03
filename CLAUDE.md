@@ -376,6 +376,21 @@ reais encontradas ao construir o projeto, não só a estrutura.
   baixado para `VIDEOGEN_MODELS_DIR`; sem modelo vira cartão). Os traços à mão são desenhados pelo render (na cor de
   destaque do estilo), por isso os imagePrompts não pedem setas/círculos. Ao criar um renderizador novo, use
   `motion.py` (corte, câmera, `ObjectLayer`, `Marks`, `emphasis`) guardado por `has_direction`.
+  **Vídeo base (avatar do Higgsfield ou vídeo seu)** (`VideoJob.avatar`, JSON `AvatarTrack` em `types.ts`; `src/lib/videogen/avatar.ts`,
+  `avatarPlan.ts` (puro), `higgsfield.ts`, `mp3.ts`, `baseVideo.ts`; rota `/api/videogen/jobs/[id]/avatar` GET/POST/DELETE; painel
+  `BaseVideoPanel.tsx`): opcional, sem ele tudo fica como antes. "Avatar falando": a narração do ElevenLabs (mesma voz, mesmos tempos de
+  palavra) é cortada em trechos na fronteira das cenas (`sliceMp3`, sem ffmpeg; no máximo `HIGGSFIELD_MAX_SECONDS`), cada trecho vai
+  com a foto (`VideoProfile.avatarUrl` da pessoa, ou outra enviada) pro Higgsfield; a tela consulta o andamento (GET) e os vídeos prontos
+  são copiados pro Blob (`videogen/<id>/avatar/`). Escopo "o vídeo todo" (trilha fixa inteira) ou "só as cenas marcadas". "Vídeo meu":
+  upload direto pro Blob (`videogen/<id>/base/`), a fala é transcrita (ElevenLabs STT, `speechToText`) e vira a narração
+  (`narrationUrl` = o próprio vídeo) e o roteiro é refeito em cima da fala (`generateVideoScript({fixedNarration})` +
+  `realignToTranscript`, palavra por palavra); nesse modo o texto falado não pode ser editado (PATCH recusa) e "gerar roteiro de novo"
+  só redivide a fala. Cada cena tem `scene.avatar = true` (mostra o vídeo) ou não (imagem); a timeline ganha a faixa "Avatar"/"Vídeo"
+  (clique troca). A trilha só vale se `avatar.narrationUrl === job.narrationUrl`. Worker: só o motor genérico (`base_track`,
+  `extract_base_frames`, `BaseClip` em `template_engine.py`: tela cheia, sem filtro de cor do estilo, quadro = instante da fala, nunca
+  vai-e-volta); cena avatar não gera imagem. A API do Higgsfield (`api.higgsfield.ai`, `Authorization: Key ID:SECRET`, POST no modelo →
+  `status_url` → `video.url`) e o nome do modelo de avatar ficam em variáveis de ambiente (`HIGGSFIELD_*`), porque não deu para ler a
+  documentação deles daqui (domínio bloqueado) — confirmar o modelo e os nomes de campo com a chave real.
   **Notícia vira vídeo**: botão "Criar vídeo" em `/noticia/[id]` abre `/videogen?noticia=<id>`; o POST de jobs recebe
   `articleId` (coluna `VideoJob.articleId`, sem FK), `articleSource()` (`src/lib/videogen/articleSource.ts`) monta o texto
   da notícia e ele entra no prompt como NOTÍCIA DE BASE (só os fatos dela); "gerar de novo" relê a notícia. As imagens
@@ -451,3 +466,4 @@ sem ela o resto do app funciona normalmente. `ELEVENLABS_API_KEY` é necessária
 (vozes e narração). `VIDEOGEN_WORKER_TOKEN` é o segredo compartilhado com o worker
 de render (sem ele as rotas `/api/videogen/worker/*` respondem 503). `PIXABAY_API_KEY` (opcional; ou `PEXELS_API_KEY`) liga os vídeos de banco do estilo livre.
 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` e `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET` (opcionais) ligam a publicação direta no YouTube e no Instagram.
+`HIGGSFIELD_KEY_ID`/`HIGGSFIELD_KEY_SECRET` + `HIGGSFIELD_AVATAR_MODEL` (opcionais) ligam o avatar falando do VideoGen.

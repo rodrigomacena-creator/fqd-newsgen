@@ -1,5 +1,5 @@
 import type { VideoJob } from "@/generated/prisma/client";
-import { summarizeCosts, type VideoFormat, type BriefingImage, type CostEntry, type CostSummary, type NarrationWord, type VideoJobStatus, type VideoScript } from "./types";
+import { summarizeCosts, type AvatarTrack, type VideoFormat, type BriefingImage, type CostEntry, type CostSummary, type NarrationWord, type VideoJobStatus, type VideoScript } from "./types";
 import { ELEVENLABS_USD_PER_CREDIT, parseCosts } from "./costs";
 import { parseBriefingImages } from "./profiles";
 
@@ -31,6 +31,8 @@ export interface VideoJobDTO {
   /** Perfil (empresa) para quem é o conteúdo. */
   companyId: string | null;
   briefingImages: BriefingImage[];
+  /** Vídeo base (avatar do Higgsfield ou vídeo do usuário) mostrado nas cenas com `avatar: true`. */
+  avatar: AvatarTrack | null;
   status: VideoJobStatus;
   script: VideoScript | null;
   narrationUrl: string | null;
@@ -64,6 +66,7 @@ export function serializeVideoJob(job: VideoJob): VideoJobDTO {
     format: job.format === "16:9" ? "16:9" : "9:16",
     script: parseJson<VideoScript>(job.script),
     briefingImages: parseBriefingImages(job.briefingImages),
+    avatar: parseJson<AvatarTrack>(job.avatar),
     narrationWords: parseJson<NarrationWord[]>(job.narrationWords),
     costs: parseCosts(job.costs),
     costSummary: job.costs ? summarizeCosts(parseCosts(job.costs), ELEVENLABS_USD_PER_CREDIT) : null,

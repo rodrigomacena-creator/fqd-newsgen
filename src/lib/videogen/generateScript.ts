@@ -199,6 +199,7 @@ export function normalizeScript(input: unknown): VideoScript {
     if (pv && typeof pv.url === "string" && isAllowedImageUrl(pv.url) && typeof pv.prompt === "string") {
       scene.preview = { url: pv.url, prompt: pv.prompt };
     }
+    if (o.avatar === true) scene.avatar = true;
     const layout = str(o.layout);
     if (SCENE_LAYOUTS.includes(layout)) scene.layout = layout;
     const stockQuery = str(o.stockQuery).slice(0, 80);
@@ -284,6 +285,11 @@ export async function generateVideoScript(params: {
   sourceText?: string | null;
   /** "16:9" = horizontal (YouTube); padrão vertical 9:16. */
   format?: VideoFormat;
+  /**
+   * Vídeo base do usuário: a fala já está gravada (transcrição). O roteiro só divide essa fala em
+   * cenas (sem mudar palavras), cria texto da tela/imagens e marca em quais cenas a pessoa aparece.
+   */
+  fixedNarration?: string | null;
 }): Promise<{ script: VideoScript; usd: number }> {
   const client = getOpenRouterClient();
   const userParts = [`Tema do vídeo: ${params.topic}`];
@@ -294,6 +300,21 @@ export async function generateVideoScript(params: {
     );
   }
   if (params.extraInstructions?.trim()) userParts.push(`Instruções extras: ${params.extraInstructions.trim()}`);
+  const fixed = params.fixedNarration?.trim();
+  if (fixed) {
+    userParts.push(
+      `FALA JÁ GRAVADA (o vídeo base é a pessoa falando este texto; ele é a narração do vídeo):\n"""\n${fixed}\n"""\n\n` +
+        `Regras desta fala, que valem mais que as regras de tamanho e de gancho acima:\n` +
+        `- Divida ESTE texto, na ordem e palavra por palavra, entre as cenas e o CTA: a soma de todos os "narration" ` +
+        `tem que ser exatamente este texto. Não corte, não acrescente, não troque nenhuma palavra. Se o final não for um ` +
+        `convite/chamada, deixe "cta.narration" vazio e ponha o resto na última cena.\n` +
+        `- Cenas curtas (1 a 3 frases curtas cada), no ritmo do estilo.\n` +
+        `- Em cada cena, "avatar": true quando o melhor é mostrar a pessoa falando (abertura, opinião, conversa direta ` +
+        `com quem assiste, frase de impacto) e false quando a fala cita algo concreto que vale uma imagem. A cena 1 é ` +
+        `sempre true. Alterne: no máximo 3 cenas seguidas iguais. Nas cenas com avatar, "imagePrompt" pode ficar vazio.\n` +
+        `- "hooks": devolva uma lista vazia (a abertura já está gravada).`
+    );
+  }
 
   // Imagens do briefing vão como entrada de visão (reduzidas, em base64: o modelo não precisa
   // de resolução total e a URL do blob pode não ser acessível pelo provedor).
@@ -367,7 +388,7 @@ export async function generateVideoScript(params: {
   // Uma segunda rodada pedindo para cortar resolve na maioria dos casos.
   const target = Math.round(params.durationS * WORDS_PER_SECOND);
   const count = fullNarration(script).split(/\s+/).filter(Boolean).length;
-  if (!params.pattern.semNarracao && count > target * 1.25) {
+  if (!fixed && !params.pattern.semNarracao && count > target * 1.25) {
     messages.push(
       { role: "assistant", content: raw },
       {
@@ -383,6 +404,7 @@ export async function generateVideoScript(params: {
       console.error("Falha ao encurtar o roteiro, mantendo o original:", err);
     }
   }
+  if (fixed) delete script.hooks; // a abertura já está gravada
   // toda cena sai com direção (a IA às vezes esquece em alguma)
   script.scenes = script.scenes.map((sc, i) => (sc.direction ? sc : { ...sc, direction: defaultDirection(i) }));
   if (params.pattern.kind === "free") script.scenes = enforcePhotoPrompts(script.scenes, script.styleSpec);

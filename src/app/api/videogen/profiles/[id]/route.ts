@@ -27,6 +27,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/videogen/p
   await prisma.videoProfile.update({ where: { id }, data });
   if (isDefault === true) await makeDefault(id, current.kind);
   if (data.logoUrl !== undefined && current.logoUrl && current.logoUrl !== data.logoUrl) await deleteBlobIfOwned(current.logoUrl);
+  if (data.avatarUrl !== undefined && current.avatarUrl && current.avatarUrl !== data.avatarUrl) await deleteBlobIfOwned(current.avatarUrl);
   const profile = await prisma.videoProfile.findUniqueOrThrow({ where: { id } });
   return NextResponse.json({ profile: serializeProfile(profile) });
 }
@@ -38,6 +39,7 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/videogen
   if (!profile) return NextResponse.json({ error: "Perfil não encontrado." }, { status: 404 });
   await prisma.videoProfile.delete({ where: { id } });
   await deleteBlobIfOwned(profile.logoUrl);
+  await deleteBlobIfOwned(profile.avatarUrl);
   if (profile.isDefault) {
     // outro perfil do mesmo tipo assume como padrão
     const next = await prisma.videoProfile.findFirst({ where: { kind: profile.kind }, orderBy: { createdAt: "asc" } });
