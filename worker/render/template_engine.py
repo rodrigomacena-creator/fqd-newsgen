@@ -494,6 +494,11 @@ class StockClip:
         return self._last[1]
 
 
+# Cena com a pessoa falando: faixas onde o texto pode ficar sem cobrir o rosto (fração da altura).
+AVATAR_TITLE_Y = 0.08
+AVATAR_CAPTION_Y = 0.84
+
+
 class BaseClip(StockClip):
     """Quadros do vídeo base (avatar falando / vídeo do usuário) de uma cena. O tempo é o da fala:
     nunca vai e volta (quebraria o lipsync); antes do trecho começar ou depois de acabar, segura o quadro."""
@@ -1160,11 +1165,17 @@ def render(job, assets, out_path, on_progress=None):
                 particles.draw(fr, t)
                 # 16:9: imagem ao lado = texto numa coluna à esquerda; tela cheia = texto mais largo
                 col_x, col_w = text_column(vis.layout)
-                if side_mode(vis.layout):
+                if isinstance(vis.clip, BaseClip):
+                    # cena com a pessoa falando (avatar/vídeo base): o rosto fica no terço de cima/meio,
+                    # então nada de texto ali — título rente ao topo e legenda no terço de baixo
+                    title.col, captions.col = (col_x, col_w, AVATAR_TITLE_Y), (col_x, col_w, AVATAR_CAPTION_Y)
+                elif side_mode(vis.layout):
                     title.col, captions.col = (col_x, col_w, 0.34), (col_x, col_w, 0.72)
                 elif landscape():
                     title.col = (col_x, col_w, min(max(spec["title"]["y"], 0.12), 0.4))
                     captions.col = (col_x, col_w, min(max(spec["caption"]["y"], 0.6), 0.86))
+                else:
+                    title.col = captions.col = None  # posição da ficha de estilo
                 if side_mode(vis.layout):
                     title.draw(fr, sc.data.get("onScreen") or "", local, span)
                 elif vis.layout in ("split", "top_half") and spec["title"]["y"] < 0.62:

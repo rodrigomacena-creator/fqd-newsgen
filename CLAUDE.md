@@ -411,7 +411,9 @@ reais encontradas ao construir o projeto, não só a estrutura.
   volta do HeyGen já num mp4 1080×1920, mas com a imagem 16:9 numa faixa no meio e preto em cima/embaixo (medido em
   03/11/2026: faixa de 608 px). O worker (`detect_bars()` em `worker.py`, cropdetect nos 4 primeiros segundos, só corte
   centrado) corta essa faixa antes de escalar, então no vertical o avatar ocupa a tela toda cortando as laterais do cenário.
-  A prévia do card Avatar no app mostra o mp4 cru (com barras); o render final não. A API do HeyGen (`api.heygen.com`, UMA chave no header `X-Api-Key` = `HEYGEN_API_KEY`;
+  A prévia do card Avatar no app mostra o mp4 cru (com barras); o render final não. **Texto fora do rosto**: em cena com
+  vídeo base (`BaseClip`), o motor ignora o `y` da ficha e põe o título rente ao topo (`AVATAR_TITLE_Y` = 0.08) e a legenda
+  no terço de baixo (`AVATAR_CAPTION_Y` = 0.84), porque o rosto fica no terço de cima/meio (pedido do Rodrigo, 03/11/2026). A API do HeyGen (`api.heygen.com`, UMA chave no header `X-Api-Key` = `HEYGEN_API_KEY`;
   POST `/v2/video/generate` com `video_inputs[0].character` (`avatar`/`talking_photo`) + `voice: {type: "text", voice_id, input_text}` →
   `video_id`; GET `/v1/video_status.get?video_id=` → `completed` + `video_url`; GET `/v2/avatar_group.list` + `/v2/avatar_group/{id}/avatars` listam os avatares da conta; GET `/v2/voices` lista as vozes) foi escrita de memória, porque o domínio da documentação
   é bloqueado aqui — a chave e a autenticação já funcionaram em produção (03/11/2026: o primeiro pedido voltou `402 Insufficient
