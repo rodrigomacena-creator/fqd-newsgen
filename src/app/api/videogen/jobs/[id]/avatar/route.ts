@@ -7,7 +7,7 @@ import { heygenConfigured } from "@/lib/videogen/heygen";
 import { applyBaseSpeech } from "@/lib/videogen/baseVideo";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { getProfile, isAllowedImageUrl } from "@/lib/videogen/profiles";
-import { fixedSpeech, parseCharacter, type VideoScript } from "@/lib/videogen/types";
+import { fixedSpeech, parseCharacter, parseVoice, type VideoScript } from "@/lib/videogen/types";
 
 export const maxDuration = 300;
 
@@ -24,24 +24,24 @@ export async function GET(_request: Request, ctx: Ctx) {
   if (!job) return NextResponse.json({ error: "Vídeo não encontrado." }, { status: 404 });
   const avatar = parseAvatar(job.avatar);
   if (!avatar || avatar.status !== "generating") return NextResponse.json({ job: serializeVideoJob(job) });
-  const next = await advanceAvatar(id, avatar);
+  const { avatar: next, data } = await advanceAvatar(job, avatar);
   // grava só se a trilha no banco ainda é a mesma (outra aba pode ter trocado no meio)
-  await prisma.videoJob.updateMany({ where: { id, avatar: job.avatar }, data: { avatar: JSON.stringify(next) } });
+  await prisma.videoJob.updateMany({ where: { id, avatar: job.avatar }, data: { avatar: JSON.stringify(next), ...(data ?? {}), ...(data ? { error: null } : {}) } });
   const updated = await prisma.videoJob.findUniqueOrThrow({ where: { id } });
   return NextResponse.json({ job: serializeVideoJob(updated) });
 }
 
 /**
  * Cria o vídeo base.
- * { source: "heygen", character?, imageUrl?, scope?: "all" | "marked" }: avatar falando a narração atual.
- *   `character` = avatar/foto animada da conta do HeyGen; sem ele, a foto (enviada, do vídeo ou do perfil)
- *   vira foto animada lá. "all" = a fala inteira; "marked" = só as cenas marcadas.
+ * { source: "heygen", character?, imageUrl?, voiceId?, voiceName? }: o HeyGen gera vídeo + voz a partir do texto
+ *   do roteiro. `character` = avatar/foto animada da conta do HeyGen; sem ele, a foto (enviada, do vídeo ou do
+ *   perfil) vira foto animada lá. A voz é do HeyGen (do pedido, do vídeo ou do perfil de quem fala).
  * { source: "upload", videoUrl, durationS?, useVideo? }: áudio/vídeo do usuário (já no Blob). A fala
  *   é transcrita, vira a narração, e o roteiro é refeito em cima dela. `useVideo: false` = só o áudio.
  */
 export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
-  let body: { source?: string; imageUrl?: string; character?: unknown; scope?: string; videoUrl?: string; durationS?: number; useVideo?: boolean };
+  let body: { source?: string; imageUrl?: string; character?: unknown; voiceId?: string; voiceName?: string; videoUrl?: string; durationS?: number; useVideo?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -57,7 +57,6 @@ export async function POST(request: Request, ctx: Ctx) {
     if (body.source === "heygen" || body.source === "higgsfield") {
       const cfg = heygenConfigured();
       if (!cfg.ok) return NextResponse.json({ error: cfg.problem }, { status: 503 });
-      if (!job.narrationUrl) return NextResponse.json({ error: "Gere a narração antes do avatar." }, { status: 400 });
       const current = parseAvatar(job.avatar);
       if (current?.source === "upload" && current.narrationUrl === job.narrationUrl) {
         return NextResponse.json({ error: "Este vídeo usa um vídeo seu como base. Remova o vídeo base antes de gerar o avatar." }, { status: 409 });
@@ -71,22 +70,31 @@ export async function POST(request: Request, ctx: Ctx) {
       if (!character && !imageUrl) {
         return NextResponse.json({ error: "Escolha um avatar do HeyGen ou envie uma foto (ou cadastre no perfil de quem fala)." }, { status: 400 });
       }
-      const scope = body.scope === "marked" ? "marked" : "all";
-      if (scope === "marked" && !script.scenes.some((s) => s.avatar)) {
-        return NextResponse.json({ error: "Marque ao menos uma cena como avatar." }, { status: 400 });
-      }
-      const avatar = await startHeygen(job, script, { character, imageUrl: character ? null : imageUrl }, scope);
+      // voz do HeyGen: a do pedido > a guardada no vídeo (quando já é do caminho avatar) > a do perfil
+      const voice =
+        parseVoice(typeof body.voiceId === "string" && body.voiceId.trim() ? { id: body.voiceId, name: body.voiceName } : null) ??
+        (job.speaker === "ai_avatar" && job.voiceId ? parseVoice({ id: job.voiceId, name: job.voiceName }) : null) ??
+        parseVoice(person?.heygenVoice);
+      if (!voice) return NextResponse.json({ error: "Escolha uma voz do HeyGen (ou cadastre no perfil de quem fala)." }, { status: 400 });
+      const avatar = await startHeygen(job, script, { character, imageUrl: character ? null : imageUrl }, voice);
       // sem nenhuma cena marcada ainda: abre com o avatar (o pedido do Rodrigo)
       const marked = script.scenes.some((s) => s.avatar);
       if (!marked && script.scenes[0]) script.scenes[0].avatar = true;
+      // a narração anterior (ElevenLabs ou avatar antigo) deixa de valer: a fala vai ser a do HeyGen
+      if (job.narrationUrl) await deleteBlobIfOwned(job.narrationUrl);
       const updated = await prisma.videoJob.update({
         where: { id },
         data: {
           avatar: JSON.stringify(avatar),
           speaker: "ai_avatar",
+          voiceId: voice.id,
+          voiceName: voice.name,
           avatarCharacter: character ? JSON.stringify(character) : null,
           ...(character ? {} : { avatarImageUrl: imageUrl || null }),
           ...(marked ? {} : { script: JSON.stringify(script) }),
+          narrationUrl: null,
+          narrationWords: null,
+          narrationDurationS: null,
           error: null,
         },
       });
@@ -110,7 +118,7 @@ export async function POST(request: Request, ctx: Ctx) {
   }
 }
 
-/** Tira o vídeo base: as cenas voltam a ser só imagens. Vídeo enviado leva junto a narração (era a fala dele). */
+/** Tira o vídeo base: as cenas voltam a ser só imagens. Vídeo enviado ou avatar do HeyGen leva junto a narração (era a fala dele). */
 export async function DELETE(_request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const job = await prisma.videoJob.findUnique({ where: { id } });
@@ -118,7 +126,7 @@ export async function DELETE(_request: Request, ctx: Ctx) {
   if (busy(job.status)) return NextResponse.json({ error: "O vídeo está na fila de render." }, { status: 409 });
   const avatar = parseAvatar(job.avatar);
   if (!avatar && !fixedSpeech(job)) return NextResponse.json({ job: serializeVideoJob(job) });
-  const wasNarration = fixedSpeech(job);
+  const wasNarration = fixedSpeech(job) || (avatar?.source === "heygen" && Boolean(avatar.voice));
   if (avatar) await discardAvatarFiles(avatar);
   if (wasNarration) await deleteBlobIfOwned(job.narrationUrl);
   const updated = await prisma.videoJob.update({

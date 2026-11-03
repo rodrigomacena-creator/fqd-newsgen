@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Icon, Spinner, cardClass, dangerButton, labelClass, primaryButton, secondaryButton, sectionTitle } from "./ui";
 import { uploadBaseFile, uploadImage } from "@/lib/videogen/uploadImage";
 import { uncoveredScenes } from "@/lib/videogen/avatarPlan";
-import { parseCharacter, type AvatarCharacter, type VideoProfileDTO, type VideoScript } from "@/lib/videogen/types";
-import { AvatarCharacterSelect } from "./AvatarCharacterSelect";
+import { avatarStale, parseCharacter, parseVoice, type AvatarCharacter, type HeygenVoice, type VideoProfileDTO, type VideoScript } from "@/lib/videogen/types";
+import { AvatarCharacterSelect, HeygenVoiceSelect } from "./AvatarCharacterSelect";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
 export async function jobApi(url: string, init?: RequestInit) {
@@ -40,6 +40,11 @@ export function avatarPhoto(job: VideoJobDTO, person: VideoProfileDTO | undefine
   return job.avatarImageUrl ?? job.avatar?.imageUrl ?? person?.avatarUrl ?? null;
 }
 
+/** Voz do HeyGen do vídeo (caminho avatar): a guardada no vídeo, senão a do perfil de quem fala. */
+export function avatarVoice(job: VideoJobDTO, person: VideoProfileDTO | undefined): HeygenVoice | null {
+  return (job.speaker === "ai_avatar" && job.voiceId ? parseVoice({ id: job.voiceId, name: job.voiceName }) : null) ?? job.avatar?.voice ?? parseVoice(person?.heygenVoice);
+}
+
 /** Quem aparece no vídeo: avatar da conta do HeyGen (do vídeo, da trilha gerada ou do perfil) e/ou a foto. */
 export interface AvatarWho {
   character: AvatarCharacter | null;
@@ -53,7 +58,7 @@ export function avatarWho(job: VideoJobDTO, person: VideoProfileDTO | undefined)
 
 /**
  * Card de quem fala, no editor. Segue o caminho escolhido na criação:
- * - Avatar por IA: quem aparece (avatar do HeyGen ou foto), o andamento e, como opção avançada, gerar só as cenas marcadas.
+ * - Avatar por IA: quem aparece (avatar do HeyGen ou foto), a voz do HeyGen e o andamento da geração.
  * - Áudio/vídeo enviado: o arquivo com a fala (dá para trocar ou tirar).
  * Voz por IA não tem card (a narração já tem o dela).
  */
@@ -80,33 +85,37 @@ export function BaseVideoPanel({
   onJob: (job: VideoJobDTO) => void;
   /** Só o andamento do avatar mudou (não mexe no roteiro em edição). */
   onAvatarProgress: (job: VideoJobDTO) => void;
-  /** Manda a narração aprovada pro HeyGen (mesma ação do controle de etapas). */
-  onStartAvatar: (scope: "all" | "marked", who: AvatarWho | null) => Promise<void>;
+  /** Manda o roteiro pro HeyGen gerar vídeo + voz (mesma ação do controle de etapas). */
+  onStartAvatar: (who: AvatarWho | null, voice: HeygenVoice | null) => Promise<void>;
   /** Sem a moldura de card nem o título (quando já está dentro de uma etapa do editor). */
   bare?: boolean;
 }) {
   const avatar = job.avatar;
-  const valid = Boolean(avatar && job.narrationUrl && avatar.narrationUrl === job.narrationUrl);
+  const generating = avatar?.status === "generating";
+  const stale = avatarStale(avatar, script);
+  const valid = Boolean(avatar && (generating || (job.narrationUrl && avatar.narrationUrl === job.narrationUrl)) && !stale);
   const [busy, setBusy] = useState<null | "photo" | "start" | "upload" | "remove">(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
-  const [scope, setScope] = useState<"all" | "marked">("all");
   const [useVideo, setUseVideo] = useState(true);
   const photoInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  // acompanha a geração do avatar
-  const generating = avatar?.status === "generating";
+  // acompanha a geração do avatar; pronto, o roteiro e a narração mudam (fala transcrita), então recarrega tudo
   useEffect(() => {
     if (!generating) return;
     const timer = setInterval(async () => {
       try {
-        onAvatarProgress(await jobApi(`/api/videogen/jobs/${job.id}/avatar`));
+        const next = await jobApi(`/api/videogen/jobs/${job.id}/avatar`);
+        if (next.avatar?.status === "generating") onAvatarProgress(next);
+        else onJob(next);
       } catch {}
     }, 8000);
     return () => clearInterval(timer);
-  }, [generating, job.id, onAvatarProgress]);
+  }, [generating, job.id, onAvatarProgress, onJob]);
+  const [chosenVoice, setChosenVoice] = useState<HeygenVoice | null | undefined>(undefined);
+  const voice = chosenVoice === undefined ? avatarVoice(job, person) : chosenVoice;
 
   const [chosen, setChosen] = useState<AvatarCharacter | null | undefined>(undefined);
   const saved = avatarWho(job, person);
@@ -115,11 +124,14 @@ export function BaseVideoPanel({
   const who: AvatarWho | null = character || imageUrl ? { character, imageUrl: character ? null : imageUrl } : null;
   const total = job.narrationDurationS ?? 0;
   const missing = valid && avatar ? uncoveredScenes(script, job.narrationWords, avatar, total) : [];
-  // foto nova, narração nova ou nada gerado ainda: gera a trilha do zero
+  // personagem/voz/foto novos, texto editado ou nada gerado ainda: gera a trilha do zero
   const needsNew =
-    !avatar || !valid || avatar.source !== "heygen" || (character ? avatar.character?.id !== character.id : Boolean(photo && photo !== avatar.imageUrl));
+    !avatar ||
+    !valid ||
+    avatar.source !== "heygen" ||
+    (character ? avatar.character?.id !== character.id : Boolean(photo && photo !== avatar.imageUrl)) ||
+    Boolean(voice && avatar.voice && voice.id !== avatar.voice.id);
   const failed = !needsNew && avatar?.status === "failed";
-  const done = avatar?.segments.filter((s) => s.status === "completed").length ?? 0;
   const off = disabled || busy !== null;
 
   async function run(kind: NonNullable<typeof busy>, fn: () => Promise<void>) {
@@ -135,7 +147,7 @@ export function BaseVideoPanel({
     }
   }
 
-  const startAvatar = (sc: "all" | "marked") => run("start", () => onStartAvatar(sc, who));
+  const startAvatar = () => run("start", () => onStartAvatar(who, voice));
 
   const pickFile = (file: File | undefined) =>
     file &&
@@ -238,7 +250,7 @@ export function BaseVideoPanel({
       <h2 id="base-title" className={bare ? "sr-only" : sectionTitle}>
         Avatar
       </h2>
-      {!bare && <p className="mt-1 text-xs text-text-secondary">O HeyGen anima o avatar (ou a foto) falando a narração aprovada. Só o áudio que você aprovou vai para lá.</p>}
+      {!bare && <p className="mt-1 text-xs text-text-secondary">O HeyGen gera o vídeo do avatar (ou da foto) falando o roteiro com uma voz do HeyGen.</p>}
       <div className={`space-y-3 ${bare ? "" : "mt-4"}`}>
         <div>
           <label htmlFor="base-heygen" className={labelClass}>
@@ -246,6 +258,14 @@ export function BaseVideoPanel({
           </label>
           <div className="mt-1.5">
             <AvatarCharacterSelect id="base-heygen" value={character} onChange={setChosen} disabled={off || generating} />
+          </div>
+        </div>
+        <div>
+          <label htmlFor="base-heygen-voice" className={labelClass}>
+            Voz (HeyGen)
+          </label>
+          <div className="mt-1.5">
+            <HeygenVoiceSelect id="base-heygen-voice" value={voice} onChange={setChosenVoice} disabled={off || generating} />
           </div>
         </div>
         {!character && (
@@ -288,15 +308,13 @@ export function BaseVideoPanel({
         </div>
         )}
 
-        {!job.narrationUrl ? (
-          <p className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-text-secondary">Primeiro gere e aprove a narração: o avatar fala exatamente o áudio aprovado.</p>
-        ) : generating ? (
+        {generating ? (
           <p className="flex items-center gap-2 rounded-lg bg-surface-2 px-3 py-2 text-xs text-text-secondary" role="status">
-            <Spinner /> Gerando o avatar no HeyGen: {done} de {avatar!.segments.length} trecho(s) prontos. Leva alguns minutos; pode continuar editando.
+            <Spinner /> O HeyGen está gerando o vídeo com a voz. Leva alguns minutos; pode continuar editando as cenas. Quando ficar pronto, a fala é transcrita para a legenda e os cortes.
           </p>
         ) : (
           <>
-            {avatar?.source === "heygen" && !valid && <p className="text-xs text-warning">A narração mudou depois do avatar. Gere o avatar de novo para ele falar a fala nova.</p>}
+            {stale && <p className="text-xs text-warning">O texto do roteiro mudou depois do avatar. Gere o avatar de novo para ele falar o texto novo.</p>}
             {failed && <p className="text-xs text-accent-red">{avatar?.error}</p>}
             {!needsNew && avatar?.status === "ready" && missing.length === 0 && (
               <p className="text-xs text-text-secondary">
@@ -309,49 +327,21 @@ export function BaseVideoPanel({
                 Cena(s) {missing.map((i) => i + 1).join(", ")} marcadas como avatar ainda sem avatar gerado.
               </p>
             )}
-            {needsNew && (
-              <details className="group">
-                <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-foreground">
-                  <span aria-hidden className="transition group-open:rotate-90">›</span> Opções avançadas
-                </summary>
-                <fieldset className="mt-1">
-                  <legend className={labelClass}>Gerar para</legend>
-                  <div className="mt-1.5 space-y-1.5 text-xs">
-                    <label className="flex items-start gap-2">
-                      <input type="radio" name="avatar-scope" checked={scope === "all"} onChange={() => setScope("all")} className="mt-0.5 accent-[#2D6CDF]" />
-                      <span>
-                        <b>O vídeo todo</b> (padrão: depois você troca cena por cena sem gerar de novo)
-                      </span>
-                    </label>
-                    <label className="flex items-start gap-2">
-                      <input type="radio" name="avatar-scope" checked={scope === "marked"} onChange={() => setScope("marked")} className="mt-0.5 accent-[#2D6CDF]" />
-                      <span>
-                        <b>Só as cenas marcadas</b> como avatar (mais barato; a cena 1 entra se nada estiver marcado)
-                      </span>
-                    </label>
-                  </div>
-                </fieldset>
-              </details>
-            )}
             {(needsNew || failed || missing.length > 0) && (
               <button
                 type="button"
-                onClick={() => startAvatar(needsNew || failed ? scope : "marked")}
-                disabled={off || !who}
-                className={`w-full ${avatar ? secondaryButton : primaryButton}`}
+                onClick={startAvatar}
+                disabled={off || !who || !voice}
+                className={`w-full ${avatar ? secondaryButton : `${primaryButton} !bg-foreground !text-background hover:!bg-foreground/85`}`}
               >
                 {busy === "start" ? <Spinner /> : <Icon name="sparkles" className="h-4 w-4" />}
                 {busy === "start"
                   ? "Enviando para o HeyGen…"
                   : failed
-                    ? "Tentar de novo os que falharam"
-                    : !needsNew
-                      ? "Gerar os trechos que faltam"
-                      : avatar
-                        ? "Gerar avatar de novo"
-                        : bare
-                          ? "Gerar o avatar"
-                          : "Aprovar a narração e gerar o avatar"}
+                    ? "Tentar de novo"
+                    : avatar && avatar.source === "heygen"
+                      ? "Gerar avatar de novo"
+                      : "Gerar o avatar"}
               </button>
             )}
           </>

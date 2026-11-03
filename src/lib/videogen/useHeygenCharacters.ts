@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { AvatarCharacter } from "./types";
+import type { AvatarCharacter, HeygenVoice } from "./types";
 
-/** Avatares e fotos animadas da conta do HeyGen (GET /api/videogen/avatars). */
+/** Avatares, fotos animadas e vozes da conta do HeyGen (GET /api/videogen/avatars). */
 export function useHeygenCharacters(enabled = true) {
   const [characters, setCharacters] = useState<AvatarCharacter[]>([]);
+  const [voices, setVoices] = useState<HeygenVoice[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
 
@@ -14,10 +15,11 @@ export function useHeygenCharacters(enabled = true) {
     let cancelled = false;
     fetch("/api/videogen/avatars")
       .then((res) => res.json())
-      .then((data: { characters?: AvatarCharacter[]; error?: string }) => {
+      .then((data: { characters?: AvatarCharacter[]; voices?: HeygenVoice[]; error?: string }) => {
         if (cancelled) return;
-        if (data.error) throw new Error(data.error);
         setCharacters(data.characters ?? []);
+        setVoices(data.voices ?? []);
+        if (data.error) throw new Error(data.error);
       })
       .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "Erro ao carregar os avatares."))
       .finally(() => !cancelled && setLoading(false));
@@ -26,5 +28,5 @@ export function useHeygenCharacters(enabled = true) {
     };
   }, [enabled]);
 
-  return { characters, error, loading };
+  return { characters, voices, error, loading };
 }

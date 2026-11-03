@@ -12,7 +12,7 @@ import { VoiceCloneModal } from "@/components/videogen/VoiceCloneModal";
 import { formatUsd } from "@/components/videogen/CostPanel";
 import { mediaDuration } from "@/components/videogen/BaseVideoPanel";
 import { Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, labelClass, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
-import { AvatarCharacterSelect } from "@/components/videogen/AvatarCharacterSelect";
+import { AvatarCharacterSelect, HeygenVoiceSelect } from "@/components/videogen/AvatarCharacterSelect";
 import { useVoices } from "@/lib/videogen/useVoices";
 import type { VideoPattern } from "@/lib/videogen/patterns";
 import { FREE_STYLE_ID } from "@/lib/videogen/freeStyle";
@@ -26,7 +26,9 @@ import {
   SPEAKER_LABEL,
   WORDS_PER_SECOND,
   parseCharacter,
+  parseVoice,
   type AvatarCharacter,
+  type HeygenVoice,
   type BriefingImage,
   type Speaker,
   type VideoFormat,
@@ -50,7 +52,7 @@ const STEPS = [
 
 const SPEAKER_OPTIONS: { id: Speaker; title: string; help: string }[] = [
   { id: "ai_voice", title: "Voz por IA", help: "A IA escreve o roteiro e a voz do perfil narra no ElevenLabs. As cenas mostram imagens." },
-  { id: "ai_avatar", title: "Avatar por IA", help: "Igual à voz por IA, e o HeyGen anima o seu avatar (ou a sua foto) falando. Você escolhe, cena a cena, avatar ou imagem." },
+  { id: "ai_avatar", title: "Avatar por IA", help: "O HeyGen gera o vídeo do seu avatar (ou da sua foto) falando o roteiro, com uma voz do HeyGen. Você escolhe, cena a cena, avatar ou imagem." },
   { id: "upload", title: "Submeter áudio / vídeo", help: "Um áudio ou vídeo já gravado. A sua fala vira a narração; não há etapa de voz." },
 ];
 
@@ -97,6 +99,9 @@ export default function VideoGenPage() {
   const [chosenCharacter, setChosenCharacter] = useState<AvatarCharacter | null | undefined>(undefined);
   const avatarCharacter = chosenCharacter === undefined ? parseCharacter(person?.heygenAvatar) : chosenCharacter;
   const avatarOk = Boolean(avatarCharacter || avatarImage);
+  // voz do HeyGen (só no caminho avatar): a escolhida aqui, senão a do perfil
+  const [chosenHeygenVoice, setChosenHeygenVoice] = useState<HeygenVoice | null | undefined>(undefined);
+  const heygenVoice = chosenHeygenVoice === undefined ? parseVoice(person?.heygenVoice) : chosenHeygenVoice;
   // áudio/vídeo enviado
   const [base, setBase] = useState<{ url: string; kind: BaseKind; name: string; durationS: number } | null>(null);
   const [baseUseVideo, setBaseUseVideo] = useState(true);
@@ -207,6 +212,7 @@ export default function VideoGenPage() {
   function problem(i: number): string | null {
     if (i === 1) {
       if (speaker === "ai_avatar" && !avatarOk) return "Escolha um avatar do HeyGen ou envie uma foto (ou cadastre no perfil de quem fala).";
+      if (speaker === "ai_avatar" && !heygenVoice) return "Escolha a voz do HeyGen para o avatar (ou cadastre no perfil de quem fala).";
       if (speaker === "upload" && !base) return "Envie o áudio ou o vídeo com a sua fala.";
       if (baseProgress !== null) return "Espere o envio terminar.";
     }
@@ -268,8 +274,8 @@ export default function VideoGenPage() {
     return {
       topic: t,
       patternId,
-      voiceId,
-      voiceName,
+      voiceId: speaker === "ai_avatar" ? (heygenVoice?.id ?? "") : voiceId,
+      voiceName: speaker === "ai_avatar" ? (heygenVoice?.name ?? "") : voiceName,
       durationS,
       extraInstructions,
       styleNotes: pattern?.kind === "free" ? styleNotes : "",
@@ -373,8 +379,8 @@ export default function VideoGenPage() {
   const estimate: { label: string; usd: number | null }[] = [];
   if (speaker === "upload") estimate.push({ label: "transcrição + cenas", usd: EST.script + (EST.transcriptionPerMin * effectiveDuration) / 60 });
   else estimate.push({ label: "roteiro", usd: EST.script });
-  if (speaker !== "upload" && !pattern?.semNarracao) estimate.push({ label: "narração", usd: EST.narrationPerS * effectiveDuration });
-  if (speaker === "ai_avatar") estimate.push({ label: "avatar (HeyGen)", usd: null });
+  if (speaker === "ai_voice" && !pattern?.semNarracao) estimate.push({ label: "narração", usd: EST.narrationPerS * effectiveDuration });
+  if (speaker === "ai_avatar") estimate.push({ label: "avatar com voz (HeyGen)", usd: null });
   estimate.push({ label: `imagens (≈${scenes} cenas)`, usd: EST.image * scenes });
   estimate.push({ label: "trilha", usd: EST.musicPerS * effectiveDuration });
   const estimateTotal = estimate.reduce((sum, e) => sum + (e.usd ?? 0), 0);
@@ -552,6 +558,7 @@ export default function VideoGenPage() {
                     setChosenVoice(null);
                     setAvatarPhoto(null);
                     setChosenCharacter(undefined);
+                    setChosenHeygenVoice(undefined);
                   }}
                 />
                 {trainingVoice && (
@@ -567,7 +574,17 @@ export default function VideoGenPage() {
                     }}
                   />
                 )}
-                {speaker !== "upload" ? (
+                {speaker === "ai_avatar" ? (
+                  <div>
+                    <label htmlFor="voice-heygen" className="flex items-center gap-1.5 text-sm font-medium">
+                      <Icon name="mic" className="h-4 w-4 text-text-secondary" /> Voz (HeyGen)
+                    </label>
+                    <div className="mt-2">
+                      <HeygenVoiceSelect id="voice-heygen" value={heygenVoice} onChange={setChosenHeygenVoice} disabled={busy} />
+                    </div>
+                    {parseVoice(person?.heygenVoice) && chosenHeygenVoice === undefined && <p className="mt-1.5 text-xs text-text-secondary">Voz do perfil {person?.name}.</p>}
+                  </div>
+                ) : speaker !== "upload" ? (
                   <div>
                     <label htmlFor="voice" className="flex items-center gap-1.5 text-sm font-medium">
                       <Icon name="mic" className="h-4 w-4 text-text-secondary" /> Voz (ElevenLabs)
@@ -1042,7 +1059,7 @@ export default function VideoGenPage() {
                 <dd>
                   {SPEAKER_LABEL[speaker]}
                   {speaker === "upload" && base ? ` · ${base.name}${base.kind === "video" ? (baseUseVideo ? " · vídeo nas cenas" : " · só o áudio") : ""}` : ""}
-                  {speaker !== "upload" ? ` · ${person?.name ?? "—"} · voz ${voiceName}` : person ? ` · tom de ${person.name}` : ""}
+                  {speaker !== "upload" ? ` · ${person?.name ?? "—"} · voz ${speaker === "ai_avatar" ? (heygenVoice?.name ?? "—") : voiceName}` : person ? ` · tom de ${person.name}` : ""}
                   {speaker === "ai_avatar" ? (avatarCharacter ? ` · avatar ${avatarCharacter.name ?? ""}` : avatarImage ? " · foto ok" : " · sem foto") : ""}
                 </dd>
                 <dt className="text-text-secondary">Conteúdo</dt>
@@ -1083,7 +1100,7 @@ export default function VideoGenPage() {
                   {speaker === "upload"
                     ? "Ao criar, a fala é transcrita e dividida em cenas. Depois: revisar as cenas → render → pronto."
                     : speaker === "ai_avatar"
-                      ? "Ao criar, só o roteiro é gerado. Depois: revisar → narração (aprovar ou gerar de novo) → avatar com o áudio aprovado → render → pronto."
+                      ? "Ao criar, só o roteiro é gerado. Depois: imagens → cenas → avatar (vídeo e voz do HeyGen) → render → pronto."
                       : "Ao criar, só o roteiro é gerado. Depois: revisar → narração (aprovar ou gerar de novo) → render → pronto."}
                 </p>
               </div>

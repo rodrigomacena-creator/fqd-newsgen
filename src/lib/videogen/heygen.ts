@@ -8,7 +8,7 @@
 // Variáveis: HEYGEN_API_KEY (obrigatória pro avatar), HEYGEN_MAX_SECONDS (trecho máximo por pedido,
 // padrão 180: a narração inteira costuma ir num pedido só), HEYGEN_VIDEO_PARAMS (JSON extra mesclado
 // no corpo do pedido, ex.: {"caption": false}).
-import type { AvatarCharacter } from "./types";
+import type { AvatarCharacter, HeygenVoice } from "./types";
 
 const API = "https://api.heygen.com";
 const UPLOAD = "https://upload.heygen.com";
@@ -85,6 +85,29 @@ export async function listCharacters(): Promise<AvatarCharacter[]> {
   return out;
 }
 
+let voiceCache: { at: number; list: HeygenVoice[] } | null = null;
+
+/** Vozes do HeyGen (GET /v2/voices), em cache por 10 min. Português primeiro. */
+export async function listVoices(): Promise<HeygenVoice[]> {
+  if (voiceCache && Date.now() - voiceCache.at < LIST_TTL_MS) return voiceCache.list;
+  const d = await call<{ voices?: { voice_id: string; name?: string; language?: string; gender?: string; preview_audio?: string }[] }>(
+    "/v2/voices",
+    { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) }
+  );
+  const list: HeygenVoice[] = (d.voices ?? [])
+    .filter((v) => v.voice_id)
+    .map((v) => ({
+      id: v.voice_id,
+      name: [v.name || v.voice_id, v.gender ? `(${v.gender})` : ""].filter(Boolean).join(" "),
+      language: v.language || undefined,
+      previewUrl: v.preview_audio || undefined,
+    }));
+  const pt = (v: HeygenVoice) => /portug|pt\b|brazil|brasil/i.test(v.language ?? "");
+  list.sort((a, b) => Number(pt(b)) - Number(pt(a)) || (a.language ?? "").localeCompare(b.language ?? "") || a.name.localeCompare(b.name));
+  voiceCache = { at: Date.now(), list };
+  return list;
+}
+
 /** Sobe uma foto (URL pública, ex.: Blob) como talking photo na conta do HeyGen. */
 export async function uploadTalkingPhoto(imageUrl: string): Promise<AvatarCharacter> {
   const src = await fetch(imageUrl);
@@ -110,8 +133,11 @@ function extraParams(): Record<string, unknown> {
   }
 }
 
-/** Pede o vídeo do personagem falando o áudio. Volta na hora com o id (a geração leva minutos). */
-export async function submitAvatar(character: AvatarCharacter, audioUrl: string, format: "9:16" | "16:9"): Promise<string> {
+/** O que o personagem fala: um áudio pronto (URL pública) ou um texto numa voz do HeyGen. */
+export type AvatarSpeech = { type: "audio"; audioUrl: string } | { type: "text"; voiceId: string; text: string };
+
+/** Pede o vídeo do personagem falando. Volta na hora com o id (a geração leva minutos). */
+export async function submitAvatar(character: AvatarCharacter, speech: AvatarSpeech, format: "9:16" | "16:9"): Promise<string> {
   const characterInput =
     character.kind === "avatar"
       ? { type: "avatar", avatar_id: character.id, avatar_style: "normal" }
@@ -120,7 +146,7 @@ export async function submitAvatar(character: AvatarCharacter, audioUrl: string,
     video_inputs: [
       {
         character: characterInput,
-        voice: { type: "audio", audio_url: audioUrl },
+        voice: speech.type === "audio" ? { type: "audio", audio_url: speech.audioUrl } : { type: "text", voice_id: speech.voiceId, input_text: speech.text },
         background: { type: "color", value: "#000000" },
       },
     ],
@@ -140,16 +166,19 @@ export async function submitAvatar(character: AvatarCharacter, audioUrl: string,
 export interface HeygenStatus {
   status: "queued" | "in_progress" | "completed" | "failed";
   videoUrl?: string;
+  durationS?: number;
   error?: string;
 }
 
 export async function avatarStatus(videoId: string): Promise<HeygenStatus> {
-  const d = await call<{ status?: string; video_url?: string; error?: { message?: string; detail?: string } | string | null }>(
+  const d = await call<{ status?: string; video_url?: string; duration?: number; error?: { message?: string; detail?: string } | string | null }>(
     `/v1/video_status.get?video_id=${encodeURIComponent(videoId)}`
   );
   const s = String(d.status ?? "").toLowerCase();
   if (s === "completed") {
-    return d.video_url ? { status: "completed", videoUrl: d.video_url } : { status: "failed", error: "HeyGen terminou sem devolver o vídeo." };
+    return d.video_url
+      ? { status: "completed", videoUrl: d.video_url, durationS: Number(d.duration) > 0 ? Number(d.duration) : undefined }
+      : { status: "failed", error: "HeyGen terminou sem devolver o vídeo." };
   }
   if (s === "failed") {
     const e = d.error;

@@ -20,8 +20,8 @@ import {
 import { useProfiles } from "@/lib/videogen/useProfiles";
 import { useVoices } from "@/lib/videogen/useVoices";
 import { uploadImage } from "@/lib/videogen/uploadImage";
-import { AvatarCharacterSelect } from "@/components/videogen/AvatarCharacterSelect";
-import { parseCharacter, type AvatarCharacter, type Pronunciation, type VideoProfileDTO, type VideoProfileKind } from "@/lib/videogen/types";
+import { AvatarCharacterSelect, HeygenVoiceSelect } from "@/components/videogen/AvatarCharacterSelect";
+import { parseCharacter, parseVoice, type AvatarCharacter, type HeygenVoice, type Pronunciation, type VideoProfileDTO, type VideoProfileKind } from "@/lib/videogen/types";
 
 interface Draft {
   id: string | null;
@@ -38,6 +38,7 @@ interface Draft {
   logoUrl: string;
   avatarUrl: string;
   heygenAvatar: AvatarCharacter | null;
+  heygenVoice: HeygenVoice | null;
   colors: string;
   pronunciations: Pronunciation[];
   isDefault: boolean;
@@ -60,6 +61,7 @@ function toDraft(p: VideoProfileDTO): Draft {
     logoUrl: p.logoUrl ?? "",
     avatarUrl: p.avatarUrl ?? "",
     heygenAvatar: parseCharacter(p.heygenAvatar),
+    heygenVoice: parseVoice(p.heygenVoice),
     colors: p.colors ?? "",
     pronunciations: p.pronunciations,
     isDefault: p.isDefault,
@@ -83,6 +85,7 @@ function emptyDraft(kind: VideoProfileKind): Draft {
     logoUrl: "",
     avatarUrl: "",
     heygenAvatar: null,
+    heygenVoice: null,
     colors: "",
     pronunciations: [],
     isDefault: false,
@@ -459,6 +462,14 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
                 </label>
                 <div className="mt-1.5">
                   <AvatarCharacterSelect id="profile-heygen" value={d.heygenAvatar} onChange={(c) => set("heygenAvatar", c)} />
+                </div>
+              </div>
+              <div className="mt-4">
+                <label htmlFor="profile-heygen-voice" className={labelClass}>
+                  Voz do avatar (HeyGen)
+                </label>
+                <div className="mt-1.5">
+                  <HeygenVoiceSelect id="profile-heygen-voice" value={d.heygenVoice} onChange={(v) => set("heygenVoice", v)} />
                 </div>
               </div>
               <div className="mt-4">

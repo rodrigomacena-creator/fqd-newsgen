@@ -1,9 +1,10 @@
 // Vídeo base das cenas (só servidor): avatar falando do HeyGen ou vídeo pronto do usuário.
 //
-// HeyGen: a narração do ElevenLabs (voz clonada, tempos das palavras) vai pro HeyGen junto do
-// personagem (avatar da conta ou a foto, que vira "talking photo") e volta um vídeo com lipsync.
-// Normalmente é um pedido só (HEYGEN_MAX_SECONDS); no escopo "só as cenas marcadas" a narração é
-// cortada em trechos alinhados às cenas. O worker junta os trechos numa trilha só e mostra essa
+// HeyGen ("Avatar por IA"): o texto da narração do roteiro vai pro HeyGen com o personagem (avatar
+// da conta ou a foto, que vira "talking photo") e uma voz do HeyGen; ele devolve um vídeo com voz
+// e lipsync. Nada do ElevenLabs nesse caminho. Quando o vídeo fica pronto, a fala dele é transcrita
+// (ElevenLabs STT, como no "Submeter áudio / vídeo") para virar os tempos das palavras (legenda e
+// cortes), e o próprio mp4 passa a ser a narração do vídeo (`narrationUrl`). O worker mostra essa
 // trilha nas cenas marcadas com `avatar: true`; nas outras, a imagem cobre.
 //
 // Upload: o vídeo do usuário é a trilha inteira. A fala dele vira a narração (transcrita no
@@ -11,10 +12,9 @@
 import { put } from "@vercel/blob";
 import type { VideoJob } from "@/generated/prisma/client";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
-import { sliceMp3 } from "./mp3";
-import { avatarStatus, HEYGEN_MAX_SECONDS, submitAvatar, uploadTalkingPhoto } from "./heygen";
-import { planSegments } from "./avatarPlan";
-import { parseVideoFormat, type AvatarCharacter, type AvatarSegment, type AvatarTrack, type NarrationWord, type VideoScript } from "./types";
+import { avatarStatus, submitAvatar, uploadTalkingPhoto } from "./heygen";
+import { speechToText } from "./elevenlabs";
+import { fullNarration, parseVideoFormat, type AvatarCharacter, type AvatarSegment, type AvatarTrack, type HeygenVoice, type NarrationWord, type VideoScript } from "./types";
 
 export function parseAvatar(value: string | null): AvatarTrack | null {
   if (!value) return null;
@@ -27,69 +27,41 @@ export function parseAvatar(value: string | null): AvatarTrack | null {
 }
 
 /**
- * Manda pro HeyGen os trechos planejados. Devolve a trilha atualizada (status "generating").
+ * Pede ao HeyGen o vídeo do avatar falando o texto do roteiro com a voz escolhida (um pedido só).
  * `who`: um personagem já cadastrado na conta do HeyGen, ou uma foto (vira foto animada lá).
+ * Devolve a trilha com status "generating"; `advanceAvatar` acompanha e, pronto, transcreve.
  */
 export async function startHeygen(
   job: VideoJob,
   script: VideoScript,
   who: { character?: AvatarCharacter | null; imageUrl?: string | null },
-  scope: "all" | "marked"
+  voice: HeygenVoice
 ): Promise<AvatarTrack> {
-  if (!job.narrationUrl || !job.narrationWords) throw new Error("Gere a narração antes do avatar.");
-  const words = JSON.parse(job.narrationWords) as NarrationWord[];
-  const total = job.narrationDurationS ?? words.at(-1)?.[2] ?? 0;
+  const text = fullNarration(script);
+  if (!text) throw new Error("O roteiro não tem narração.");
   const prev = parseAvatar(job.avatar);
-  // mesma narração e mesmo personagem (ou mesma foto): aproveita os trechos prontos
-  const sameWho = prev?.source === "heygen" && (who.character ? prev.character?.id === who.character.id : Boolean(who.imageUrl) && prev.imageUrl === who.imageUrl);
-  const keep = prev && sameWho && prev.narrationUrl === job.narrationUrl ? prev.segments.filter((s) => s.status !== "failed") : [];
-  if (prev && keep.length === 0) await discardAvatarFiles(prev, job.narrationUrl);
-
-  const plan = planSegments(script, words, total, scope, keep, HEYGEN_MAX_SECONDS);
-  if (plan.length === 0 && keep.length === 0) throw new Error("Marque ao menos uma cena como avatar.");
-
-  // foto enviada: vira uma foto animada na conta do HeyGen (uma vez por trilha)
-  let character = who.character ?? (keep.length ? prev?.character : undefined) ?? null;
+  if (prev) await discardAvatarFiles(prev);
+  // foto enviada: vira uma foto animada na conta do HeyGen
+  let character = who.character ?? null;
   if (!character) {
     if (!who.imageUrl) throw new Error("Escolha um avatar do HeyGen ou envie uma foto.");
     character = await uploadTalkingPhoto(who.imageUrl);
   }
-  const format = parseVideoFormat(job.format);
-
-  let audio: Buffer | null = null;
-  const fresh: AvatarSegment[] = [];
-  for (const p of plan) {
-    if (!audio) {
-      const res = await fetch(job.narrationUrl);
-      if (!res.ok) throw new Error(`Não consegui baixar a narração (HTTP ${res.status}).`);
-      audio = Buffer.from(await res.arrayBuffer());
-    }
-    const piece = sliceMp3(audio, p.start, p.end);
-    const blob = await put(`videogen/${job.id}/avatar/fala-${p.start.toFixed(2)}.mp3`, piece, {
-      access: "public",
-      addRandomSuffix: true,
-      contentType: "audio/mpeg",
-    });
-    try {
-      const videoId = await submitAvatar(character, blob.url, format);
-      fresh.push({ ...p, audioUrl: blob.url, requestId: videoId, status: "queued" });
-    } catch (e) {
-      // o que já foi pedido segue; este trecho fica marcado como falho para tentar de novo
-      fresh.push({ ...p, audioUrl: blob.url, status: "failed", error: (e as Error).message });
-      if (fresh.every((s) => s.status === "failed")) throw e;
-    }
-  }
-  const segments = [...keep, ...fresh].sort((a, b) => a.start - b.start);
-  return summarize({
+  const videoId = await submitAvatar(character, { type: "text", voiceId: voice.id, text }, parseVideoFormat(job.format));
+  const estimate = Math.max(3, text.split(/\s+/).length / 2.3);
+  return {
     source: "heygen",
     status: "generating",
-    narrationUrl: job.narrationUrl,
+    // enquanto gera, ainda não há narração: a trilha passa a valer quando o mp4 vira a narração
+    narrationUrl: "",
     imageUrl: who.character ? undefined : (who.imageUrl ?? undefined),
     character,
-    segments,
-    durationS: total,
-    createdAt: prev?.createdAt && keep.length ? prev.createdAt : new Date().toISOString(),
-  });
+    voice,
+    text,
+    segments: [{ start: 0, end: estimate, requestId: videoId, status: "queued" }],
+    durationS: estimate,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 /** Status geral a partir dos trechos. */
@@ -101,16 +73,24 @@ function summarize(a: AvatarTrack): AvatarTrack {
   return { ...a, status: "ready", error: undefined };
 }
 
+export interface AvatarAdvance {
+  avatar: AvatarTrack;
+  /** Campos do job a gravar quando o vídeo do HeyGen ficou pronto (vira a narração + tempos das palavras). */
+  data?: Record<string, unknown>;
+}
+
 /**
  * Consulta o HeyGen pelos trechos ainda em geração; os prontos são copiados pro Blob (o link
  * deles expira). Chamado pela tela do vídeo a cada poucos segundos enquanto o avatar é gerado.
+ * No modo texto (voz do HeyGen), o vídeo pronto é transcrito e vira a narração do job.
  */
-export async function advanceAvatar(jobId: string, avatar: AvatarTrack): Promise<AvatarTrack> {
-  if (avatar.status !== "generating") return avatar;
+export async function advanceAvatar(job: VideoJob, avatar: AvatarTrack): Promise<AvatarAdvance> {
+  if (avatar.status !== "generating") return { avatar };
   if (avatar.source !== "heygen") {
     // trilha do provedor anterior: não dá mais para consultar
-    return summarize({ ...avatar, segments: avatar.segments.map((s) => (s.status === "completed" ? s : { ...s, status: "failed", error: "gerado no provedor anterior; gere de novo" })) });
+    return { avatar: summarize({ ...avatar, segments: avatar.segments.map((s) => (s.status === "completed" ? s : { ...s, status: "failed", error: "gerado no provedor anterior; gere de novo" })) }) };
   }
+  let durationS: number | undefined;
   const segments = await Promise.all(
     avatar.segments.map(async (s, k): Promise<AvatarSegment> => {
       if (!(s.status === "queued" || s.status === "in_progress") || !s.requestId) return s;
@@ -119,11 +99,12 @@ export async function advanceAvatar(jobId: string, avatar: AvatarTrack): Promise
         if (st.status === "completed" && st.videoUrl) {
           const res = await fetch(st.videoUrl);
           if (!res.ok) throw new Error(`não consegui baixar o vídeo do avatar (HTTP ${res.status})`);
-          const blob = await put(`videogen/${jobId}/avatar/trecho-${k}.mp4`, Buffer.from(await res.arrayBuffer()), {
+          const blob = await put(`videogen/${job.id}/avatar/trecho-${k}.mp4`, Buffer.from(await res.arrayBuffer()), {
             access: "public",
             addRandomSuffix: true,
             contentType: "video/mp4",
           });
+          if (st.durationS) durationS = st.durationS;
           return { ...s, status: "completed", videoUrl: blob.url, error: undefined };
         }
         if (st.status === "failed") return { ...s, status: "failed", error: st.error };
@@ -135,7 +116,40 @@ export async function advanceAvatar(jobId: string, avatar: AvatarTrack): Promise
       }
     })
   );
-  return summarize({ ...avatar, segments });
+  let next = summarize({ ...avatar, segments });
+  if (next.status !== "ready" || !avatar.voice) return { avatar: next };
+
+  // modo texto: o mp4 do HeyGen é a narração; a fala dele dá os tempos das palavras
+  const videoUrl = next.segments[0]?.videoUrl;
+  if (!videoUrl) return { avatar: next };
+  const script = job.script ? (JSON.parse(job.script) as VideoScript) : null;
+  let words: NarrationWord[] = [];
+  try {
+    const { words: raw } = await speechToText(videoUrl);
+    words = raw.map((w) => [w.text.replace(/\s+/g, ""), Math.round(w.start * 1000) / 1000, Math.round(w.end * 1000) / 1000] as NarrationWord).filter((w) => w[0]);
+  } catch (e) {
+    next = { ...next, status: "failed", error: `O avatar ficou pronto, mas não consegui transcrever a fala dele: ${(e as Error).message}` };
+    return { avatar: next };
+  }
+  if (words.length < 2) return { avatar: { ...next, status: "failed", error: "O vídeo do HeyGen veio sem fala reconhecível." } };
+  const total = Math.max(durationS ?? 0, words.at(-1)![2] + 0.3);
+  next = { ...next, narrationUrl: videoUrl, durationS: total, segments: [{ ...next.segments[0], start: 0, end: total }] };
+  const data: Record<string, unknown> = {
+    narrationUrl: videoUrl,
+    narrationWords: JSON.stringify(words),
+    narrationDurationS: Math.round(total * 100) / 100,
+  };
+  if (script) {
+    // a narração do roteiro precisa ser exatamente a transcrição (é o que liga legenda e cortes ao tempo)
+    const pieces = realignToTranscript([...script.scenes.map((sc) => sc.narration), script.cta.narration], words.map((w) => w[0]));
+    script.scenes = script.scenes.map((sc, i) => ({ ...sc, narration: pieces[i] }));
+    script.cta = { ...script.cta, narration: pieces[pieces.length - 1] };
+    if (!script.scenes.some((sc) => sc.avatar) && script.scenes[0]) script.scenes[0].avatar = true;
+    next = { ...next, text: fullNarration(script) };
+    data.script = JSON.stringify(script);
+  }
+  if (job.narrationUrl && job.narrationUrl !== videoUrl) await deleteBlobIfOwned(job.narrationUrl);
+  return { avatar: next, data };
 }
 
 /** Apaga os arquivos da trilha (trechos de áudio e vídeo). O vídeo enviado que ainda é a narração fica. */

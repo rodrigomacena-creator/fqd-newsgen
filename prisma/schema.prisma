@@ -144,6 +144,7 @@ model VideoProfile {
   logoUrl        String? // empresa: logo no Vercel Blob
   avatarUrl      String? // pessoa: foto do avatar no Vercel Blob (vira foto animada no HeyGen)
   heygenAvatar   String? // pessoa: JSON AvatarCharacter (avatar/foto animada já cadastrado na conta do HeyGen)
+  heygenVoice    String? // pessoa: JSON HeygenVoice (voz do HeyGen usada no caminho "Avatar por IA")
   colors         String? // empresa: cores da marca (texto livre, ex.: "#E10600, preto")
   pronunciations String? // JSON: Pronunciation[] (ex.: nome da marca falado)
   isDefault      Boolean  @default(false)

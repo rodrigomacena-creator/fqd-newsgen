@@ -27,6 +27,9 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
       { status: 409 }
     );
   }
+  if (job.speaker === "ai_avatar") {
+    return NextResponse.json({ error: "No caminho Avatar por IA a voz é do HeyGen: gere o avatar na etapa Avatar." }, { status: 409 });
+  }
   const script = JSON.parse(job.script) as VideoScript;
   const display = fullNarration(script);
   if (!display) return NextResponse.json({ error: "Este roteiro não tem narração." }, { status: 400 });

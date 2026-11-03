@@ -26,7 +26,10 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/jo
     return NextResponse.json({ error: "O estilo deste vídeo foi removido e não pode mais ser renderizado." }, { status: 400 });
   }
   if (!style.pattern.semNarracao && !job.narrationUrl) {
-    return NextResponse.json({ error: "Gere a narração antes de mandar para o render." }, { status: 400 });
+    return NextResponse.json(
+      { error: job.speaker === "ai_avatar" ? "Gere o avatar (vídeo e voz do HeyGen) antes de mandar para o render." : "Gere a narração antes de mandar para o render." },
+      { status: 400 }
+    );
   }
   if (job.status === "queued" || job.status === "rendering") {
     return NextResponse.json({ job: serializeVideoJob(job) });

@@ -58,6 +58,27 @@ export function parseCharacter(value: unknown): AvatarCharacter | null {
   };
 }
 
+/** Voz do HeyGen (caminho "Avatar por IA": o HeyGen fala o texto do roteiro com ela). */
+export interface HeygenVoice {
+  id: string;
+  name: string;
+  language?: string;
+  previewUrl?: string;
+}
+
+export function parseVoice(value: unknown): HeygenVoice | null {
+  const o = typeof value === "string" ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+  if (!o || typeof o !== "object") return null;
+  const v = o as Record<string, unknown>;
+  if (typeof v.id !== "string" || !v.id.trim()) return null;
+  return {
+    id: v.id.trim().slice(0, 120),
+    name: typeof v.name === "string" && v.name.trim() ? v.name.trim().slice(0, 120) : v.id.trim().slice(0, 120),
+    language: typeof v.language === "string" ? v.language.slice(0, 40) : undefined,
+    previewUrl: typeof v.previewUrl === "string" && /^https?:\/\//.test(v.previewUrl) ? v.previewUrl.slice(0, 800) : undefined,
+  };
+}
+
 export interface AvatarTrack {
   /** "heygen" = avatar falando; "higgsfield" = trilhas antigas (provedor anterior, não dá mais para consultar). */
   source: "heygen" | "higgsfield" | "upload";
@@ -68,6 +89,10 @@ export interface AvatarTrack {
   imageUrl?: string;
   /** HeyGen: avatar ou foto animada usada. */
   character?: AvatarCharacter;
+  /** HeyGen: voz do HeyGen que falou o texto (o HeyGen gera vídeo + áudio; nada do ElevenLabs). */
+  voice?: HeygenVoice;
+  /** HeyGen: texto falado (narração do roteiro na hora do pedido). Diferente do roteiro atual = avatar desatualizado. */
+  text?: string;
   /** Provedor anterior: modelo usado. */
   model?: string;
   /** Trechos em sequência, cobrindo do 0 ao fim da fala (o upload tem um só). */
@@ -117,6 +142,16 @@ export function avatarReady(avatar: AvatarTrack | null | undefined, narrationUrl
   return Boolean(avatar && avatar.status === "ready" && narrationUrl && avatar.narrationUrl === narrationUrl);
 }
 
+/** Avatar do HeyGen gerado de um texto que já não é o do roteiro (a pessoa editou a fala depois). */
+export function avatarStale(avatar: AvatarTrack | null | undefined, script: VideoScript | null): boolean {
+  if (!avatar || avatar.source !== "heygen" || typeof avatar.text !== "string" || !script) return false;
+  return normalizeSpeech(avatar.text) !== normalizeSpeech(fullNarration(script));
+}
+
+function normalizeSpeech(t: string): string {
+  return t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
 /** Imagem que o usuário subiu no briefing do vídeo (vai pra IA ver e pode ser usada nas cenas). */
 export interface BriefingImage {
   url: string;
@@ -147,6 +182,8 @@ export interface VideoProfileDTO {
   avatarUrl: string | null;
   /** Pessoa: avatar/foto animada já cadastrado na conta do HeyGen (JSON de AvatarCharacter). */
   heygenAvatar: string | null;
+  /** Pessoa: voz do HeyGen (JSON de HeygenVoice) usada no caminho "Avatar por IA". */
+  heygenVoice: string | null;
   colors: string | null;
   pronunciations: Pronunciation[];
   isDefault: boolean;

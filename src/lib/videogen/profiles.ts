@@ -4,7 +4,7 @@
 import type { VideoProfile } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { BriefingImage, Pronunciation, VideoProfileDTO, VideoProfileKind } from "./types";
-import { MAX_BRIEFING_IMAGES, parseCharacter } from "./types";
+import { MAX_BRIEFING_IMAGES, parseCharacter, parseVoice } from "./types";
 
 function parsePronunciations(value: string | null): Pronunciation[] {
   if (!value) return [];
@@ -122,6 +122,11 @@ export function profileInput(body: Record<string, unknown>, partial: boolean): {
     const c = parseCharacter(body.heygenAvatar);
     if (body.heygenAvatar && !c) return { error: "Avatar do HeyGen inválido." };
     data.heygenAvatar = c ? JSON.stringify(c) : null;
+  }
+  if (body.heygenVoice !== undefined) {
+    const v = parseVoice(body.heygenVoice);
+    if (body.heygenVoice && !v) return { error: "Voz do HeyGen inválida." };
+    data.heygenVoice = v ? JSON.stringify(v) : null;
   }
   if (body.pronunciations !== undefined) data.pronunciations = JSON.stringify(cleanPronunciations(body.pronunciations));
   if (body.isDefault !== undefined) data.isDefault = body.isDefault === true;

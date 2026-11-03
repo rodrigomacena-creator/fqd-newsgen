@@ -4,7 +4,7 @@ import { recentFreeStyles, resolveStyle } from "@/lib/videogen/templates";
 import { generateVideoScript, VIDEOGEN_TEXT_MODEL } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
-import { DEFAULT_VOICE_ID, MAX_DURATION_S, parseCharacter, parseSpeaker, parseVideoFormat } from "@/lib/videogen/types";
+import { DEFAULT_VOICE_ID, MAX_DURATION_S, parseCharacter, parseSpeaker, parseVideoFormat, parseVoice } from "@/lib/videogen/types";
 import { cleanBriefingImages, getProfile, isAllowedImageUrl } from "@/lib/videogen/profiles";
 import { applyBaseSpeech } from "@/lib/videogen/baseVideo";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
@@ -104,8 +104,13 @@ export async function POST(request: Request) {
   const company = await getProfile(body.companyId?.trim(), "company");
   const briefingImages = cleanBriefingImages(body.briefingImages);
   // Voz: a escolhida no formulário; senão a da pessoa; senão a padrão.
-  const voiceId = body.voiceId?.trim() || person?.voiceId || DEFAULT_VOICE_ID;
-  const voiceName = body.voiceId?.trim() ? body.voiceName?.trim() || voiceId : person?.voiceId ? person.voiceName || person.name : "Macena";
+  // Avatar por IA: a voz é do HeyGen (do formulário, senão a do perfil); nos outros caminhos é do ElevenLabs.
+  const heygenVoice = speaker === "ai_avatar" ? (parseVoice(body.voiceId?.trim() ? { id: body.voiceId, name: body.voiceName } : null) ?? parseVoice(person?.heygenVoice)) : null;
+  if (speaker === "ai_avatar" && !heygenVoice) {
+    return NextResponse.json({ error: "Escolha uma voz do HeyGen para o avatar (ou cadastre no perfil de quem fala)." }, { status: 400 });
+  }
+  const voiceId = heygenVoice?.id ?? (body.voiceId?.trim() || person?.voiceId || DEFAULT_VOICE_ID);
+  const voiceName = heygenVoice?.name ?? (body.voiceId?.trim() ? body.voiceName?.trim() || voiceId : person?.voiceId ? person.voiceName || person.name : "Macena");
 
   const job = await prisma.videoJob.create({
     data: {

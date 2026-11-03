@@ -378,14 +378,19 @@ reais encontradas ao construir o projeto, não só a estrutura.
   `motion.py` (corte, câmera, `ObjectLayer`, `Marks`, `emphasis`) guardado por `has_direction`.
   **Vídeo base (avatar do HeyGen ou vídeo seu)** (`VideoJob.avatar`, JSON `AvatarTrack` em `types.ts`; `src/lib/videogen/avatar.ts`,
   `avatarPlan.ts` (puro), `heygen.ts`, `mp3.ts`, `baseVideo.ts`; rota `/api/videogen/jobs/[id]/avatar` GET/POST/DELETE; painel
-  `BaseVideoPanel.tsx`): opcional, sem ele tudo fica como antes. "Avatar falando": a narração do ElevenLabs (mesma voz, mesmos tempos de
-  palavra) vai pro HeyGen junto do **personagem** (`AvatarCharacter`: avatar ou "talking photo" já cadastrado na conta do HeyGen,
-  escolhido no perfil da pessoa (`VideoProfile.heygenAvatar`), na criação (`VideoJob.avatarCharacter`) ou no card Avatar — lista em
-  GET `/api/videogen/avatars`, seletor `AvatarCharacterSelect.tsx`; sem personagem, a foto (`VideoJob.avatarImageUrl` ou
-  `VideoProfile.avatarUrl`) vira talking photo lá via `uploadTalkingPhoto()`). Normalmente é um pedido só (`HEYGEN_MAX_SECONDS`,
-  padrão 180 s); no escopo "só as cenas marcadas" a narração é cortada em trechos na fronteira das cenas (`sliceMp3`, sem ffmpeg).
-  A tela consulta o andamento (GET) e os vídeos prontos são copiados pro Blob (`videogen/<id>/avatar/`). Escopo "o vídeo todo"
-  (padrão) ou "só as cenas marcadas" (opção avançada). "Vídeo meu":
+  `BaseVideoPanel.tsx`): opcional, sem ele tudo fica como antes. "Avatar por IA" (desde 03/11/2026, pedido do Rodrigo: **nada do
+  ElevenLabs nesse caminho**): o texto da narração do roteiro (`fullNarration`) vai pro HeyGen junto do **personagem**
+  (`AvatarCharacter`: avatar ou "talking photo" da conta do HeyGen, escolhido no perfil da pessoa (`VideoProfile.heygenAvatar`),
+  na criação (`VideoJob.avatarCharacter`) ou no card Avatar; sem personagem, a foto (`VideoJob.avatarImageUrl` ou
+  `VideoProfile.avatarUrl`) vira talking photo lá via `uploadTalkingPhoto()`) e de uma **voz do HeyGen** (`HeygenVoice`:
+  `VideoProfile.heygenVoice` ou, no job de avatar, `VideoJob.voiceId/voiceName` guardam a voz do HeyGen, não do ElevenLabs).
+  Lista de avatares e vozes em GET `/api/videogen/avatars` (cache de 10 min), seletores `AvatarCharacterSelect.tsx` /
+  `HeygenVoiceSelect`. Um pedido só (`startHeygen`, `voice.type = "text"`); a trilha nasce com `narrationUrl: ""` e, quando
+  o mp4 fica pronto (`advanceAvatar`, chamado pelo GET da rota a cada 8 s pela tela), ele é copiado pro Blob, a fala é
+  transcrita no ElevenLabs STT (só STT, como no "Submeter áudio / vídeo"), o mp4 vira a narração do job (`narrationUrl`,
+  `narrationWords`, `narrationDurationS`) e o roteiro é realinhado palavra a palavra (`realignToTranscript`). `avatar.text`
+  guarda o texto falado: se a pessoa editar a fala depois, `avatarStale()` marca o avatar como desatualizado (gerar de novo).
+  A etapa Narração não existe nesse caminho (`needsNarration` só em `ai_voice`; a rota de narração recusa `ai_avatar`). "Vídeo meu":
   upload direto pro Blob (`videogen/<id>/base/`), a fala é transcrita (ElevenLabs STT, `speechToText`) e vira a narração
   (`narrationUrl` = o próprio vídeo) e o roteiro é refeito em cima da fala (`generateVideoScript({fixedNarration})` +
   `realignToTranscript`, palavra por palavra); nesse modo o texto falado não pode ser editado (PATCH recusa) e "gerar roteiro de novo"
@@ -393,11 +398,11 @@ reais encontradas ao construir o projeto, não só a estrutura.
   (clique troca). A trilha só vale se `avatar.narrationUrl === job.narrationUrl`. Worker: só o motor genérico (`base_track`,
   `extract_base_frames`, `BaseClip` em `template_engine.py`: tela cheia, sem filtro de cor do estilo, quadro = instante da fala, nunca
   vai-e-volta); cena avatar não gera imagem. A API do HeyGen (`api.heygen.com`, UMA chave no header `X-Api-Key` = `HEYGEN_API_KEY`;
-  POST `/v2/video/generate` com `video_inputs[0].character` (`avatar`/`talking_photo`) + `voice: {type: "audio", audio_url}` →
-  `video_id`; GET `/v1/video_status.get?video_id=` → `completed` + `video_url`; GET `/v2/avatars` lista avatares e talking photos;
+  POST `/v2/video/generate` com `video_inputs[0].character` (`avatar`/`talking_photo`) + `voice: {type: "text", voice_id, input_text}` →
+  `video_id`; GET `/v1/video_status.get?video_id=` → `completed` + `video_url`; GET `/v2/avatars` lista avatares e talking photos; GET `/v2/voices` lista as vozes;
   POST `upload.heygen.com/v1/talking_photo` com os bytes da imagem) foi escrita de memória, porque o domínio da documentação
-  é bloqueado aqui — **ainda não testada com chave real** (03/11/2026): ao testar, conferir nomes de campo e os valores de
-  `talking_photo_style`/`talking_style`. O Higgsfield (provedor anterior, chave em duas partes) foi trocado pelo HeyGen a pedido do
+  é bloqueado aqui — a chave e a autenticação já funcionaram em produção (03/11/2026: o primeiro pedido voltou `402 Insufficient
+  credits`, créditos de API são separados do plano do site); nomes de campo do `generate` ainda a confirmar no primeiro vídeo real. O Higgsfield (provedor anterior, chave em duas partes) foi trocado pelo HeyGen a pedido do
   Rodrigo; trilhas antigas com `source: "higgsfield"` só são lidas (não dá mais para consultar o andamento delas).
   **Criação em 5 passos (03/11/2026, estudo de usabilidade aprovado pelo Rodrigo)**: a tela `/videogen` é um questionário
   (Formato → Quem fala → Conteúdo → Visual → Revisão) em que cada passo só abre depois do anterior e os campos mudam conforme
