@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 import type { PublicationDTO } from "@/lib/videogen/social";
+import { downloadUrl } from "@/lib/videogen/types";
 import { AutoTextarea, fieldClass, Icon, labelClass, primaryButton, secondaryButton, Spinner } from "./ui";
 
 type Account = { platform: "youtube" | "instagram"; configured: boolean; connected: boolean; accountName: string | null; expiresAt: string | null };
@@ -29,7 +30,7 @@ export function CoverPreview({ job }: { job: VideoJobDTO }) {
       <p className="text-xs font-semibold uppercase tracking-[0.08em] text-text-secondary">Capa automática</p>
       <div className="mt-2 grid grid-cols-[minmax(0,0.56fr)_minmax(0,1fr)] items-start gap-3">
         {job.coverUrl && job.format !== "16:9" && (
-          <a href={job.coverUrl} download className="group block" title="Baixar capa 9:16">
+          <a href={downloadUrl(job.coverUrl)} download className="group block" title="Baixar capa 9:16">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={job.coverUrl} alt="Capa 9:16 do vídeo" className="aspect-[9/16] w-full rounded-lg object-cover ring-1 ring-border" />
             <span className="mt-1 flex items-center gap-1 text-[11px] text-text-secondary group-hover:text-foreground">
@@ -38,7 +39,7 @@ export function CoverPreview({ job }: { job: VideoJobDTO }) {
           </a>
         )}
         {job.thumbUrl && (
-          <a href={job.thumbUrl} download className="group block" title="Baixar thumbnail 16:9">
+          <a href={downloadUrl(job.thumbUrl)} download className="group block" title="Baixar thumbnail 16:9">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={job.thumbUrl} alt="Thumbnail 16:9 do vídeo" className="aspect-video w-full rounded-lg object-cover ring-1 ring-border" />
             <span className="mt-1 flex items-center gap-1 text-[11px] text-text-secondary group-hover:text-foreground">

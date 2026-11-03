@@ -348,3 +348,18 @@ export const CTA_EFFECTS = [
   { id: "seta", label: "Seta para baixo" },
 ] as const;
 export type CtaEffect = (typeof CTA_EFFECTS)[number]["id"];
+
+/**
+ * URL que força o download em vez de abrir no navegador. O atributo `download` do `<a>` é ignorado quando o
+ * arquivo está em outro domínio (o Blob da Vercel); o Blob aceita `?download=1` e responde com
+ * Content-Disposition: attachment (o nome do arquivo vem do próprio blob).
+ */
+export function downloadUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.searchParams.set("download", "1");
+    return u.toString();
+  } catch {
+    return url;
+  }
+}

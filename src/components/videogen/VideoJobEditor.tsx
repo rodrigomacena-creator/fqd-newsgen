@@ -43,6 +43,7 @@ import {
   type Pronunciation,
   type VideoScene,
   type VideoScript,
+  downloadUrl,
 } from "@/lib/videogen/types";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
@@ -670,7 +671,7 @@ export function VideoJobEditor({ id }: { id: string }) {
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <div>
                   <video controls preload="metadata" src={job.videoUrl} className={`mx-auto ${job.format === "16:9" ? "aspect-video" : "aspect-[9/16] max-h-[70dvh]"} w-full rounded-xl bg-black object-contain`} />
-                  <a href={job.videoUrl} download className={`mt-4 w-full ${primaryButton} !bg-foreground !text-background hover:!bg-foreground/85`}>
+                  <a href={downloadUrl(job.videoUrl)} download className={`mt-4 w-full ${primaryButton} !bg-foreground !text-background hover:!bg-foreground/85`}>
                     <Icon name="download" className="h-4 w-4" /> Baixar mp4
                   </a>
                   <CoverPreview job={job} />
@@ -934,7 +935,7 @@ function StepBar({
     title = "Vídeo pronto";
     hint = "Assista, baixe e publique na última etapa. A legenda do post está lá.";
     action = (
-      <a href={job.videoUrl!} download className={`${actionClass} ${primaryButton} ${ink}`}>
+      <a href={downloadUrl(job.videoUrl!)} download className={`${actionClass} ${primaryButton} ${ink}`}>
         <Icon name="download" className="h-4 w-4" /> Baixar mp4
       </a>
     );
