@@ -7,6 +7,7 @@ import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { BriefingImages } from "@/components/videogen/BriefingImages";
 import { ScriptLoader } from "@/components/videogen/ScriptLoader";
+import { TopicAiModal } from "@/components/videogen/TopicAiModal";
 import { formatUsd } from "@/components/videogen/CostPanel";
 import { FlowSteps, Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
@@ -34,6 +35,7 @@ export default function VideoGenPage() {
   const { voices, loading: loadingVoices, error: voicesError } = useVoices();
 
   const [topic, setTopic] = useState("");
+  const [topicAi, setTopicAi] = useState(false);
   // vários temas de uma vez: um vídeo (roteiro) por linha
   const [batch, setBatch] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number; failed: string[] } | null>(null);
@@ -280,6 +282,16 @@ export default function VideoGenPage() {
                   )}
                 </label>
                 <div className="flex items-center gap-3">
+                  {!article && !batch && (
+                    <button
+                      type="button"
+                      onClick={() => setTopicAi(true)}
+                      disabled={loading}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-accent-yellow hover:underline disabled:opacity-50"
+                    >
+                      <Icon name="sparkles" className="h-3.5 w-3.5" /> Criar com IA
+                    </button>
+                  )}
                   {!article && (
                     <button
                       type="button"
@@ -296,6 +308,7 @@ export default function VideoGenPage() {
                   </span>
                 </div>
               </div>
+              {topicAi && <TopicAiModal durationS={durationS} onUse={setTopic} onClose={() => setTopicAi(false)} />}
               {wantedArticle && (article || articleError) && (
                 <div className="mt-3 flex items-center gap-3 rounded-xl border border-accent-yellow/40 bg-accent-yellow/10 p-3">
                   {article?.coverImage && (

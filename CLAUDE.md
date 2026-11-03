@@ -375,6 +375,10 @@ reais encontradas ao construir o projeto, não só a estrutura.
   `articleId` (coluna `VideoJob.articleId`, sem FK), `articleSource()` (`src/lib/videogen/articleSource.ts`) monta o texto
   da notícia e ele entra no prompt como NOTÍCIA DE BASE (só os fatos dela); "gerar de novo" relê a notícia. As imagens
   da notícia NÃO viram imagens do briefing de propósito (excluir o vídeo apagaria os blobs da notícia).
+  **Criar tema com IA** (botão "Criar com IA" no campo Tema, `TopicAiModal.tsx` em portal no body porque o campo fica dentro
+  do form da página; POST `/api/videogen/topic`, `src/lib/videogen/topicAssist.ts`): pedido livre vira tema formatado (título,
+  ângulo, "Pontos do vídeo"), com pesquisa na web pelo plugin `web` da OpenRouter (padrão ligado; fontes vêm de
+  `annotations.url_citation`). Custo (~US$ 0,10 com web) aparece só no modal, não entra no `VideoJob.costs` (ainda não há job).
   **Vários temas de uma vez** (`/videogen`, "Vários temas de uma vez"): um roteiro por linha (até 10), criados um de
   cada vez pelo navegador com as mesmas escolhas; sem imagens do briefing (o mesmo blob em vários vídeos seria apagado
   com o primeiro excluído).
