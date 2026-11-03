@@ -430,6 +430,7 @@ export function VideoJobEditor({ id }: { id: string }) {
       busy={busy}
       dirty={dirty}
       imagesMissing={imagesMissing}
+      error={error || job.error}
       avatarWho={avatarWho(job, person)}
       onGenerateScript={regenerateScript}
       onGenerateImages={() => generateStoryboard()}
@@ -828,6 +829,7 @@ function StepBar({
   dirty,
   imagesMissing,
   avatarWho,
+  error,
   onGenerateScript,
   onGenerateImages,
   onAdvance,
@@ -851,6 +853,8 @@ function StepBar({
   imagesMissing: number;
   /** Foto que o avatar vai usar (sem ela, o avatar não pode ser gerado). */
   avatarWho: AvatarWho | null;
+  /** Erro da última ação (também aparece no corpo da página; aqui fica à vista mesmo rolado). */
+  error: string | null;
   onGenerateScript: () => void;
   onGenerateImages: () => void;
   onAdvance: () => void;
@@ -1124,6 +1128,12 @@ function StepBar({
           </p>
           <p className="mt-0.5 text-[15px] font-semibold leading-snug">{title}</p>
           {hint && <p className={`mt-0.5 hidden text-xs sm:block ${muted}`}>{hint}</p>}
+          {error && (
+            <p role="alert" className="mt-1.5 flex gap-1.5 rounded-md bg-accent-red/10 px-2 py-1 text-xs font-medium text-accent-red">
+              <Icon name="alert" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 [overflow-wrap:anywhere]">{error}</span>
+            </p>
+          )}
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>

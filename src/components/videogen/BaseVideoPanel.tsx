@@ -37,7 +37,7 @@ export function mediaDuration(file: File): Promise<number> {
 
 /** Foto que o avatar vai usar: a enviada para este vídeo, senão a do perfil de quem fala. */
 export function avatarPhoto(job: VideoJobDTO, person: VideoProfileDTO | undefined): string | null {
-  return job.avatarImageUrl ?? (job.avatar?.source === "heygen" ? job.avatar.imageUrl : null) ?? person?.avatarUrl ?? null;
+  return job.avatarImageUrl ?? job.avatar?.imageUrl ?? person?.avatarUrl ?? null;
 }
 
 /** Quem aparece no vídeo: avatar da conta do HeyGen (do vídeo, da trilha gerada ou do perfil) e/ou a foto. */
