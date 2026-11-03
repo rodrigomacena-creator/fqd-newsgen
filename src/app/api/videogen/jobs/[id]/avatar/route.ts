@@ -33,15 +33,15 @@ export async function GET(_request: Request, ctx: Ctx) {
 
 /**
  * Cria o vídeo base.
- * { source: "heygen", character?, imageUrl?, voiceId?, voiceName? }: o HeyGen gera vídeo + voz a partir do texto
- *   do roteiro. `character` = avatar/foto animada da conta do HeyGen; sem ele, a foto (enviada, do vídeo ou do
- *   perfil) vira foto animada lá. A voz é do HeyGen (do pedido, do vídeo ou do perfil de quem fala).
+ * { source: "heygen", character?, voiceId?, voiceName? }: o HeyGen gera vídeo + voz a partir do texto do roteiro.
+ *   `character` = avatar da conta do HeyGen (do pedido, do vídeo ou do perfil de quem fala). A voz é do HeyGen
+ *   (do pedido, do vídeo ou do perfil); sem nenhuma, a voz padrão do avatar.
  * { source: "upload", videoUrl, durationS?, useVideo? }: áudio/vídeo do usuário (já no Blob). A fala
  *   é transcrita, vira a narração, e o roteiro é refeito em cima dela. `useVideo: false` = só o áudio.
  */
 export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
-  let body: { source?: string; imageUrl?: string; character?: unknown; voiceId?: string; voiceName?: string; videoUrl?: string; durationS?: number; useVideo?: boolean };
+  let body: { source?: string; character?: unknown; voiceId?: string; voiceName?: string; videoUrl?: string; durationS?: number; useVideo?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -61,22 +61,18 @@ export async function POST(request: Request, ctx: Ctx) {
       if (current?.source === "upload" && current.narrationUrl === job.narrationUrl) {
         return NextResponse.json({ error: "Este vídeo usa um vídeo seu como base. Remova o vídeo base antes de gerar o avatar." }, { status: 409 });
       }
-      let imageUrl = typeof body.imageUrl === "string" ? body.imageUrl.trim() : "";
-      if (imageUrl && !isAllowedImageUrl(imageUrl)) return NextResponse.json({ error: "Foto do avatar inválida." }, { status: 400 });
-      // quem fala: personagem escolhido agora > o do vídeo > o do perfil; senão a foto (agora > do vídeo > do perfil)
+      // quem aparece: avatar escolhido agora > o do vídeo > o do perfil de quem fala
       const person = await getProfile(job.personId, "person");
-      const character = parseCharacter(body.character) ?? (imageUrl ? null : (parseCharacter(job.avatarCharacter) ?? parseCharacter(person?.heygenAvatar)));
-      if (!character && !imageUrl) imageUrl = job.avatarImageUrl || person?.avatarUrl || "";
-      if (!character && !imageUrl) {
-        return NextResponse.json({ error: "Escolha um avatar do HeyGen ou envie uma foto (ou cadastre no perfil de quem fala)." }, { status: 400 });
+      const character = parseCharacter(body.character) ?? parseCharacter(job.avatarCharacter) ?? parseCharacter(person?.heygenAvatar);
+      if (!character) {
+        return NextResponse.json({ error: "Escolha um avatar do HeyGen (ou cadastre no perfil de quem fala)." }, { status: 400 });
       }
       // voz do HeyGen: a do pedido > a guardada no vídeo (quando já é do caminho avatar) > a do perfil
       const voice =
         parseVoice(typeof body.voiceId === "string" && body.voiceId.trim() ? { id: body.voiceId, name: body.voiceName } : null) ??
         (job.speaker === "ai_avatar" && job.voiceId ? parseVoice({ id: job.voiceId, name: job.voiceName }) : null) ??
         parseVoice(person?.heygenVoice);
-      if (!voice) return NextResponse.json({ error: "Escolha uma voz do HeyGen (ou cadastre no perfil de quem fala)." }, { status: 400 });
-      const avatar = await startHeygen(job, script, { character, imageUrl: character ? null : imageUrl }, voice);
+      const avatar = await startHeygen(job, script, character, voice);
       // sem nenhuma cena marcada ainda: abre com o avatar (o pedido do Rodrigo)
       const marked = script.scenes.some((s) => s.avatar);
       if (!marked && script.scenes[0]) script.scenes[0].avatar = true;
@@ -87,10 +83,9 @@ export async function POST(request: Request, ctx: Ctx) {
         data: {
           avatar: JSON.stringify(avatar),
           speaker: "ai_avatar",
-          voiceId: voice.id,
-          voiceName: voice.name,
-          avatarCharacter: character ? JSON.stringify(character) : null,
-          ...(character ? {} : { avatarImageUrl: imageUrl || null }),
+          voiceId: avatar.voice?.id ?? job.voiceId,
+          voiceName: avatar.voice?.name ?? job.voiceName,
+          avatarCharacter: JSON.stringify(character),
           ...(marked ? {} : { script: JSON.stringify(script) }),
           narrationUrl: null,
           narrationWords: null,

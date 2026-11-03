@@ -11,14 +11,14 @@ import { TopicAiModal } from "@/components/videogen/TopicAiModal";
 import { VoiceCloneModal } from "@/components/videogen/VoiceCloneModal";
 import { formatUsd } from "@/components/videogen/CostPanel";
 import { mediaDuration } from "@/components/videogen/BaseVideoPanel";
-import { Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, labelClass, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
-import { AvatarCharacterSelect, HeygenVoiceSelect } from "@/components/videogen/AvatarCharacterSelect";
+import { Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
+import { AvatarCharacterSelect } from "@/components/videogen/AvatarCharacterSelect";
 import { useVoices } from "@/lib/videogen/useVoices";
 import type { VideoPattern } from "@/lib/videogen/patterns";
 import { FREE_STYLE_ID } from "@/lib/videogen/freeStyle";
 import { useStyles } from "@/lib/videogen/useStyles";
 import { useProfiles } from "@/lib/videogen/useProfiles";
-import { uploadBaseFile, uploadImage, type BaseKind } from "@/lib/videogen/uploadImage";
+import { uploadBaseFile, type BaseKind } from "@/lib/videogen/uploadImage";
 import {
   DEFAULT_VOICE_ID,
   DURATION_OPTIONS,
@@ -26,9 +26,7 @@ import {
   SPEAKER_LABEL,
   WORDS_PER_SECOND,
   parseCharacter,
-  parseVoice,
   type AvatarCharacter,
-  type HeygenVoice,
   type BriefingImage,
   type Speaker,
   type VideoFormat,
@@ -52,7 +50,7 @@ const STEPS = [
 
 const SPEAKER_OPTIONS: { id: Speaker; title: string; help: string }[] = [
   { id: "ai_voice", title: "Voz por IA", help: "A IA escreve o roteiro e a voz do perfil narra no ElevenLabs. As cenas mostram imagens." },
-  { id: "ai_avatar", title: "Avatar por IA", help: "O HeyGen gera o vídeo do seu avatar (ou da sua foto) falando o roteiro, com uma voz do HeyGen. Você escolhe, cena a cena, avatar ou imagem." },
+  { id: "ai_avatar", title: "Avatar por IA", help: "O HeyGen gera o vídeo do seu avatar falando o roteiro, com a voz do próprio avatar. Você escolhe, cena a cena, avatar ou imagem." },
   { id: "upload", title: "Submeter áudio / vídeo", help: "Um áudio ou vídeo já gravado. A sua fala vira a narração; não há etapa de voz." },
 ];
 
@@ -90,18 +88,9 @@ export default function VideoGenPage() {
   const [chosenVoice, setChosenVoice] = useState<{ id: string; name: string } | null>(null);
   const voiceId = chosenVoice?.id ?? person?.voiceId ?? DEFAULT_VOICE_ID;
   const voiceName = chosenVoice?.name ?? (person?.voiceId ? person.voiceName || person.name : "Macena");
-  // avatar por IA: foto enviada só para este vídeo (senão a do perfil)
-  const [avatarPhoto, setAvatarPhoto] = useState<string | null>(null);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const photoInput = useRef<HTMLInputElement>(null);
-  const avatarImage = avatarPhoto ?? person?.avatarUrl ?? null;
-  // avatar da conta do HeyGen: o escolhido aqui, senão o do perfil (null = usar a foto)
+  // avatar por IA: avatar da conta do HeyGen (o escolhido aqui, senão o do perfil); a voz é a padrão do avatar
   const [chosenCharacter, setChosenCharacter] = useState<AvatarCharacter | null | undefined>(undefined);
   const avatarCharacter = chosenCharacter === undefined ? parseCharacter(person?.heygenAvatar) : chosenCharacter;
-  const avatarOk = Boolean(avatarCharacter || avatarImage);
-  // voz do HeyGen (só no caminho avatar): a escolhida aqui, senão a do perfil
-  const [chosenHeygenVoice, setChosenHeygenVoice] = useState<HeygenVoice | null | undefined>(undefined);
-  const heygenVoice = chosenHeygenVoice === undefined ? parseVoice(person?.heygenVoice) : chosenHeygenVoice;
   // áudio/vídeo enviado
   const [base, setBase] = useState<{ url: string; kind: BaseKind; name: string; durationS: number } | null>(null);
   const [baseUseVideo, setBaseUseVideo] = useState(true);
@@ -211,8 +200,7 @@ export default function VideoGenPage() {
   /** O que falta para fechar o passo `i` (null = pode continuar). */
   function problem(i: number): string | null {
     if (i === 1) {
-      if (speaker === "ai_avatar" && !avatarOk) return "Escolha um avatar do HeyGen ou envie uma foto (ou cadastre no perfil de quem fala).";
-      if (speaker === "ai_avatar" && !heygenVoice) return "Escolha a voz do HeyGen para o avatar (ou cadastre no perfil de quem fala).";
+      if (speaker === "ai_avatar" && !avatarCharacter) return "Escolha o avatar do HeyGen (ou cadastre no perfil de quem fala).";
       if (speaker === "upload" && !base) return "Envie o áudio ou o vídeo com a sua fala.";
       if (baseProgress !== null) return "Espere o envio terminar.";
     }
@@ -257,25 +245,12 @@ export default function VideoGenPage() {
     }
   }
 
-  async function pickPhoto(file: File | undefined) {
-    if (!file) return;
-    setUploadingPhoto(true);
-    setStepError((e) => ({ ...e, 1: null }));
-    try {
-      setAvatarPhoto(await uploadImage(file, "perfis"));
-    } catch (err) {
-      setStepError((e) => ({ ...e, 1: err instanceof Error ? err.message : "Falha ao enviar a foto." }));
-    } finally {
-      setUploadingPhoto(false);
-    }
-  }
-
   function payload(t: string, withImages: boolean) {
     return {
       topic: t,
       patternId,
-      voiceId: speaker === "ai_avatar" ? (heygenVoice?.id ?? "") : voiceId,
-      voiceName: speaker === "ai_avatar" ? (heygenVoice?.name ?? "") : voiceName,
+      voiceId: speaker === "ai_avatar" ? "" : voiceId,
+      voiceName: speaker === "ai_avatar" ? "" : voiceName,
       durationS,
       extraInstructions,
       styleNotes: pattern?.kind === "free" ? styleNotes : "",
@@ -285,7 +260,6 @@ export default function VideoGenPage() {
       articleId: article?.id ?? null,
       format,
       speaker,
-      avatarImageUrl: speaker === "ai_avatar" && !avatarCharacter ? avatarPhoto : null,
       avatarCharacter: speaker === "ai_avatar" ? avatarCharacter : null,
       ...(speaker === "upload" && base
         ? { baseUrl: base.url, baseKind: base.kind, baseDurationS: base.durationS, baseUseVideo: base.kind === "video" && baseUseVideo }
@@ -556,9 +530,7 @@ export default function VideoGenPage() {
                     if (id === TRAIN_VOICE) return setTrainingVoice(true);
                     setChosenPerson(id);
                     setChosenVoice(null);
-                    setAvatarPhoto(null);
                     setChosenCharacter(undefined);
-                    setChosenHeygenVoice(undefined);
                   }}
                 />
                 {trainingVoice && (
@@ -576,13 +548,16 @@ export default function VideoGenPage() {
                 )}
                 {speaker === "ai_avatar" ? (
                   <div>
-                    <label htmlFor="voice-heygen" className="flex items-center gap-1.5 text-sm font-medium">
-                      <Icon name="mic" className="h-4 w-4 text-text-secondary" /> Voz (HeyGen)
+                    <label htmlFor="wizard-heygen" className="flex items-center gap-1.5 text-sm font-medium">
+                      <Icon name="user" className="h-4 w-4 text-text-secondary" /> Avatar (HeyGen)
                     </label>
                     <div className="mt-2">
-                      <HeygenVoiceSelect id="voice-heygen" value={heygenVoice} onChange={setChosenHeygenVoice} disabled={busy} />
+                      <AvatarCharacterSelect id="wizard-heygen" value={avatarCharacter} onChange={setChosenCharacter} disabled={busy} />
                     </div>
-                    {parseVoice(person?.heygenVoice) && chosenHeygenVoice === undefined && <p className="mt-1.5 text-xs text-text-secondary">Voz do perfil {person?.name}.</p>}
+                    <p className="mt-1.5 text-xs text-text-secondary">
+                      {parseCharacter(person?.heygenAvatar) && chosenCharacter === undefined ? `Avatar do perfil ${person?.name}. ` : ""}
+                      Imagem e voz vêm do avatar cadastrado no HeyGen.
+                    </p>
                   </div>
                 ) : speaker !== "upload" ? (
                   <div>
@@ -606,65 +581,6 @@ export default function VideoGenPage() {
                   <p className="self-end text-xs text-text-secondary">Sem seletor de voz: a voz é a da sua gravação. O perfil só dá o tom do texto na tela.</p>
                 )}
               </div>
-
-              {speaker === "ai_avatar" && (
-                <div className="mt-5">
-                  <label htmlFor="wizard-heygen" className={labelClass}>
-                    Avatar (HeyGen)
-                  </label>
-                  <div className="mt-1.5">
-                    <AvatarCharacterSelect id="wizard-heygen" value={avatarCharacter} onChange={setChosenCharacter} disabled={busy} photoLabel="Usar a foto (abaixo)" />
-                  </div>
-                </div>
-              )}
-              {speaker === "ai_avatar" && !avatarCharacter && (
-                <div className="mt-3 flex items-center gap-4 rounded-xl border border-border bg-background/60 p-3">
-                  <span className="flex h-24 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-2">
-                    {avatarImage ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={avatarImage} alt="Foto do avatar" className="h-full w-full object-cover" />
-                    ) : (
-                      <Icon name="user" className="h-6 w-6 text-text-secondary" />
-                    )}
-                  </span>
-                  <div className="min-w-0 text-sm">
-                    <p className="font-medium">Foto do avatar</p>
-                    <p className="mt-0.5 text-xs text-text-secondary">
-                      {avatarPhoto
-                        ? "Foto enviada só para este vídeo."
-                        : avatarImage
-                          ? `Foto do perfil ${person?.name ?? ""}. Fica junto da voz em Perfis.`
-                          : "O perfil de quem fala não tem foto. Envie uma agora (JPG, PNG ou WebP, rosto de frente)."}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => photoInput.current?.click()} disabled={busy || uploadingPhoto} className={`!min-h-9 ${secondaryButton}`}>
-                        {uploadingPhoto ? <Spinner /> : <Icon name="up" className="h-4 w-4" />}
-                        {avatarImage ? "Usar outra foto" : "Enviar foto"}
-                      </button>
-                      {avatarPhoto && (
-                        <button type="button" onClick={() => setAvatarPhoto(null)} disabled={busy} className="text-xs text-text-secondary hover:text-foreground">
-                          Voltar à do perfil
-                        </button>
-                      )}
-                      <Link href="/videogen/perfis" className="inline-flex items-center text-xs font-medium text-accent-yellow hover:underline">
-                        Cadastrar no perfil
-                      </Link>
-                    </div>
-                    <input
-                      ref={photoInput}
-                      type="file"
-                      accept="image/png,image/webp,image/jpeg"
-                      className="sr-only"
-                      tabIndex={-1}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        e.target.value = "";
-                        void pickPhoto(f);
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
 
               {speaker === "upload" && (
                 <div className="mt-5 space-y-3">
@@ -888,7 +804,7 @@ export default function VideoGenPage() {
                 <Link href="/videogen/perfis" className="font-medium text-accent-yellow hover:underline">
                   Gerenciar perfis
                 </Link>{" "}
-                · pessoas (tom, voz, foto do avatar) e empresas (marca, site, @, logo).
+                · pessoas (tom, voz, avatar do HeyGen) e empresas (marca, site, @, logo).
               </p>
             </Step>
 
@@ -1059,8 +975,8 @@ export default function VideoGenPage() {
                 <dd>
                   {SPEAKER_LABEL[speaker]}
                   {speaker === "upload" && base ? ` · ${base.name}${base.kind === "video" ? (baseUseVideo ? " · vídeo nas cenas" : " · só o áudio") : ""}` : ""}
-                  {speaker !== "upload" ? ` · ${person?.name ?? "—"} · voz ${speaker === "ai_avatar" ? (heygenVoice?.name ?? "—") : voiceName}` : person ? ` · tom de ${person.name}` : ""}
-                  {speaker === "ai_avatar" ? (avatarCharacter ? ` · avatar ${avatarCharacter.name ?? ""}` : avatarImage ? " · foto ok" : " · sem foto") : ""}
+                  {speaker === "ai_voice" ? ` · ${person?.name ?? "—"} · voz ${voiceName}` : person ? ` · tom de ${person.name}` : ""}
+                  {speaker === "ai_avatar" ? ` · avatar ${avatarCharacter?.name || "—"}` : ""}
                 </dd>
                 <dt className="text-text-secondary">Conteúdo</dt>
                 <dd className="[overflow-wrap:anywhere]">

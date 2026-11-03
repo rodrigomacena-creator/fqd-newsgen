@@ -379,13 +379,17 @@ reais encontradas ao construir o projeto, não só a estrutura.
   **Vídeo base (avatar do HeyGen ou vídeo seu)** (`VideoJob.avatar`, JSON `AvatarTrack` em `types.ts`; `src/lib/videogen/avatar.ts`,
   `avatarPlan.ts` (puro), `heygen.ts`, `mp3.ts`, `baseVideo.ts`; rota `/api/videogen/jobs/[id]/avatar` GET/POST/DELETE; painel
   `BaseVideoPanel.tsx`): opcional, sem ele tudo fica como antes. "Avatar por IA" (desde 03/11/2026, pedido do Rodrigo: **nada do
-  ElevenLabs nesse caminho**): o texto da narração do roteiro (`fullNarration`) vai pro HeyGen junto do **personagem**
-  (`AvatarCharacter`: avatar ou "talking photo" da conta do HeyGen, escolhido no perfil da pessoa (`VideoProfile.heygenAvatar`),
-  na criação (`VideoJob.avatarCharacter`) ou no card Avatar; sem personagem, a foto (`VideoJob.avatarImageUrl` ou
-  `VideoProfile.avatarUrl`) vira talking photo lá via `uploadTalkingPhoto()`) e de uma **voz do HeyGen** (`HeygenVoice`:
-  `VideoProfile.heygenVoice` ou, no job de avatar, `VideoJob.voiceId/voiceName` guardam a voz do HeyGen, não do ElevenLabs).
-  Lista de avatares e vozes em GET `/api/videogen/avatars` (cache de 10 min), seletores `AvatarCharacterSelect.tsx` /
-  `HeygenVoiceSelect`. Um pedido só (`startHeygen`, `voice.type = "text"`); a trilha nasce com `narrationUrl: ""` e, quando
+  ElevenLabs nesse caminho**, e desde a tarde do mesmo dia **sem foto e sem seletor de voz**: na criação só aparecem "Quem fala"
+  (tom do roteiro) e "Avatar"): o texto da narração do roteiro (`fullNarration`) vai pro HeyGen junto do **avatar**
+  (`AvatarCharacter`: avatar ou "talking photo" já criado na conta do HeyGen, escolhido no perfil da pessoa
+  (`VideoProfile.heygenAvatar`), na criação (`VideoJob.avatarCharacter`) ou no card Avatar; obrigatório) e da **voz padrão desse
+  avatar** (`defaultVoiceId` que vem na listagem; `startHeygen` recusa avatar sem voz padrão). `VideoProfile.heygenVoice`/
+  `VideoJob.voiceId` só servem de sobrescrita opcional vinda da API (sem UI). A listagem (`listCharacters()`, GET
+  `/api/videogen/avatars`, cache de 10 min, timeout 50 s) usa os **grupos de avatar da conta** (`/v2/avatar_group.list?include_public=false`
+  + `/v2/avatar_group/{id}/avatars`), porque `/v2/avatars` lista a biblioteca pública inteira e estourava o timeout na Vercel
+  (`/v2/avatars` fica só de fallback). As colunas `VideoProfile.avatarUrl`/`VideoJob.avatarImageUrl` (foto enviada) ficaram no banco
+  mas não são mais lidas nem gravadas. Seletor único: `AvatarCharacterSelect.tsx`.
+  Um pedido só (`startHeygen`, `voice.type = "text"`); a trilha nasce com `narrationUrl: ""` e, quando
   o mp4 fica pronto (`advanceAvatar`, chamado pelo GET da rota a cada 8 s pela tela), ele é copiado pro Blob, a fala é
   transcrita no ElevenLabs STT (só STT, como no "Submeter áudio / vídeo"), o mp4 vira a narração do job (`narrationUrl`,
   `narrationWords`, `narrationDurationS`) e o roteiro é realinhado palavra a palavra (`realignToTranscript`). `avatar.text`
@@ -399,8 +403,7 @@ reais encontradas ao construir o projeto, não só a estrutura.
   `extract_base_frames`, `BaseClip` em `template_engine.py`: tela cheia, sem filtro de cor do estilo, quadro = instante da fala, nunca
   vai-e-volta); cena avatar não gera imagem. A API do HeyGen (`api.heygen.com`, UMA chave no header `X-Api-Key` = `HEYGEN_API_KEY`;
   POST `/v2/video/generate` com `video_inputs[0].character` (`avatar`/`talking_photo`) + `voice: {type: "text", voice_id, input_text}` →
-  `video_id`; GET `/v1/video_status.get?video_id=` → `completed` + `video_url`; GET `/v2/avatars` lista avatares e talking photos; GET `/v2/voices` lista as vozes;
-  POST `upload.heygen.com/v1/talking_photo` com os bytes da imagem) foi escrita de memória, porque o domínio da documentação
+  `video_id`; GET `/v1/video_status.get?video_id=` → `completed` + `video_url`; GET `/v2/avatar_group.list` + `/v2/avatar_group/{id}/avatars` listam os avatares da conta; GET `/v2/voices` lista as vozes) foi escrita de memória, porque o domínio da documentação
   é bloqueado aqui — a chave e a autenticação já funcionaram em produção (03/11/2026: o primeiro pedido voltou `402 Insufficient
   credits`, créditos de API são separados do plano do site); nomes de campo do `generate` ainda a confirmar no primeiro vídeo real. O Higgsfield (provedor anterior, chave em duas partes) foi trocado pelo HeyGen a pedido do
   Rodrigo; trilhas antigas com `source: "higgsfield"` só são lidas (não dá mais para consultar o andamento delas).

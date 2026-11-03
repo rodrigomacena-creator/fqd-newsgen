@@ -48,7 +48,6 @@ export async function POST(request: Request) {
     /** Quem fala: "ai_voice" (padrão), "ai_avatar" (voz + avatar do HeyGen) ou "upload" (áudio/vídeo enviado). */
     speaker?: string;
     /** Avatar por IA: foto escolhida para este vídeo (sem ela, a do perfil de quem fala). */
-    avatarImageUrl?: string;
     /** Avatar/foto animada da conta do HeyGen (AvatarCharacter) escolhido para este vídeo. */
     avatarCharacter?: unknown;
     /** Áudio/vídeo enviado (já no Blob, pasta videogen/base/). */
@@ -70,8 +69,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Envie o áudio ou o vídeo com a fala." }, { status: 400 });
   }
   const baseKind = body.baseKind === "audio" ? "audio" : "video";
-  const avatarImageUrl = speaker === "ai_avatar" && typeof body.avatarImageUrl === "string" ? body.avatarImageUrl.trim() : "";
-  if (avatarImageUrl && !isAllowedImageUrl(avatarImageUrl)) return NextResponse.json({ error: "Foto do avatar inválida." }, { status: 400 });
   const avatarCharacter = speaker === "ai_avatar" ? parseCharacter(body.avatarCharacter) : null;
   const article = await articleSource(body.articleId?.trim());
   if (body.articleId?.trim() && !article) return NextResponse.json({ error: "Notícia não encontrada." }, { status: 404 });
@@ -89,11 +86,8 @@ export async function POST(request: Request) {
   if (speaker !== "ai_voice" && pattern.kind === "builtin") {
     return NextResponse.json({ error: "Avatar e vídeo enviado funcionam no estilo livre e nos templates montados." }, { status: 400 });
   }
-  if (speaker === "ai_avatar" && !avatarImageUrl && !avatarCharacter) {
-    const p = await getProfile(body.personId?.trim(), "person");
-    if (!p?.avatarUrl && !parseCharacter(p?.heygenAvatar)) {
-      return NextResponse.json({ error: "Escolha um avatar do HeyGen ou envie uma foto (ou cadastre no perfil de quem fala)." }, { status: 400 });
-    }
+  if (speaker === "ai_avatar" && !avatarCharacter && !parseCharacter((await getProfile(body.personId?.trim(), "person"))?.heygenAvatar)) {
+    return NextResponse.json({ error: "Escolha um avatar do HeyGen (ou cadastre no perfil de quem fala)." }, { status: 400 });
   }
   const durationS = Math.min(MAX_DURATION_S[format], Math.max(5, Math.round(Number(body.durationS) || 15)));
   const textModel = body.textModel?.trim() || VIDEOGEN_TEXT_MODEL;
@@ -105,12 +99,10 @@ export async function POST(request: Request) {
   const briefingImages = cleanBriefingImages(body.briefingImages);
   // Voz: a escolhida no formulário; senão a da pessoa; senão a padrão.
   // Avatar por IA: a voz é do HeyGen (do formulário, senão a do perfil); nos outros caminhos é do ElevenLabs.
+  // (opcional: sem voz, o avatar fala com a voz padrão dele no HeyGen)
   const heygenVoice = speaker === "ai_avatar" ? (parseVoice(body.voiceId?.trim() ? { id: body.voiceId, name: body.voiceName } : null) ?? parseVoice(person?.heygenVoice)) : null;
-  if (speaker === "ai_avatar" && !heygenVoice) {
-    return NextResponse.json({ error: "Escolha uma voz do HeyGen para o avatar (ou cadastre no perfil de quem fala)." }, { status: 400 });
-  }
-  const voiceId = heygenVoice?.id ?? (body.voiceId?.trim() || person?.voiceId || DEFAULT_VOICE_ID);
-  const voiceName = heygenVoice?.name ?? (body.voiceId?.trim() ? body.voiceName?.trim() || voiceId : person?.voiceId ? person.voiceName || person.name : "Macena");
+  const voiceId = speaker === "ai_avatar" ? (heygenVoice?.id ?? "") : body.voiceId?.trim() || person?.voiceId || DEFAULT_VOICE_ID;
+  const voiceName = speaker === "ai_avatar" ? (heygenVoice?.name ?? "Voz padrão do avatar") : body.voiceId?.trim() ? body.voiceName?.trim() || voiceId : person?.voiceId ? person.voiceName || person.name : "Macena";
 
   const job = await prisma.videoJob.create({
     data: {
@@ -128,7 +120,6 @@ export async function POST(request: Request) {
       articleId: article?.id ?? null,
       format,
       speaker,
-      avatarImageUrl: avatarCharacter ? null : avatarImageUrl || null,
       avatarCharacter: avatarCharacter ? JSON.stringify(avatarCharacter) : null,
       costs: "[]",
     },

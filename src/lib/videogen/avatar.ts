@@ -12,7 +12,7 @@
 import { put } from "@vercel/blob";
 import type { VideoJob } from "@/generated/prisma/client";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
-import { avatarStatus, submitAvatar, uploadTalkingPhoto } from "./heygen";
+import { avatarStatus, submitAvatar } from "./heygen";
 import { speechToText } from "./elevenlabs";
 import { fullNarration, parseVideoFormat, type AvatarCharacter, type AvatarSegment, type AvatarTrack, type HeygenVoice, type NarrationWord, type VideoScript } from "./types";
 
@@ -27,36 +27,26 @@ export function parseAvatar(value: string | null): AvatarTrack | null {
 }
 
 /**
- * Pede ao HeyGen o vídeo do avatar falando o texto do roteiro com a voz escolhida (um pedido só).
- * `who`: um personagem já cadastrado na conta do HeyGen, ou uma foto (vira foto animada lá).
+ * Pede ao HeyGen o vídeo do avatar (já criado na conta dele) falando o texto do roteiro (um pedido só).
+ * Sem voz escolhida, usa a voz padrão do avatar no HeyGen.
  * Devolve a trilha com status "generating"; `advanceAvatar` acompanha e, pronto, transcreve.
  */
-export async function startHeygen(
-  job: VideoJob,
-  script: VideoScript,
-  who: { character?: AvatarCharacter | null; imageUrl?: string | null },
-  voice: HeygenVoice
-): Promise<AvatarTrack> {
+export async function startHeygen(job: VideoJob, script: VideoScript, character: AvatarCharacter, voice: HeygenVoice | null): Promise<AvatarTrack> {
   const text = fullNarration(script);
   if (!text) throw new Error("O roteiro não tem narração.");
+  const spoken = voice ?? (character.defaultVoiceId ? { id: character.defaultVoiceId, name: "Voz padrão do avatar" } : null);
+  if (!spoken) throw new Error("Este avatar não tem voz padrão no HeyGen: escolha uma voz.");
   const prev = parseAvatar(job.avatar);
   if (prev) await discardAvatarFiles(prev);
-  // foto enviada: vira uma foto animada na conta do HeyGen
-  let character = who.character ?? null;
-  if (!character) {
-    if (!who.imageUrl) throw new Error("Escolha um avatar do HeyGen ou envie uma foto.");
-    character = await uploadTalkingPhoto(who.imageUrl);
-  }
-  const videoId = await submitAvatar(character, { type: "text", voiceId: voice.id, text }, parseVideoFormat(job.format));
+  const videoId = await submitAvatar(character, { type: "text", voiceId: spoken.id, text }, parseVideoFormat(job.format));
   const estimate = Math.max(3, text.split(/\s+/).length / 2.3);
   return {
     source: "heygen",
     status: "generating",
     // enquanto gera, ainda não há narração: a trilha passa a valer quando o mp4 vira a narração
     narrationUrl: "",
-    imageUrl: who.character ? undefined : (who.imageUrl ?? undefined),
     character,
-    voice,
+    voice: spoken,
     text,
     segments: [{ start: 0, end: estimate, requestId: videoId, status: "queued" }],
     durationS: estimate,

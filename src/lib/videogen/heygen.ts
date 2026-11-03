@@ -3,7 +3,7 @@
 // Fluxo do avatar falando: POST /v2/video/generate com o personagem (avatar da conta ou "talking
 // photo" = foto animada) e o áudio (voice.type "audio" + audio_url) → { data: { video_id } };
 // GET /v1/video_status.get?video_id= até "completed" (video_url) ou "failed".
-// A foto enviada pelo usuário vira uma talking photo na conta dele (POST upload.heygen.com/v1/talking_photo).
+// O avatar é sempre um já criado na conta do HeyGen (ele já tem imagem e voz padrão lá).
 //
 // Variáveis: HEYGEN_API_KEY (obrigatória pro avatar), HEYGEN_MAX_SECONDS (trecho máximo por pedido,
 // padrão 180: a narração inteira costuma ir num pedido só), HEYGEN_VIDEO_PARAMS (JSON extra mesclado
@@ -11,7 +11,6 @@
 import type { AvatarCharacter, HeygenVoice } from "./types";
 
 const API = "https://api.heygen.com";
-const UPLOAD = "https://upload.heygen.com";
 export const HEYGEN_MAX_SECONDS = Math.max(3, Number(process.env.HEYGEN_MAX_SECONDS) || 180);
 
 function apiKey(): string {
@@ -57,29 +56,84 @@ async function call<T>(path: string, init: RequestInit = {}, base = API): Promis
   return (data.data ?? data) as T;
 }
 
-/** Lista do HeyGen em cache por 10 min (a lista pública deles é grande e lenta). */
+/** Listas do HeyGen em cache por 10 min (a lista pública deles é grande e lenta). */
 let cache: { at: number; list: AvatarCharacter[] } | null = null;
 const LIST_TTL_MS = 10 * 60 * 1000;
-const LIST_TIMEOUT_MS = 25_000;
+const LIST_TIMEOUT_MS = 50_000;
+
+interface GroupRow {
+  id: string;
+  name?: string;
+  group_type?: string;
+  preview_image?: string;
+  default_voice_id?: string;
+  num_looks?: number;
+}
+interface LookRow {
+  id: string;
+  name?: string;
+  image_url?: string;
+  default_voice_id?: string;
+  status?: string;
+}
+
+/** Grupos de avatar são "photo avatar" (looks usados como talking_photo) ou avatar de vídeo (instant/studio). */
+const photoGroup = (g: GroupRow) => /photo/i.test(g.group_type ?? "");
 
 /**
- * Avatares e fotos falantes da conta do HeyGen (pra escolher aqui, como as vozes do ElevenLabs).
- * As fotos animadas (talking photos, sempre do próprio usuário) vêm primeiro; depois os avatares.
+ * Avatares da CONTA do HeyGen (pra escolher aqui, como as vozes do ElevenLabs): os grupos de avatar
+ * do usuário (`/v2/avatar_group.list?include_public=false`) e os looks de cada um. Se essa listagem
+ * falhar, cai para `/v2/avatars` (lista geral, grande) só com as talking photos (que são do usuário).
  */
 export async function listCharacters(): Promise<AvatarCharacter[]> {
   if (cache && Date.now() - cache.at < LIST_TTL_MS) return cache.list;
-  const d = await call<{
-    avatars?: { avatar_id: string; avatar_name?: string; preview_image_url?: string; premium?: boolean }[];
-    talking_photos?: { talking_photo_id: string; talking_photo_name?: string; preview_image_url?: string }[];
-  }>("/v2/avatars", { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
   const out: AvatarCharacter[] = [];
-  for (const t of d.talking_photos ?? []) {
-    if (t.talking_photo_id) {
-      out.push({ kind: "talking_photo", id: t.talking_photo_id, name: t.talking_photo_name || "Foto animada", previewUrl: t.preview_image_url || undefined });
-    }
+  try {
+    const g = await call<{ avatar_group_list?: GroupRow[]; total_count?: number }>("/v2/avatar_group.list?include_public=false", {
+      signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+    });
+    const groups = (g.avatar_group_list ?? []).filter((x) => x.id);
+    const looksPerGroup = await Promise.all(
+      groups.map(async (grp) => {
+        try {
+          const d = await call<{ avatar_list?: LookRow[] }>(`/v2/avatar_group/${encodeURIComponent(grp.id)}/avatars`, { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
+          return (d.avatar_list ?? []).filter((l) => l.id && !/fail|pending|processing/i.test(l.status ?? ""));
+        } catch (e) {
+          console.warn("[heygen] looks do grupo falharam:", grp.id, e);
+          return [];
+        }
+      })
+    );
+    groups.forEach((grp, i) => {
+      const looks = looksPerGroup[i];
+      const kind: AvatarCharacter["kind"] = photoGroup(grp) ? "talking_photo" : "avatar";
+      if (looks.length === 0) {
+        out.push({ kind, id: grp.id, name: grp.name || grp.id, previewUrl: grp.preview_image || undefined, defaultVoiceId: grp.default_voice_id || undefined });
+        return;
+      }
+      for (const look of looks) {
+        const name = looks.length > 1 ? `${grp.name || "Avatar"} · ${look.name || look.id}` : grp.name || look.name || look.id;
+        out.push({ kind, id: look.id, name, previewUrl: look.image_url || grp.preview_image || undefined, defaultVoiceId: look.default_voice_id || grp.default_voice_id || undefined });
+      }
+    });
+  } catch (e) {
+    console.warn("[heygen] avatar_group.list falhou, usando /v2/avatars:", e);
   }
-  for (const a of d.avatars ?? []) {
-    if (a.avatar_id) out.push({ kind: "avatar", id: a.avatar_id, name: a.avatar_name || a.avatar_id, previewUrl: a.preview_image_url || undefined });
+  if (out.length === 0) {
+    const d = await call<{
+      avatars?: { avatar_id: string; avatar_name?: string; preview_image_url?: string; premium?: boolean; default_voice_id?: string }[];
+      talking_photos?: { talking_photo_id: string; talking_photo_name?: string; preview_image_url?: string }[];
+    }>("/v2/avatars", { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
+    for (const t of d.talking_photos ?? []) {
+      if (t.talking_photo_id) {
+        out.push({ kind: "talking_photo", id: t.talking_photo_id, name: t.talking_photo_name || "Foto animada", previewUrl: t.preview_image_url || undefined });
+      }
+    }
+    for (const a of d.avatars ?? []) {
+      if (a.avatar_id) {
+        out.push({ kind: "avatar", id: a.avatar_id, name: a.avatar_name || a.avatar_id, previewUrl: a.preview_image_url || undefined, defaultVoiceId: a.default_voice_id || undefined });
+      }
+    }
   }
   cache = { at: Date.now(), list: out };
   return out;
@@ -106,22 +160,6 @@ export async function listVoices(): Promise<HeygenVoice[]> {
   list.sort((a, b) => Number(pt(b)) - Number(pt(a)) || (a.language ?? "").localeCompare(b.language ?? "") || a.name.localeCompare(b.name));
   voiceCache = { at: Date.now(), list };
   return list;
-}
-
-/** Sobe uma foto (URL pública, ex.: Blob) como talking photo na conta do HeyGen. */
-export async function uploadTalkingPhoto(imageUrl: string): Promise<AvatarCharacter> {
-  const src = await fetch(imageUrl);
-  if (!src.ok) throw new Error(`Não consegui baixar a foto do avatar (HTTP ${src.status}).`);
-  const type = (src.headers.get("content-type") || "").split(";")[0].trim();
-  const contentType = type === "image/png" || type === "image/jpeg" ? type : /\.png(\?|$)/i.test(imageUrl) ? "image/png" : "image/jpeg";
-  const bytes = Buffer.from(await src.arrayBuffer());
-  const d = await call<{ talking_photo_id?: string; talking_photo_url?: string }>(
-    "/v1/talking_photo",
-    { method: "POST", headers: { "Content-Type": contentType }, body: bytes },
-    UPLOAD
-  );
-  if (!d.talking_photo_id) throw new Error("HeyGen não devolveu o id da foto animada.");
-  return { kind: "talking_photo", id: d.talking_photo_id, name: "Foto enviada", previewUrl: d.talking_photo_url || imageUrl };
 }
 
 function extraParams(): Record<string, unknown> {

@@ -2,25 +2,21 @@
 
 import { fieldClass } from "@/components/videogen/ui";
 import { useHeygenCharacters } from "@/lib/videogen/useHeygenCharacters";
-import type { AvatarCharacter, HeygenVoice } from "@/lib/videogen/types";
-
-export const PHOTO_OPTION = "__foto__";
+import type { AvatarCharacter } from "@/lib/videogen/types";
 
 /**
- * Seletor de quem aparece no vídeo: um avatar/foto animada já cadastrado na conta do HeyGen
- * (como as vozes do ElevenLabs) ou "usar a foto" (a foto enviada vira foto animada lá).
+ * Seletor de quem aparece no vídeo: um avatar (ou foto animada) já cadastrado na conta do HeyGen, como as
+ * vozes do ElevenLabs. Imagem e voz vêm do próprio avatar (voz padrão dele no HeyGen).
  */
 export function AvatarCharacterSelect({
   id,
   value,
   onChange,
-  photoLabel = "Usar a foto (abaixo)",
   disabled,
 }: {
   id: string;
   value: AvatarCharacter | null;
   onChange: (c: AvatarCharacter | null) => void;
-  photoLabel?: string;
   disabled?: boolean;
 }) {
   const { characters, error, loading } = useHeygenCharacters();
@@ -28,70 +24,37 @@ export function AvatarCharacterSelect({
   const list = value && !characters.some((c) => c.id === value.id) ? [value, ...characters] : characters;
   return (
     <div>
-      <select
-        id={id}
-        value={value?.id ?? PHOTO_OPTION}
-        disabled={disabled}
-        onChange={(e) => onChange(list.find((c) => c.id === e.target.value) ?? null)}
-        className={`${fieldClass} bg-background text-foreground`}
-      >
-        <option value={PHOTO_OPTION} className="bg-background text-foreground">
-          {photoLabel}
-        </option>
-        {list.length > 0 && (
-          <optgroup label="Avatares da conta do HeyGen" className="bg-background text-foreground">
-            {list.map((c) => (
-              <option key={c.id} value={c.id} className="bg-background text-foreground">
-                {c.name || c.id}
-                {c.kind === "talking_photo" ? " (foto animada)" : ""}
-              </option>
-            ))}
-          </optgroup>
+      <div className="flex items-center gap-3">
+        {value?.previewUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value.previewUrl} alt="" className="h-11 w-11 shrink-0 rounded-full border border-border object-cover" />
         )}
-      </select>
+        <select
+          id={id}
+          value={value?.id ?? ""}
+          disabled={disabled}
+          onChange={(e) => onChange(list.find((c) => c.id === e.target.value) ?? null)}
+          className={`${fieldClass} bg-background text-foreground`}
+        >
+          <option value="" className="bg-background text-foreground">
+            {loading && list.length === 0 ? "Carregando os avatares…" : "Escolha o avatar"}
+          </option>
+          {list.map((c) => (
+            <option key={c.id} value={c.id} className="bg-background text-foreground">
+              {c.name || c.id}
+              {c.kind === "talking_photo" ? " (foto animada)" : ""}
+            </option>
+          ))}
+        </select>
+      </div>
       <p className="mt-1 text-xs text-text-secondary">
-        {loading ? "Buscando os avatares da conta do HeyGen… (dá para usar a foto enquanto isso)" : error ? `Lista do HeyGen indisponível (${error}). Dá para usar a foto.` : list.length === 0 ? "Nenhum avatar na conta do HeyGen ainda: crie lá ou use a foto." : "Avatares criados na sua conta do HeyGen. Ou use a foto: ela vira uma foto animada lá."}
-      </p>
-    </div>
-  );
-}
-
-/** Voz do HeyGen para o caminho "Avatar por IA" (o HeyGen gera o áudio; o ElevenLabs não entra). */
-export function HeygenVoiceSelect({ id, value, onChange, disabled }: { id: string; value: HeygenVoice | null; onChange: (v: HeygenVoice | null) => void; disabled?: boolean }) {
-  const { voices, error, loading } = useHeygenCharacters();
-  const list = value && !voices.some((v) => v.id === value.id) ? [value, ...voices] : voices;
-  const groups = new Map<string, HeygenVoice[]>();
-  for (const v of list) {
-    const key = v.language || "Outras";
-    groups.set(key, [...(groups.get(key) ?? []), v]);
-  }
-  return (
-    <div>
-      <select
-        id={id}
-        value={value?.id ?? ""}
-        disabled={disabled}
-        onChange={(e) => onChange(list.find((v) => v.id === e.target.value) ?? null)}
-        className={`${fieldClass} bg-background text-foreground`}
-      >
-        <option value="" className="bg-background text-foreground">
-          {loading ? "Carregando as vozes…" : "Escolha a voz"}
-        </option>
-        {[...groups.entries()].map(([lang, vs]) => (
-          <optgroup key={lang} label={lang} className="bg-background text-foreground">
-            {vs.map((v) => (
-              <option key={v.id} value={v.id} className="bg-background text-foreground">
-                {v.name}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-      {value?.previewUrl && (
-        <audio controls preload="none" src={value.previewUrl} className="mt-1.5 h-8 w-full" aria-label={`Amostra da voz ${value.name}`} />
-      )}
-      <p className="mt-1 text-xs text-text-secondary">
-        {error ? `Lista do HeyGen indisponível (${error}).` : "Vozes do HeyGen. O avatar fala o roteiro com esta voz (nada do ElevenLabs neste caminho)."}
+        {loading && list.length === 0
+          ? "Buscando os avatares da sua conta do HeyGen…"
+          : error
+            ? `Lista do HeyGen indisponível (${error}).`
+            : list.length === 0
+              ? "Nenhum avatar na sua conta do HeyGen ainda: crie lá e volte aqui."
+              : "Avatares criados na sua conta do HeyGen. O vídeo sai com a imagem e a voz padrão do avatar."}
       </p>
     </div>
   );

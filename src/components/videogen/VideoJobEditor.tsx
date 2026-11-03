@@ -9,7 +9,7 @@ import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { CostPanel } from "@/components/videogen/CostPanel";
 import { SceneStudio } from "@/components/videogen/SceneStudio";
-import { BaseVideoPanel, avatarVoice, avatarWho, jobApi, type AvatarWho } from "@/components/videogen/BaseVideoPanel";
+import { BaseVideoPanel, avatarWho, jobApi } from "@/components/videogen/BaseVideoPanel";
 import {
   AutoTextarea,
   CopyButton,
@@ -37,9 +37,9 @@ import {
   avatarStale,
   fixedSpeech,
   fullNarration,
+  type AvatarCharacter,
   type Speaker,
   type BriefingImage,
-  type HeygenVoice,
   type Pronunciation,
   type VideoScene,
   type VideoScript,
@@ -197,8 +197,8 @@ export function VideoJobEditor({ id }: { id: string }) {
     if (data) applyJob(data.job);
   }
 
-  /** Avatar por IA: manda o roteiro (texto) pro HeyGen gerar vídeo + voz com o avatar escolhido ou a foto. */
-  async function startAvatar(who: AvatarWho | null, voice: HeygenVoice | null) {
+  /** Avatar por IA: manda o roteiro (texto) pro HeyGen gerar vídeo + voz com o avatar escolhido (voz padrão dele). */
+  async function startAvatar(character: AvatarCharacter | null) {
     if (dirty && !(await save())) throw new Error("Não deu para salvar as alterações.");
     setBusy("avatar");
     setError(null);
@@ -207,11 +207,11 @@ export function VideoJobEditor({ id }: { id: string }) {
         await jobApi(`/api/videogen/jobs/${id}/avatar`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source: "heygen", character: who?.character ?? null, imageUrl: who?.imageUrl ?? null, voiceId: voice?.id ?? null, voiceName: voice?.name ?? null }),
+          body: JSON.stringify({ source: "heygen", character }),
         })
       );
     } catch (e) {
-      // falhou (crédito, foto...): a narração já está aprovada, então abre a etapa Avatar para tentar de novo por lá
+      // falhou (crédito, avatar...): a narração já está aprovada, então abre a etapa Avatar para tentar de novo por lá
       const avatarIdx = stages.indexOf("avatar");
       if (avatarIdx > current) setStored(avatarIdx);
       throw e;
@@ -443,7 +443,7 @@ export function VideoJobEditor({ id }: { id: string }) {
       onGenerateImages={() => generateStoryboard()}
       onAdvance={advance}
       onNarration={generateNarration}
-      onStartAvatar={(who) => startAvatar(who, avatarVoice(job, person)).catch((e) => setError(e instanceof Error ? e.message : "Erro ao gerar o avatar."))}
+      onStartAvatar={(who) => startAvatar(who).catch((e) => setError(e instanceof Error ? e.message : "Erro ao gerar o avatar."))}
       onQueue={() => queue()}
       onPreview={() => queue(false, "preview")}
       onUnqueue={() => queue(true)}
@@ -623,7 +623,7 @@ export function VideoJobEditor({ id }: { id: string }) {
 
           {/* 5 · Avatar */}
           {speaker === "ai_avatar" && (
-            <Stage {...stageProps("avatar")} hint="O HeyGen gera o vídeo do avatar (ou da foto) falando o roteiro com a voz escolhida. Na timeline, escolha em cada cena avatar ou imagem.">
+            <Stage {...stageProps("avatar")} hint="O HeyGen gera o vídeo do avatar falando o roteiro, com a voz do próprio avatar. Na timeline, escolha em cada cena avatar ou imagem.">
               <BaseVideoPanel job={job} script={script} person={person} disabled={disabled} dirty={dirty} onSave={save} onJob={applyJob} onAvatarProgress={setJob} onStartAvatar={startAvatar} bare />
             </Stage>
           )}
@@ -851,14 +851,14 @@ function StepBar({
   /** Cenas que ainda não têm imagem gerada (storyboard). */
   imagesMissing: number;
   /** Foto que o avatar vai usar (sem ela, o avatar não pode ser gerado). */
-  avatarWho: AvatarWho | null;
+  avatarWho: AvatarCharacter | null;
   /** Erro da última ação (também aparece no corpo da página; aqui fica à vista mesmo rolado). */
   error: string | null;
   onGenerateScript: () => void;
   onGenerateImages: () => void;
   onAdvance: () => void;
   onNarration: () => void;
-  onStartAvatar: (who: AvatarWho | null) => void;
+  onStartAvatar: (character: AvatarCharacter | null) => void;
   onQueue: () => void;
   onPreview: () => void;
   onUnqueue: () => void;
@@ -982,7 +982,7 @@ function StepBar({
         speaker === "ai_avatar"
           ? avatarWho
             ? `Aprovar manda só este áudio para gerar o avatar.${savingNote}`
-            : `Falta escolher o avatar: aprove a narração e escolha um avatar do HeyGen ou envie a foto na etapa Avatar (ou cadastre no perfil de quem fala).${savingNote}`
+            : `Falta escolher o avatar: aprove a narração e escolha um avatar do HeyGen na etapa Avatar (ou cadastre no perfil de quem fala).${savingNote}`
           : `Aprovada, a narração entra na timeline e libera a trilha e o render.${savingNote}`;
       action = (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -1024,8 +1024,8 @@ function StepBar({
       const stale = avatarStale(avatar, job.script);
       title = stale ? "O texto mudou: gere o avatar de novo" : avatarWho ? "Gere o avatar" : "Escolha o avatar";
       hint = avatarWho
-        ? `O roteiro vai para o HeyGen com ${avatarWho.character ? `o avatar ${avatarWho.character.name ?? ""}`.trim() : "a foto"} e a voz escolhida; ele devolve vídeo e áudio.${savingNote}`
-        : "No card Avatar abaixo, escolha um avatar do HeyGen ou envie a foto (ou cadastre no perfil de quem fala), a voz, e gere.";
+        ? `O roteiro vai para o HeyGen com o avatar ${avatarWho.name ?? ""}; ele devolve vídeo e áudio com a voz do avatar.${savingNote}`
+        : "No card Avatar abaixo, escolha um avatar do HeyGen (ou cadastre no perfil de quem fala) e gere.";
       if (avatarWho) {
         action = (
           <button type="button" onClick={() => onStartAvatar(avatarWho)} disabled={busy !== null} aria-busy={busy === "avatar"} className={`${actionClass} ${primaryButton} ${ink}`}>

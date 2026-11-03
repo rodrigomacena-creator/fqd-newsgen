@@ -43,6 +43,8 @@ export interface AvatarCharacter {
   id: string;
   name?: string;
   previewUrl?: string;
+  /** Voz padrão do avatar no HeyGen (usada quando a pessoa não escolhe uma voz). */
+  defaultVoiceId?: string;
 }
 
 export function parseCharacter(value: unknown): AvatarCharacter | null {
@@ -55,6 +57,7 @@ export function parseCharacter(value: unknown): AvatarCharacter | null {
     id: c.id.trim().slice(0, 120),
     name: typeof c.name === "string" ? c.name.trim().slice(0, 120) || undefined : undefined,
     previewUrl: typeof c.previewUrl === "string" && /^https?:\/\//.test(c.previewUrl) ? c.previewUrl.slice(0, 800) : undefined,
+    defaultVoiceId: typeof c.defaultVoiceId === "string" && c.defaultVoiceId.trim() ? c.defaultVoiceId.trim().slice(0, 120) : undefined,
   };
 }
 
