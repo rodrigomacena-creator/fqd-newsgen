@@ -1062,6 +1062,9 @@ function HookPicker({
 }
 
 /** Storyboard: a imagem de cada cena antes do render, com "gerar de novo" por cena. */
+const boardAction =
+  "inline-flex items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-accent-yellow hover:bg-accent-yellow/10 disabled:opacity-50";
+
 function Storyboard({
   scenes,
   landscape,
@@ -1185,55 +1188,45 @@ function Storyboard({
                   </span>
                 )}
               </div>
-              {sc.imageUrl ? (
-                <div className="mt-1 grid gap-0.5">
-                  <p className="text-center text-[11px] text-text-secondary">Sua foto</p>
-                  <button
-                    type="button"
-                    onClick={() => onUseGenerated(i)}
-                    disabled={disabled}
-                    className="inline-flex min-h-8 items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-accent-yellow hover:bg-accent-yellow/10 disabled:opacity-50"
-                  >
+              {/* mesmas linhas em todo card (situação, ação principal, foto sua) para os botões ficarem alinhados */}
+              <div className="mt-1 grid grid-rows-[20px_32px_32px] gap-0.5">
+                <p className="flex items-center justify-center text-[11px] text-text-secondary">
+                  {sc.imageUrl ? "Sua foto" : sc.stock ? "Vídeo de banco" : sc.layout === "text_only" ? "Só texto" : generated ? "Imagem da IA" : "Sem imagem"}
+                </p>
+                {sc.imageUrl ? (
+                  <button type="button" onClick={() => onUseGenerated(i)} disabled={disabled} className={boardAction}>
                     <Icon name="sparkles" className="h-3.5 w-3.5" /> Gerar com IA
                   </button>
-                </div>
-              ) : sc.stock ? (
-                <div className="mt-1 grid gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() => onGenerate(i, "next_video")}
-                    disabled={disabled}
-                    className="inline-flex min-h-8 items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-accent-yellow hover:bg-accent-yellow/10 disabled:opacity-50"
-                  >
+                ) : sc.stock ? (
+                  <button type="button" onClick={() => onGenerate(i, "next_video")} disabled={disabled} className={boardAction}>
                     <Icon name="refresh" className="h-3.5 w-3.5" /> Trocar vídeo
                   </button>
+                ) : generated ? (
+                  <button type="button" onClick={() => onGenerate(i)} disabled={disabled} className={boardAction}>
+                    <Icon name="refresh" className="h-3.5 w-3.5" /> {sc.preview ? "Gerar de novo" : "Gerar"}
+                  </button>
+                ) : (
+                  <span aria-hidden />
+                )}
+                <button
+                  type="button"
+                  onClick={() => pick(i)}
+                  disabled={disabled || uploading !== null}
+                  className="inline-flex items-center justify-center gap-1 rounded-lg text-[11px] text-text-secondary hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
+                >
+                  <Icon name="image" className="h-3.5 w-3.5" /> {sc.imageUrl ? "Trocar foto" : "Usar foto minha"}
+                </button>
+                {sc.stock && !sc.imageUrl && (
                   <button
                     type="button"
                     onClick={() => onGenerate(i, "use_image")}
                     disabled={disabled}
                     className="min-h-8 rounded-lg text-[11px] text-text-secondary hover:bg-surface-2 disabled:opacity-50"
                   >
-                    Usar imagem
+                    Usar imagem gerada
                   </button>
-                </div>
-              ) : generated ? (
-                <button
-                  type="button"
-                  onClick={() => onGenerate(i)}
-                  disabled={disabled}
-                  className="mt-1 inline-flex min-h-9 w-full items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-accent-yellow hover:bg-accent-yellow/10 disabled:opacity-50"
-                >
-                  <Icon name="refresh" className="h-3.5 w-3.5" /> {sc.preview ? "Gerar de novo" : "Gerar"}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => pick(i)}
-                disabled={disabled || uploading !== null}
-                className="inline-flex min-h-8 w-full items-center justify-center gap-1 rounded-lg text-[11px] text-text-secondary hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
-              >
-                <Icon name="image" className="h-3.5 w-3.5" /> {sc.imageUrl ? "Trocar foto" : "Usar foto minha"}
-              </button>
+                )}
+              </div>
             </li>
           );
         })}
