@@ -55,6 +55,7 @@ export function BaseVideoPanel({
   onJob,
   onAvatarProgress,
   onStartAvatar,
+  bare = false,
 }: {
   job: VideoJobDTO;
   script: VideoScript;
@@ -69,6 +70,8 @@ export function BaseVideoPanel({
   onAvatarProgress: (job: VideoJobDTO) => void;
   /** Manda a narração aprovada pro Higgsfield (mesma ação do controle de etapas). */
   onStartAvatar: (scope: "all" | "marked", imageUrl: string | null) => Promise<void>;
+  /** Sem a moldura de card nem o título (quando já está dentro de uma etapa do editor). */
+  bare?: boolean;
 }) {
   const avatar = job.avatar;
   const valid = Boolean(avatar && job.narrationUrl && avatar.narrationUrl === job.narrationUrl);
@@ -214,12 +217,12 @@ export function BaseVideoPanel({
   }
 
   return (
-    <section className={cardClass} aria-labelledby="base-title">
-      <h2 id="base-title" className={sectionTitle}>
+    <section className={bare ? "" : cardClass} aria-labelledby="base-title">
+      <h2 id="base-title" className={bare ? "sr-only" : sectionTitle}>
         Avatar
       </h2>
-      <p className="mt-1 text-xs text-text-secondary">O Higgsfield anima a foto falando a narração aprovada. Só o áudio que você aprovou vai para lá.</p>
-      <div className="mt-4 space-y-3">
+      {!bare && <p className="mt-1 text-xs text-text-secondary">O Higgsfield anima a foto falando a narração aprovada. Só o áudio que você aprovou vai para lá.</p>}
+      <div className={`space-y-3 ${bare ? "" : "mt-4"}`}>
         <div className="flex items-center gap-3">
           <span className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-2">
             {imageUrl ? (
@@ -319,7 +322,9 @@ export function BaseVideoPanel({
                       ? "Gerar os trechos que faltam"
                       : avatar
                         ? "Gerar avatar de novo"
-                        : "Aprovar a narração e gerar o avatar"}
+                        : bare
+                          ? "Gerar o avatar"
+                          : "Aprovar a narração e gerar o avatar"}
               </button>
             )}
           </>

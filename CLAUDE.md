@@ -399,10 +399,16 @@ reais encontradas ao construir o projeto, não só a estrutura.
   monta as cenas (`applyBaseSpeech()` em `baseVideo.ts`); áudio = só narração, vídeo = trilha fixa (`AvatarTrack` upload) ou só o
   áudio, a critério do usuário; sem campos de tema/voz/duração, e `fixedSpeech(job)` (em `types.ts`) é a checagem única de "fala
   gravada" (script/narração/PATCH/editor). No `ai_avatar`, a foto vem do perfil de quem fala (`VideoProfile.avatarUrl`) ou é
-  enviada no passo 2 (`VideoJob.avatarImageUrl`). O editor mostra só as etapas do caminho (`STEPS_BY_SPEAKER` em
-  `VideoJobEditor.tsx`): voz por IA = Tema/Roteiro/Narração/Render/Pronto; avatar = … Narração → **Avatar** → Render (o botão
-  "Aprovar e gerar avatar" do controle de etapas é o que manda o áudio pro Higgsfield: a narração sempre é aprovada antes);
-  enviado = Envio/Cenas/Render/Pronto. `BaseVideoPanel.tsx` virou o card do caminho (Avatar ou Sua gravação), sem seletor de modo.
+  enviada no passo 2 (`VideoJob.avatarImageUrl`). **Editor em etapas (03/11/2026)**: `/videogen/[id]` é uma sequência de cards
+  (`Stage` em `VideoJobEditor.tsx`, lista por caminho em `stagesFor(speaker, hasHooks, needsNarration)`): Imagens (storyboard:
+  gerar com IA ou "Upload de imagem / vídeo" por cena, vídeo vira `scene.stock` com `source: "upload"` em `videogen/<id>/clipes/`)
+  → Gancho (só se o roteiro tem `hooks`) → Cenas (timeline) → Narração (gerar/ouvir/aprovar; sem narração no caminho `upload`)
+  → Avatar (só `ai_avatar`; aprovar a narração leva pra cá mesmo sem foto, que pode ser enviada no card) → Render (campo da
+  trilha + prévia rápida/enviar) → Pronto (vídeo, capa, palavras em destaque, legenda, publicar). Cada card só abre depois do
+  anterior; a etapa atual é o máximo entre o que os dados mostram (narração existe, avatar pronto, mp4 pronto...) e o avanço
+  manual guardado em `localStorage("videogen.etapa.<id>")`. O controle de etapas no topo (`StepBar`) tem a ação de cada etapa.
+  As imagens do briefing saíram do editor (ainda existem no job e no PATCH, só não têm card). `BaseVideoPanel.tsx` é o card do
+  caminho (Avatar com `bare`, ou Sua gravação no caminho `upload`), sem seletor de modo.
   Vídeos antigos: a migration deduz `speaker` do vídeo base.
   **Notícia vira vídeo**: botão "Criar vídeo" em `/noticia/[id]` abre `/videogen?noticia=<id>`; o POST de jobs recebe
   `articleId` (coluna `VideoJob.articleId`, sem FK), `articleSource()` (`src/lib/videogen/articleSource.ts`) monta o texto
