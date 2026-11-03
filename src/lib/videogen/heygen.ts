@@ -139,8 +139,9 @@ const OWN_NAME = /\s--\s*\d+\s*$/;
 /**
  * Avatares pra escolher aqui (como as vozes do ElevenLabs). Fonte principal: `/v2/avatars`, a lista que o
  * Rodrigo reconhece ("Erick Melo -- 17", "-- 15"...: avatares instantâneos gravados por ele, mais as fotos
- * animadas). Essa lista traz também a biblioteca pública do HeyGen, então os próprios vêm primeiro (nome
- * "Nome -- N", talking photos e nomes dos grupos da conta) e o resto depois. Os grupos da conta
+ * animadas). Essa lista traz também a biblioteca pública do HeyGen, que o Rodrigo NÃO quer ver: ficam só os
+ * próprios (nome "Nome -- N", talking photos e nomes dos grupos da conta); a lista inteira só aparece se
+ * nenhum for reconhecido. Os grupos da conta
  * (`/v2/avatar_group.list`) só servem pra reconhecer o que é próprio e como reserva se `/v2/avatars` estourar
  * o tempo (ele é grande e chegou a passar de 25 s na Vercel; por isso timeout de 50 s e cache).
  */
@@ -153,8 +154,8 @@ export async function listCharacters(): Promise<AvatarCharacter[]> {
     const own = (c: AvatarCharacter) =>
       c.kind === "talking_photo" || OWN_NAME.test(c.name ?? "") || groupNames.some((g) => (c.name ?? "").toLowerCase().startsWith(g.toLowerCase()));
     const mine = all.value.filter(own);
-    const rest = all.value.filter((c) => !own(c));
-    out = [...mine, ...rest];
+    // só os próprios; se o reconhecimento falhar em tudo (conta sem avatar próprio), mostra a lista inteira
+    out = mine.length > 0 ? mine : all.value;
   } else {
     console.warn("[heygen] /v2/avatars falhou, usando os grupos da conta:", all.reason);
     if (grouped.status !== "fulfilled") throw all.reason;

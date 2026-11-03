@@ -388,8 +388,8 @@ reais encontradas ao construir o projeto, não só a estrutura.
   `/api/videogen/avatars`, cache de 10 min, timeout 50 s, `maxDuration = 60`) usa **`/v2/avatars`** (a lista que o Rodrigo
   reconhece: os avatares instantâneos dele se chamam "Erick Melo -- 17", "-- 15"..., e foi assim que ele pediu em 03/11/2026 —
   os looks dos grupos (`/v2/avatar_group.list`) têm outros nomes e não incluem esses ids). Como `/v2/avatars` traz a biblioteca
-  pública inteira, os próprios (talking photos, nome "Nome -- N" ou nome de grupo da conta) vêm primeiro e o resto depois; os
-  grupos só entram como reserva se `/v2/avatars` estourar o tempo. Avatar sem `default_voice_id`: `defaultVoiceFor()` em
+  pública inteira, que o Rodrigo não quer ver, ficam SÓ os próprios (talking photos, nome "Nome -- N" ou nome de grupo da
+  conta); a lista inteira só aparece se nenhum for reconhecido. Os grupos só entram como reserva se `/v2/avatars` estourar o tempo. Avatar sem `default_voice_id`: `defaultVoiceFor()` em
   `avatar.ts` procura uma voz da conta com o mesmo nome (a voz clonada "Erick Melo -- 17"), senão a primeira em português.
   As colunas `VideoProfile.avatarUrl`/`VideoJob.avatarImageUrl` (foto enviada) ficaram no banco
   mas não são mais lidas nem gravadas. Seletor único: `AvatarCharacterSelect.tsx`.
