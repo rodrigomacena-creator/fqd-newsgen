@@ -10,6 +10,7 @@ import { applyBaseSpeech } from "@/lib/videogen/baseVideo";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
 import { MAX_STYLE_NOTES } from "@/lib/videogen/freeStyle";
 import { articleSource } from "@/lib/videogen/articleSource";
+import { WebpageFetchError } from "@/lib/webpage";
 
 export const maxDuration = 300;
 
@@ -70,7 +71,13 @@ export async function POST(request: Request) {
   }
   const baseKind = body.baseKind === "audio" ? "audio" : "video";
   const avatarCharacter = speaker === "ai_avatar" ? parseCharacter(body.avatarCharacter) : null;
-  const article = await articleSource(body.articleId?.trim());
+  let article;
+  try {
+    article = await articleSource(body.articleId?.trim());
+  } catch (err) {
+    if (err instanceof WebpageFetchError) return NextResponse.json({ error: err.message }, { status: 400 });
+    throw err;
+  }
   if (body.articleId?.trim() && !article) return NextResponse.json({ error: "Notícia não encontrada." }, { status: 404 });
   // com fala enviada o tema é só contexto (o conteúdo é a própria fala)
   const topic = (body.topic?.trim() || article?.title || (speaker === "upload" ? "Fala enviada" : "")).slice(0, MAX_TOPIC);

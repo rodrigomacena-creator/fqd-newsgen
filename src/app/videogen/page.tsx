@@ -122,12 +122,17 @@ export default function VideoGenPage() {
       })
       .catch((err) => setArticleError(err instanceof Error ? err.message : "Notícia não encontrada."));
   }, [wantedArticle]);
+  // conteúdo por tema (padrão) ou por link de notícia: o roteiro sai de um ou de outro
+  const [contentMode, setContentMode] = useState<"topic" | "news">("topic");
+  const [newsUrl, setNewsUrl] = useState("");
+  const newsMode = contentMode === "news" && !article;
+  const newsUrlValid = /^https?:\/\/\S+\.\S+/i.test(newsUrl.trim());
   const batchTopics = topic
     .split("\n")
     .map((t) => t.trim())
     .filter(Boolean)
     .slice(0, MAX_BATCH);
-  const isBatch = batch && !article && speaker !== "upload";
+  const isBatch = batch && !article && !newsMode && speaker !== "upload";
 
   // ----- passo 4: visual -----
   const { styles: allStyles, loaded: stylesLoaded, getStyle, removeStyle } = useStyles();
@@ -205,6 +210,7 @@ export default function VideoGenPage() {
       if (baseProgress !== null) return "Espere o envio terminar.";
     }
     if (i === 2 && speaker !== "upload" && !article) {
+      if (newsMode) return newsUrlValid ? null : "Cole o link da notícia (começando com https://).";
       if (isBatch && batchTopics.length === 0) return "Escreva ao menos um tema (um por linha).";
       if (!isBatch && !topic.trim()) return "Escreva o tema do vídeo.";
     }
@@ -257,7 +263,7 @@ export default function VideoGenPage() {
       personId: personId || null,
       companyId: companyId || null,
       briefingImages: withImages ? briefingImages : [],
-      articleId: article?.id ?? null,
+      articleId: article?.id ?? (newsMode ? newsUrl.trim() : null),
       format,
       speaker,
       avatarCharacter: speaker === "ai_avatar" ? avatarCharacter : null,
@@ -369,7 +375,7 @@ export default function VideoGenPage() {
           : SPEAKER_LABEL.upload
         : `${SPEAKER_LABEL[speaker]} · ${person?.name ?? "—"}`
       : null,
-    reached > 2 ? (article ? "Notícia" : isBatch ? `${batchTopics.length} temas` : speaker === "upload" ? (topic.trim() ? "Contexto" : "Sem contexto") : "Tema") : null,
+    reached > 2 ? (article || newsMode ? "Notícia" : isBatch ? `${batchTopics.length} temas` : speaker === "upload" ? (topic.trim() ? "Contexto" : "Sem contexto") : "Tema") : null,
     reached > 3 ? `${pattern?.nome ?? "…"}${speaker === "upload" ? "" : ` · ${effectiveDuration}s`}` : null,
     null,
   ];
@@ -678,9 +684,52 @@ export default function VideoGenPage() {
                 </>
               ) : (
                 <>
+                  {!article && (
+                    <div role="group" aria-label="De onde sai o conteúdo" className="mb-4 inline-flex rounded-lg border border-border p-0.5 text-sm">
+                      {(
+                        [
+                          ["topic", "Tema"],
+                          ["news", "Link de notícia"],
+                        ] as const
+                      ).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setContentMode(mode)}
+                          disabled={busy}
+                          aria-pressed={contentMode === mode}
+                          className={`rounded-md px-3 py-1.5 font-medium transition disabled:opacity-50 ${
+                            contentMode === mode ? "bg-accent-yellow text-accent-yellow-ink" : "text-text-secondary hover:text-foreground"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {newsMode && (
+                    <div className="mb-4">
+                      <label htmlFor="news-url" className="block text-sm font-medium">
+                        Link da notícia
+                      </label>
+                      <input
+                        id="news-url"
+                        type="url"
+                        required
+                        value={newsUrl}
+                        onChange={(e) => setNewsUrl(e.target.value)}
+                        disabled={busy}
+                        placeholder="https://fqdtv.site/…"
+                        className={`mt-2 ${fieldClass}`}
+                      />
+                      <p className="mt-1.5 text-xs text-text-secondary">
+                        O roteiro conta a notícia usando só os fatos da página. O link é lido quando o vídeo é criado.
+                      </p>
+                    </div>
+                  )}
                   <div className="flex items-baseline justify-between gap-2">
                     <label htmlFor="topic" className="block text-sm font-medium">
-                      {article ? (
+                      {article || newsMode ? (
                         <>
                           Ângulo do vídeo <span className="font-normal text-text-secondary">(opcional)</span>
                         </>
@@ -691,7 +740,7 @@ export default function VideoGenPage() {
                       )}
                     </label>
                     <div className="flex items-center gap-3">
-                      {!article && !isBatch && (
+                      {!article && !newsMode && !isBatch && (
                         <button
                           type="button"
                           onClick={() => setTopicAi(true)}
@@ -701,7 +750,7 @@ export default function VideoGenPage() {
                           <Icon name="sparkles" className="h-3.5 w-3.5" /> Criar com IA
                         </button>
                       )}
-                      {!article && (
+                      {!article && !newsMode && (
                         <button
                           type="button"
                           onClick={() => setBatch((b) => !b)}
@@ -747,7 +796,7 @@ export default function VideoGenPage() {
                   )}
                   <textarea
                     id="topic"
-                    required={!article}
+                    required={!article && !newsMode}
                     maxLength={isBatch ? MAX_TOPIC * MAX_BATCH : MAX_TOPIC}
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
@@ -755,7 +804,7 @@ export default function VideoGenPage() {
                     aria-describedby="topic-help"
                     rows={isBatch ? 6 : 3}
                     placeholder={
-                      article
+                      article || newsMode
                         ? "Opcional. Ex.: foque no impacto para quem tem loja online"
                         : isBatch
                           ? "Um tema por linha (até 10). Ex.:\nPor que o GEO importa mais que o SEO\nComo o Google AI Mode muda as buscas"
@@ -764,7 +813,7 @@ export default function VideoGenPage() {
                     className={`mt-2 resize-y ${fieldClass}`}
                   />
                   <p id="topic-help" className="mt-1.5 text-xs text-text-secondary">
-                    {article
+                    {article || newsMode
                       ? "O roteiro conta a notícia usando só os fatos dela. Se quiser, diga o ângulo ou o público."
                       : isBatch
                         ? "Cada linha vira um vídeo com as mesmas escolhas (quem fala, estilo, duração). Os roteiros ficam em “Seus vídeos” para revisar um por um."
@@ -982,7 +1031,9 @@ export default function VideoGenPage() {
                 <dd className="[overflow-wrap:anywhere]">
                   {article
                     ? `Notícia: ${article.title}`
-                    : isBatch
+                    : newsMode
+                      ? `Notícia: ${newsUrl.trim()}`
+                      : isBatch
                       ? `${batchTopics.length} temas (um vídeo por linha)`
                       : speaker === "upload"
                         ? topic.trim()
