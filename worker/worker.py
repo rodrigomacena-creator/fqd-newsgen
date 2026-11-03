@@ -163,7 +163,7 @@ CLIP_ZOOM = 1.12  # folga do quadro do vídeo para o movimento de câmera
 
 
 def base_track(job):
-    """Trechos do vídeo base (avatar do Higgsfield ou vídeo do usuário) que valem para a narração atual.
+    """Trechos do vídeo base (avatar do HeyGen ou vídeo do usuário) que valem para a narração atual.
     [] quando não há vídeo base pronto: as cenas marcadas como avatar viram imagem, como antes."""
     a = job.get("avatar") or {}
     if a.get("status") != "ready" or not job.get("narrationUrl") or a.get("narrationUrl") != job.get("narrationUrl"):

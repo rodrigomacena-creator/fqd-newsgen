@@ -2,7 +2,7 @@
 import { sceneTiming, type TimedBlock } from "./sceneTiming";
 import type { AvatarSegment, AvatarTrack, NarrationWord, VideoScript } from "./types";
 
-/** Trecho mínimo mandado pro Higgsfield (trecho curto demais costuma ser recusado e não sincroniza bem). */
+/** Trecho mínimo mandado pro HeyGen (trecho curto demais costuma ser recusado e não sincroniza bem). */
 const MIN_SEGMENT_S = 2.5;
 
 /** Blocos de tempo que o avatar pode cobrir: uma por cena + o fecho. */

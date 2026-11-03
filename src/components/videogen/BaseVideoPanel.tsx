@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Icon, Spinner, cardClass, dangerButton, labelClass, primaryButton, secondaryButton, sectionTitle } from "./ui";
 import { uploadBaseFile, uploadImage } from "@/lib/videogen/uploadImage";
 import { uncoveredScenes } from "@/lib/videogen/avatarPlan";
-import type { VideoProfileDTO, VideoScript } from "@/lib/videogen/types";
+import { parseCharacter, type AvatarCharacter, type VideoProfileDTO, type VideoScript } from "@/lib/videogen/types";
+import { AvatarCharacterSelect } from "./AvatarCharacterSelect";
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
 export async function jobApi(url: string, init?: RequestInit) {
@@ -36,12 +37,23 @@ export function mediaDuration(file: File): Promise<number> {
 
 /** Foto que o avatar vai usar: a enviada para este vídeo, senão a do perfil de quem fala. */
 export function avatarPhoto(job: VideoJobDTO, person: VideoProfileDTO | undefined): string | null {
-  return job.avatarImageUrl ?? (job.avatar?.source === "higgsfield" ? job.avatar.imageUrl : null) ?? person?.avatarUrl ?? null;
+  return job.avatarImageUrl ?? (job.avatar?.source === "heygen" ? job.avatar.imageUrl : null) ?? person?.avatarUrl ?? null;
+}
+
+/** Quem aparece no vídeo: avatar da conta do HeyGen (do vídeo, da trilha gerada ou do perfil) e/ou a foto. */
+export interface AvatarWho {
+  character: AvatarCharacter | null;
+  imageUrl: string | null;
+}
+export function avatarWho(job: VideoJobDTO, person: VideoProfileDTO | undefined): AvatarWho | null {
+  const character = job.avatarCharacter ?? (job.avatar?.source === "heygen" ? job.avatar.character : null) ?? parseCharacter(person?.heygenAvatar);
+  const imageUrl = avatarPhoto(job, person);
+  return character || imageUrl ? { character: character ?? null, imageUrl } : null;
 }
 
 /**
  * Card de quem fala, no editor. Segue o caminho escolhido na criação:
- * - Avatar por IA: a foto, o andamento no Higgsfield e, como opção avançada, gerar só as cenas marcadas.
+ * - Avatar por IA: quem aparece (avatar do HeyGen ou foto), o andamento e, como opção avançada, gerar só as cenas marcadas.
  * - Áudio/vídeo enviado: o arquivo com a fala (dá para trocar ou tirar).
  * Voz por IA não tem card (a narração já tem o dela).
  */
@@ -68,8 +80,8 @@ export function BaseVideoPanel({
   onJob: (job: VideoJobDTO) => void;
   /** Só o andamento do avatar mudou (não mexe no roteiro em edição). */
   onAvatarProgress: (job: VideoJobDTO) => void;
-  /** Manda a narração aprovada pro Higgsfield (mesma ação do controle de etapas). */
-  onStartAvatar: (scope: "all" | "marked", imageUrl: string | null) => Promise<void>;
+  /** Manda a narração aprovada pro HeyGen (mesma ação do controle de etapas). */
+  onStartAvatar: (scope: "all" | "marked", who: AvatarWho | null) => Promise<void>;
   /** Sem a moldura de card nem o título (quando já está dentro de uma etapa do editor). */
   bare?: boolean;
 }) {
@@ -96,11 +108,16 @@ export function BaseVideoPanel({
     return () => clearInterval(timer);
   }, [generating, job.id, onAvatarProgress]);
 
-  const imageUrl = photo ?? avatarPhoto(job, person);
+  const [chosen, setChosen] = useState<AvatarCharacter | null | undefined>(undefined);
+  const saved = avatarWho(job, person);
+  const character = chosen === undefined ? (saved?.character ?? null) : chosen;
+  const imageUrl = photo ?? saved?.imageUrl ?? null;
+  const who: AvatarWho | null = character || imageUrl ? { character, imageUrl: character ? null : imageUrl } : null;
   const total = job.narrationDurationS ?? 0;
   const missing = valid && avatar ? uncoveredScenes(script, job.narrationWords, avatar, total) : [];
   // foto nova, narração nova ou nada gerado ainda: gera a trilha do zero
-  const needsNew = !avatar || !valid || avatar.source !== "higgsfield" || Boolean(photo && photo !== avatar.imageUrl);
+  const needsNew =
+    !avatar || !valid || avatar.source !== "heygen" || (character ? avatar.character?.id !== character.id : Boolean(photo && photo !== avatar.imageUrl));
   const failed = !needsNew && avatar?.status === "failed";
   const done = avatar?.segments.filter((s) => s.status === "completed").length ?? 0;
   const off = disabled || busy !== null;
@@ -118,7 +135,7 @@ export function BaseVideoPanel({
     }
   }
 
-  const startAvatar = (sc: "all" | "marked") => run("start", () => onStartAvatar(sc, imageUrl));
+  const startAvatar = (sc: "all" | "marked") => run("start", () => onStartAvatar(sc, who));
 
   const pickFile = (file: File | undefined) =>
     file &&
@@ -221,8 +238,17 @@ export function BaseVideoPanel({
       <h2 id="base-title" className={bare ? "sr-only" : sectionTitle}>
         Avatar
       </h2>
-      {!bare && <p className="mt-1 text-xs text-text-secondary">O Higgsfield anima a foto falando a narração aprovada. Só o áudio que você aprovou vai para lá.</p>}
+      {!bare && <p className="mt-1 text-xs text-text-secondary">O HeyGen anima o avatar (ou a foto) falando a narração aprovada. Só o áudio que você aprovou vai para lá.</p>}
       <div className={`space-y-3 ${bare ? "" : "mt-4"}`}>
+        <div>
+          <label htmlFor="base-heygen" className={labelClass}>
+            Avatar (HeyGen)
+          </label>
+          <div className="mt-1.5">
+            <AvatarCharacterSelect id="base-heygen" value={character} onChange={setChosen} disabled={off || generating} />
+          </div>
+        </div>
+        {!character && (
         <div className="flex items-center gap-3">
           <span className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-2">
             {imageUrl ? (
@@ -237,7 +263,7 @@ export function BaseVideoPanel({
               {imageUrl
                 ? photo || job.avatarImageUrl
                   ? "Foto enviada para este vídeo."
-                  : avatar?.source === "higgsfield" && avatar.imageUrl
+                  : avatar?.source === "heygen" && avatar.imageUrl
                     ? "Foto usada no avatar."
                     : `Foto do perfil ${person?.name ?? "de quem fala"}.`
                 : "Sem foto: envie uma (ou cadastre no perfil de quem fala)."}
@@ -260,16 +286,17 @@ export function BaseVideoPanel({
             />
           </div>
         </div>
+        )}
 
         {!job.narrationUrl ? (
           <p className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-text-secondary">Primeiro gere e aprove a narração: o avatar fala exatamente o áudio aprovado.</p>
         ) : generating ? (
           <p className="flex items-center gap-2 rounded-lg bg-surface-2 px-3 py-2 text-xs text-text-secondary" role="status">
-            <Spinner /> Gerando o avatar no Higgsfield: {done} de {avatar!.segments.length} trecho(s) prontos. Leva alguns minutos; pode continuar editando.
+            <Spinner /> Gerando o avatar no HeyGen: {done} de {avatar!.segments.length} trecho(s) prontos. Leva alguns minutos; pode continuar editando.
           </p>
         ) : (
           <>
-            {avatar?.source === "higgsfield" && !valid && <p className="text-xs text-warning">A narração mudou depois do avatar. Gere o avatar de novo para ele falar a fala nova.</p>}
+            {avatar?.source === "heygen" && !valid && <p className="text-xs text-warning">A narração mudou depois do avatar. Gere o avatar de novo para ele falar a fala nova.</p>}
             {failed && <p className="text-xs text-accent-red">{avatar?.error}</p>}
             {!needsNew && avatar?.status === "ready" && missing.length === 0 && (
               <p className="text-xs text-text-secondary">
@@ -310,12 +337,12 @@ export function BaseVideoPanel({
               <button
                 type="button"
                 onClick={() => startAvatar(needsNew || failed ? scope : "marked")}
-                disabled={off || !imageUrl}
+                disabled={off || !who}
                 className={`w-full ${avatar ? secondaryButton : primaryButton}`}
               >
                 {busy === "start" ? <Spinner /> : <Icon name="sparkles" className="h-4 w-4" />}
                 {busy === "start"
-                  ? "Enviando para o Higgsfield…"
+                  ? "Enviando para o HeyGen…"
                   : failed
                     ? "Tentar de novo os que falharam"
                     : !needsNew

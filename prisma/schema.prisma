@@ -89,9 +89,10 @@ model VideoJob {
   personId           String? // VideoProfile (kind person) que fala no vídeo; sem FK de propósito (perfil apagado = genérico)
   companyId          String? // VideoProfile (kind company) para quem é o conteúdo
   briefingImages     String? // JSON string: BriefingImage[] (imagens enviadas pelo usuário, usadas nas cenas sem gerar)
-  avatar             String? // JSON string: AvatarTrack (vídeo base: avatar do Higgsfield ou vídeo do usuário; ver src/lib/videogen/avatar.ts)
-  speaker            String    @default("ai_voice") // quem fala: "ai_voice" (voz do ElevenLabs) | "ai_avatar" (voz + avatar do Higgsfield) | "upload" (áudio/vídeo enviado)
+  avatar             String? // JSON string: AvatarTrack (vídeo base: avatar do HeyGen ou vídeo do usuário; ver src/lib/videogen/avatar.ts)
+  speaker            String    @default("ai_voice") // quem fala: "ai_voice" (voz do ElevenLabs) | "ai_avatar" (voz + avatar do HeyGen) | "upload" (áudio/vídeo enviado)
   avatarImageUrl     String? // foto escolhida na criação para o avatar (Blob); sem ela usa a do perfil de quem fala
+  avatarCharacter    String? // JSON: AvatarCharacter escolhido na criação (avatar/foto animada da conta do HeyGen); sem ele usa o do perfil
   error              String?
   startedAt          DateTime?
   finishedAt         DateTime?
@@ -141,7 +142,8 @@ model VideoProfile {
   instagram      String? // @perfil (sem inventar quando vazio)
   cta            String? // CTA padrão
   logoUrl        String? // empresa: logo no Vercel Blob
-  avatarUrl      String? // pessoa: foto do avatar (Higgsfield) no Vercel Blob
+  avatarUrl      String? // pessoa: foto do avatar no Vercel Blob (vira foto animada no HeyGen)
+  heygenAvatar   String? // pessoa: JSON AvatarCharacter (avatar/foto animada já cadastrado na conta do HeyGen)
   colors         String? // empresa: cores da marca (texto livre, ex.: "#E10600, preto")
   pronunciations String? // JSON: Pronunciation[] (ex.: nome da marca falado)
   isDefault      Boolean  @default(false)

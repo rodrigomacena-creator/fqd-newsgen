@@ -4,7 +4,7 @@
 import type { VideoProfile } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { BriefingImage, Pronunciation, VideoProfileDTO, VideoProfileKind } from "./types";
-import { MAX_BRIEFING_IMAGES } from "./types";
+import { MAX_BRIEFING_IMAGES, parseCharacter } from "./types";
 
 function parsePronunciations(value: string | null): Pronunciation[] {
   if (!value) return [];
@@ -117,6 +117,11 @@ export function profileInput(body: Record<string, unknown>, partial: boolean): {
     const url = typeof body.avatarUrl === "string" ? body.avatarUrl.trim() : "";
     if (url && !isAllowedImageUrl(url)) return { error: "Foto do avatar inválida." };
     data.avatarUrl = url || null;
+  }
+  if (body.heygenAvatar !== undefined) {
+    const c = parseCharacter(body.heygenAvatar);
+    if (body.heygenAvatar && !c) return { error: "Avatar do HeyGen inválido." };
+    data.heygenAvatar = c ? JSON.stringify(c) : null;
   }
   if (body.pronunciations !== undefined) data.pronunciations = JSON.stringify(cleanPronunciations(body.pronunciations));
   if (body.isDefault !== undefined) data.isDefault = body.isDefault === true;

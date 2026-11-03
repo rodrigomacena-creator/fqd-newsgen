@@ -4,7 +4,7 @@ import { recentFreeStyles, resolveStyle } from "@/lib/videogen/templates";
 import { generateVideoScript, VIDEOGEN_TEXT_MODEL } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
-import { DEFAULT_VOICE_ID, MAX_DURATION_S, parseSpeaker, parseVideoFormat } from "@/lib/videogen/types";
+import { DEFAULT_VOICE_ID, MAX_DURATION_S, parseCharacter, parseSpeaker, parseVideoFormat } from "@/lib/videogen/types";
 import { cleanBriefingImages, getProfile, isAllowedImageUrl } from "@/lib/videogen/profiles";
 import { applyBaseSpeech } from "@/lib/videogen/baseVideo";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
@@ -45,10 +45,12 @@ export async function POST(request: Request) {
     articleId?: string;
     /** "9:16" (padrão, Reels/Shorts) ou "16:9" (YouTube horizontal). */
     format?: string;
-    /** Quem fala: "ai_voice" (padrão), "ai_avatar" (voz + avatar do Higgsfield) ou "upload" (áudio/vídeo enviado). */
+    /** Quem fala: "ai_voice" (padrão), "ai_avatar" (voz + avatar do HeyGen) ou "upload" (áudio/vídeo enviado). */
     speaker?: string;
     /** Avatar por IA: foto escolhida para este vídeo (sem ela, a do perfil de quem fala). */
     avatarImageUrl?: string;
+    /** Avatar/foto animada da conta do HeyGen (AvatarCharacter) escolhido para este vídeo. */
+    avatarCharacter?: unknown;
     /** Áudio/vídeo enviado (já no Blob, pasta videogen/base/). */
     baseUrl?: string;
     baseKind?: string;
@@ -70,6 +72,7 @@ export async function POST(request: Request) {
   const baseKind = body.baseKind === "audio" ? "audio" : "video";
   const avatarImageUrl = speaker === "ai_avatar" && typeof body.avatarImageUrl === "string" ? body.avatarImageUrl.trim() : "";
   if (avatarImageUrl && !isAllowedImageUrl(avatarImageUrl)) return NextResponse.json({ error: "Foto do avatar inválida." }, { status: 400 });
+  const avatarCharacter = speaker === "ai_avatar" ? parseCharacter(body.avatarCharacter) : null;
   const article = await articleSource(body.articleId?.trim());
   if (body.articleId?.trim() && !article) return NextResponse.json({ error: "Notícia não encontrada." }, { status: 404 });
   // com fala enviada o tema é só contexto (o conteúdo é a própria fala)
@@ -86,8 +89,11 @@ export async function POST(request: Request) {
   if (speaker !== "ai_voice" && pattern.kind === "builtin") {
     return NextResponse.json({ error: "Avatar e vídeo enviado funcionam no estilo livre e nos templates montados." }, { status: 400 });
   }
-  if (speaker === "ai_avatar" && !avatarImageUrl && !(await getProfile(body.personId?.trim(), "person"))?.avatarUrl) {
-    return NextResponse.json({ error: "Envie uma foto para o avatar (ou cadastre uma no perfil de quem fala)." }, { status: 400 });
+  if (speaker === "ai_avatar" && !avatarImageUrl && !avatarCharacter) {
+    const p = await getProfile(body.personId?.trim(), "person");
+    if (!p?.avatarUrl && !parseCharacter(p?.heygenAvatar)) {
+      return NextResponse.json({ error: "Escolha um avatar do HeyGen ou envie uma foto (ou cadastre no perfil de quem fala)." }, { status: 400 });
+    }
   }
   const durationS = Math.min(MAX_DURATION_S[format], Math.max(5, Math.round(Number(body.durationS) || 15)));
   const textModel = body.textModel?.trim() || VIDEOGEN_TEXT_MODEL;
@@ -117,7 +123,8 @@ export async function POST(request: Request) {
       articleId: article?.id ?? null,
       format,
       speaker,
-      avatarImageUrl: avatarImageUrl || null,
+      avatarImageUrl: avatarCharacter ? null : avatarImageUrl || null,
+      avatarCharacter: avatarCharacter ? JSON.stringify(avatarCharacter) : null,
       costs: "[]",
     },
   });

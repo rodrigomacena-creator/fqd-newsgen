@@ -11,7 +11,8 @@ import { TopicAiModal } from "@/components/videogen/TopicAiModal";
 import { VoiceCloneModal } from "@/components/videogen/VoiceCloneModal";
 import { formatUsd } from "@/components/videogen/CostPanel";
 import { mediaDuration } from "@/components/videogen/BaseVideoPanel";
-import { Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
+import { Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, labelClass, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
+import { AvatarCharacterSelect } from "@/components/videogen/AvatarCharacterSelect";
 import { useVoices } from "@/lib/videogen/useVoices";
 import type { VideoPattern } from "@/lib/videogen/patterns";
 import { FREE_STYLE_ID } from "@/lib/videogen/freeStyle";
@@ -24,6 +25,8 @@ import {
   LANDSCAPE_DURATION_OPTIONS,
   SPEAKER_LABEL,
   WORDS_PER_SECOND,
+  parseCharacter,
+  type AvatarCharacter,
   type BriefingImage,
   type Speaker,
   type VideoFormat,
@@ -47,7 +50,7 @@ const STEPS = [
 
 const SPEAKER_OPTIONS: { id: Speaker; title: string; help: string }[] = [
   { id: "ai_voice", title: "Voz por IA", help: "A IA escreve o roteiro e a voz do perfil narra no ElevenLabs. As cenas mostram imagens." },
-  { id: "ai_avatar", title: "Avatar por IA", help: "Igual à voz por IA, e o Higgsfield anima a sua foto falando. Você escolhe, cena a cena, avatar ou imagem." },
+  { id: "ai_avatar", title: "Avatar por IA", help: "Igual à voz por IA, e o HeyGen anima o seu avatar (ou a sua foto) falando. Você escolhe, cena a cena, avatar ou imagem." },
   { id: "upload", title: "Submeter áudio / vídeo", help: "Um áudio ou vídeo já gravado. A sua fala vira a narração; não há etapa de voz." },
 ];
 
@@ -90,6 +93,10 @@ export default function VideoGenPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
   const avatarImage = avatarPhoto ?? person?.avatarUrl ?? null;
+  // avatar da conta do HeyGen: o escolhido aqui, senão o do perfil (null = usar a foto)
+  const [chosenCharacter, setChosenCharacter] = useState<AvatarCharacter | null | undefined>(undefined);
+  const avatarCharacter = chosenCharacter === undefined ? parseCharacter(person?.heygenAvatar) : chosenCharacter;
+  const avatarOk = Boolean(avatarCharacter || avatarImage);
   // áudio/vídeo enviado
   const [base, setBase] = useState<{ url: string; kind: BaseKind; name: string; durationS: number } | null>(null);
   const [baseUseVideo, setBaseUseVideo] = useState(true);
@@ -199,7 +206,7 @@ export default function VideoGenPage() {
   /** O que falta para fechar o passo `i` (null = pode continuar). */
   function problem(i: number): string | null {
     if (i === 1) {
-      if (speaker === "ai_avatar" && !avatarImage) return "Envie uma foto para o avatar ou cadastre uma no perfil de quem fala.";
+      if (speaker === "ai_avatar" && !avatarOk) return "Escolha um avatar do HeyGen ou envie uma foto (ou cadastre no perfil de quem fala).";
       if (speaker === "upload" && !base) return "Envie o áudio ou o vídeo com a sua fala.";
       if (baseProgress !== null) return "Espere o envio terminar.";
     }
@@ -272,7 +279,8 @@ export default function VideoGenPage() {
       articleId: article?.id ?? null,
       format,
       speaker,
-      avatarImageUrl: speaker === "ai_avatar" ? avatarPhoto : null,
+      avatarImageUrl: speaker === "ai_avatar" && !avatarCharacter ? avatarPhoto : null,
+      avatarCharacter: speaker === "ai_avatar" ? avatarCharacter : null,
       ...(speaker === "upload" && base
         ? { baseUrl: base.url, baseKind: base.kind, baseDurationS: base.durationS, baseUseVideo: base.kind === "video" && baseUseVideo }
         : {}),
@@ -366,7 +374,7 @@ export default function VideoGenPage() {
   if (speaker === "upload") estimate.push({ label: "transcrição + cenas", usd: EST.script + (EST.transcriptionPerMin * effectiveDuration) / 60 });
   else estimate.push({ label: "roteiro", usd: EST.script });
   if (speaker !== "upload" && !pattern?.semNarracao) estimate.push({ label: "narração", usd: EST.narrationPerS * effectiveDuration });
-  if (speaker === "ai_avatar") estimate.push({ label: "avatar (Higgsfield)", usd: null });
+  if (speaker === "ai_avatar") estimate.push({ label: "avatar (HeyGen)", usd: null });
   estimate.push({ label: `imagens (≈${scenes} cenas)`, usd: EST.image * scenes });
   estimate.push({ label: "trilha", usd: EST.musicPerS * effectiveDuration });
   const estimateTotal = estimate.reduce((sum, e) => sum + (e.usd ?? 0), 0);
@@ -543,6 +551,7 @@ export default function VideoGenPage() {
                     setChosenPerson(id);
                     setChosenVoice(null);
                     setAvatarPhoto(null);
+                    setChosenCharacter(undefined);
                   }}
                 />
                 {trainingVoice && (
@@ -582,7 +591,17 @@ export default function VideoGenPage() {
               </div>
 
               {speaker === "ai_avatar" && (
-                <div className="mt-5 flex items-center gap-4 rounded-xl border border-border bg-background/60 p-3">
+                <div className="mt-5">
+                  <label htmlFor="wizard-heygen" className={labelClass}>
+                    Avatar (HeyGen)
+                  </label>
+                  <div className="mt-1.5">
+                    <AvatarCharacterSelect id="wizard-heygen" value={avatarCharacter} onChange={setChosenCharacter} disabled={busy} photoLabel="Usar a foto (abaixo)" />
+                  </div>
+                </div>
+              )}
+              {speaker === "ai_avatar" && !avatarCharacter && (
+                <div className="mt-3 flex items-center gap-4 rounded-xl border border-border bg-background/60 p-3">
                   <span className="flex h-24 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-2">
                     {avatarImage ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -1024,7 +1043,7 @@ export default function VideoGenPage() {
                   {SPEAKER_LABEL[speaker]}
                   {speaker === "upload" && base ? ` · ${base.name}${base.kind === "video" ? (baseUseVideo ? " · vídeo nas cenas" : " · só o áudio") : ""}` : ""}
                   {speaker !== "upload" ? ` · ${person?.name ?? "—"} · voz ${voiceName}` : person ? ` · tom de ${person.name}` : ""}
-                  {speaker === "ai_avatar" ? (avatarImage ? " · foto ok" : " · sem foto") : ""}
+                  {speaker === "ai_avatar" ? (avatarCharacter ? ` · avatar ${avatarCharacter.name ?? ""}` : avatarImage ? " · foto ok" : " · sem foto") : ""}
                 </dd>
                 <dt className="text-text-secondary">Conteúdo</dt>
                 <dd className="[overflow-wrap:anywhere]">
@@ -1052,12 +1071,12 @@ export default function VideoGenPage() {
                   <span className="text-sm font-semibold">Custo estimado{isBatch ? " por vídeo" : ""}</span>
                   <span className="text-sm font-semibold tabular-nums">
                     ≈ {formatUsd(estimateTotal)}
-                    {speaker === "ai_avatar" ? " + Higgsfield" : ""}
+                    {speaker === "ai_avatar" ? " + HeyGen" : ""}
                     {isBatch && perVideo > 1 ? ` × ${perVideo}` : ""}
                   </span>
                 </p>
                 <p className="mt-1 text-xs text-text-secondary">
-                  {estimate.map((e) => `${e.label} ${e.usd === null ? "(preço do Higgsfield)" : `≈ ${formatUsd(e.usd)}`}`).join(" · ")}. Ordem de grandeza; o
+                  {estimate.map((e) => `${e.label} ${e.usd === null ? "(preço do HeyGen)" : `≈ ${formatUsd(e.usd)}`}`).join(" · ")}. Ordem de grandeza; o
                   gasto real aparece no vídeo.
                 </p>
                 <p className="mt-2 text-xs text-text-secondary">

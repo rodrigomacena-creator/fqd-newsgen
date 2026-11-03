@@ -376,24 +376,32 @@ reais encontradas ao construir o projeto, não só a estrutura.
   baixado para `VIDEOGEN_MODELS_DIR`; sem modelo vira cartão). Os traços à mão são desenhados pelo render (na cor de
   destaque do estilo), por isso os imagePrompts não pedem setas/círculos. Ao criar um renderizador novo, use
   `motion.py` (corte, câmera, `ObjectLayer`, `Marks`, `emphasis`) guardado por `has_direction`.
-  **Vídeo base (avatar do Higgsfield ou vídeo seu)** (`VideoJob.avatar`, JSON `AvatarTrack` em `types.ts`; `src/lib/videogen/avatar.ts`,
-  `avatarPlan.ts` (puro), `higgsfield.ts`, `mp3.ts`, `baseVideo.ts`; rota `/api/videogen/jobs/[id]/avatar` GET/POST/DELETE; painel
+  **Vídeo base (avatar do HeyGen ou vídeo seu)** (`VideoJob.avatar`, JSON `AvatarTrack` em `types.ts`; `src/lib/videogen/avatar.ts`,
+  `avatarPlan.ts` (puro), `heygen.ts`, `mp3.ts`, `baseVideo.ts`; rota `/api/videogen/jobs/[id]/avatar` GET/POST/DELETE; painel
   `BaseVideoPanel.tsx`): opcional, sem ele tudo fica como antes. "Avatar falando": a narração do ElevenLabs (mesma voz, mesmos tempos de
-  palavra) é cortada em trechos na fronteira das cenas (`sliceMp3`, sem ffmpeg; no máximo `HIGGSFIELD_MAX_SECONDS`), cada trecho vai
-  com a foto (`VideoProfile.avatarUrl` da pessoa, ou outra enviada) pro Higgsfield; a tela consulta o andamento (GET) e os vídeos prontos
-  são copiados pro Blob (`videogen/<id>/avatar/`). Escopo "o vídeo todo" (trilha fixa inteira) ou "só as cenas marcadas". "Vídeo meu":
+  palavra) vai pro HeyGen junto do **personagem** (`AvatarCharacter`: avatar ou "talking photo" já cadastrado na conta do HeyGen,
+  escolhido no perfil da pessoa (`VideoProfile.heygenAvatar`), na criação (`VideoJob.avatarCharacter`) ou no card Avatar — lista em
+  GET `/api/videogen/avatars`, seletor `AvatarCharacterSelect.tsx`; sem personagem, a foto (`VideoJob.avatarImageUrl` ou
+  `VideoProfile.avatarUrl`) vira talking photo lá via `uploadTalkingPhoto()`). Normalmente é um pedido só (`HEYGEN_MAX_SECONDS`,
+  padrão 180 s); no escopo "só as cenas marcadas" a narração é cortada em trechos na fronteira das cenas (`sliceMp3`, sem ffmpeg).
+  A tela consulta o andamento (GET) e os vídeos prontos são copiados pro Blob (`videogen/<id>/avatar/`). Escopo "o vídeo todo"
+  (padrão) ou "só as cenas marcadas" (opção avançada). "Vídeo meu":
   upload direto pro Blob (`videogen/<id>/base/`), a fala é transcrita (ElevenLabs STT, `speechToText`) e vira a narração
   (`narrationUrl` = o próprio vídeo) e o roteiro é refeito em cima da fala (`generateVideoScript({fixedNarration})` +
   `realignToTranscript`, palavra por palavra); nesse modo o texto falado não pode ser editado (PATCH recusa) e "gerar roteiro de novo"
   só redivide a fala. Cada cena tem `scene.avatar = true` (mostra o vídeo) ou não (imagem); a timeline ganha a faixa "Avatar"/"Vídeo"
   (clique troca). A trilha só vale se `avatar.narrationUrl === job.narrationUrl`. Worker: só o motor genérico (`base_track`,
   `extract_base_frames`, `BaseClip` em `template_engine.py`: tela cheia, sem filtro de cor do estilo, quadro = instante da fala, nunca
-  vai-e-volta); cena avatar não gera imagem. A API do Higgsfield (`api.higgsfield.ai`, `Authorization: Key ID:SECRET`, POST no modelo →
-  `status_url` → `video.url`) e o nome do modelo de avatar ficam em variáveis de ambiente (`HIGGSFIELD_*`), porque não deu para ler a
-  documentação deles daqui (domínio bloqueado) — confirmar o modelo e os nomes de campo com a chave real.
+  vai-e-volta); cena avatar não gera imagem. A API do HeyGen (`api.heygen.com`, UMA chave no header `X-Api-Key` = `HEYGEN_API_KEY`;
+  POST `/v2/video/generate` com `video_inputs[0].character` (`avatar`/`talking_photo`) + `voice: {type: "audio", audio_url}` →
+  `video_id`; GET `/v1/video_status.get?video_id=` → `completed` + `video_url`; GET `/v2/avatars` lista avatares e talking photos;
+  POST `upload.heygen.com/v1/talking_photo` com os bytes da imagem) foi escrita de memória, porque o domínio da documentação
+  é bloqueado aqui — **ainda não testada com chave real** (03/11/2026): ao testar, conferir nomes de campo e os valores de
+  `talking_photo_style`/`talking_style`. O Higgsfield (provedor anterior, chave em duas partes) foi trocado pelo HeyGen a pedido do
+  Rodrigo; trilhas antigas com `source: "higgsfield"` só são lidas (não dá mais para consultar o andamento delas).
   **Criação em 5 passos (03/11/2026, estudo de usabilidade aprovado pelo Rodrigo)**: a tela `/videogen` é um questionário
   (Formato → Quem fala → Conteúdo → Visual → Revisão) em que cada passo só abre depois do anterior e os campos mudam conforme
-  **quem fala** (`VideoJob.speaker`: `ai_voice` voz do ElevenLabs, `ai_avatar` voz + avatar do Higgsfield, `upload` áudio/vídeo
+  **quem fala** (`VideoJob.speaker`: `ai_voice` voz do ElevenLabs, `ai_avatar` voz + avatar do HeyGen, `upload` áudio/vídeo
   enviado). Nada é gasto antes do "Criar vídeo" da revisão (que mostra um custo estimado). No `upload`, o arquivo sobe antes do
   job (`videogen/base/<rand>/`, `uploadBaseFile()`), o POST de jobs recebe `baseUrl`/`baseKind`/`baseUseVideo` e já transcreve e
   monta as cenas (`applyBaseSpeech()` em `baseVideo.ts`); áudio = só narração, vídeo = trilha fixa (`AvatarTrack` upload) ou só o
@@ -485,4 +493,4 @@ sem ela o resto do app funciona normalmente. `ELEVENLABS_API_KEY` é necessária
 (vozes e narração). `VIDEOGEN_WORKER_TOKEN` é o segredo compartilhado com o worker
 de render (sem ele as rotas `/api/videogen/worker/*` respondem 503). `PIXABAY_API_KEY` (opcional; ou `PEXELS_API_KEY`) liga os vídeos de banco do estilo livre.
 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` e `INSTAGRAM_APP_ID`/`INSTAGRAM_APP_SECRET` (opcionais) ligam a publicação direta no YouTube e no Instagram.
-`HIGGSFIELD_KEY_ID`/`HIGGSFIELD_KEY_SECRET` + `HIGGSFIELD_AVATAR_MODEL` (opcionais) ligam o avatar falando do VideoGen.
+`HEYGEN_API_KEY` (opcional) liga o avatar falando do VideoGen (HeyGen, chave única).

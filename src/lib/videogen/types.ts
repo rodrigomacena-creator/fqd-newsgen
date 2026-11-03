@@ -25,7 +25,7 @@ export interface VideoScene {
   stockQuery?: string;
   /** Clipe de banco (Pixabay/Pexels) escolhido para a cena (o worker usa no lugar da imagem). */
   stock?: { url: string; thumb: string; id: number; query: string; pick?: number; source?: "pixabay" | "pexels" | "upload" };
-  /** Mostra o vídeo base (avatar do Higgsfield ou vídeo do usuário) nesta cena em vez da imagem. */
+  /** Mostra o vídeo base (avatar do HeyGen ou vídeo do usuário) nesta cena em vez da imagem. */
   avatar?: boolean;
 }
 
@@ -37,14 +37,38 @@ export interface VideoScene {
  * vira a narração (transcrita no ElevenLabs para ter o tempo das palavras).
  * Vale só enquanto `narrationUrl` for a narração atual do job.
  */
+/** Personagem do HeyGen: avatar da conta ou "talking photo" (foto animada). */
+export interface AvatarCharacter {
+  kind: "avatar" | "talking_photo";
+  id: string;
+  name?: string;
+  previewUrl?: string;
+}
+
+export function parseCharacter(value: unknown): AvatarCharacter | null {
+  const o = typeof value === "string" ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+  if (!o || typeof o !== "object") return null;
+  const c = o as Record<string, unknown>;
+  if ((c.kind !== "avatar" && c.kind !== "talking_photo") || typeof c.id !== "string" || !c.id.trim()) return null;
+  return {
+    kind: c.kind,
+    id: c.id.trim().slice(0, 120),
+    name: typeof c.name === "string" ? c.name.trim().slice(0, 120) || undefined : undefined,
+    previewUrl: typeof c.previewUrl === "string" && /^https?:\/\//.test(c.previewUrl) ? c.previewUrl.slice(0, 800) : undefined,
+  };
+}
+
 export interface AvatarTrack {
-  source: "higgsfield" | "upload";
+  /** "heygen" = avatar falando; "higgsfield" = trilhas antigas (provedor anterior, não dá mais para consultar). */
+  source: "heygen" | "higgsfield" | "upload";
   status: "generating" | "ready" | "failed";
   /** Narração (ou o próprio vídeo, no upload) com que esta trilha está sincronizada. */
   narrationUrl: string;
-  /** Higgsfield: foto animada. */
+  /** Foto enviada que virou o personagem (quando não foi escolhido um avatar da conta). */
   imageUrl?: string;
-  /** Modelo do Higgsfield usado. */
+  /** HeyGen: avatar ou foto animada usada. */
+  character?: AvatarCharacter;
+  /** Provedor anterior: modelo usado. */
   model?: string;
   /** Trechos em sequência, cobrindo do 0 ao fim da fala (o upload tem um só). */
   segments: AvatarSegment[];
@@ -56,12 +80,14 @@ export interface AvatarTrack {
 export interface AvatarSegment {
   start: number;
   end: number;
-  /** Higgsfield: trecho da narração enviado (mp3 no Blob). */
+  /** Trecho da narração enviado (mp3 no Blob). */
   audioUrl?: string;
+  /** HeyGen: video_id do pedido. */
   requestId?: string;
+  /** Provedor anterior: URL de consulta. */
   statusUrl?: string;
   status: "queued" | "in_progress" | "completed" | "failed";
-  /** Vídeo do trecho no Blob (copiado do Higgsfield, cujo link expira). */
+  /** Vídeo do trecho no Blob (copiado do provedor, cujo link expira). */
   videoUrl?: string;
   error?: string;
 }
@@ -81,7 +107,8 @@ export function fixedSpeech(job: { speaker: string; narrationUrl: string | null;
 }
 
 export const AVATAR_SOURCE_LABEL: Record<AvatarTrack["source"], string> = {
-  higgsfield: "Avatar (Higgsfield)",
+  heygen: "Avatar (HeyGen)",
+  higgsfield: "Avatar (Higgsfield, antigo)",
   upload: "Vídeo seu",
 };
 
@@ -116,8 +143,10 @@ export interface VideoProfileDTO {
   instagram: string | null;
   cta: string | null;
   logoUrl: string | null;
-  /** Pessoa: foto usada para gerar o avatar falando (Higgsfield). */
+  /** Pessoa: foto usada para gerar o avatar falando (vira foto animada no HeyGen). */
   avatarUrl: string | null;
+  /** Pessoa: avatar/foto animada já cadastrado na conta do HeyGen (JSON de AvatarCharacter). */
+  heygenAvatar: string | null;
   colors: string | null;
   pronunciations: Pronunciation[];
   isDefault: boolean;

@@ -1,5 +1,5 @@
 import type { VideoJob } from "@/generated/prisma/client";
-import { parseSpeaker, summarizeCosts, type Speaker, type AvatarTrack, type VideoFormat, type BriefingImage, type CostEntry, type CostSummary, type NarrationWord, type VideoJobStatus, type VideoScript } from "./types";
+import { parseCharacter, parseSpeaker, summarizeCosts, type Speaker, type AvatarCharacter, type AvatarTrack, type VideoFormat, type BriefingImage, type CostEntry, type CostSummary, type NarrationWord, type VideoJobStatus, type VideoScript } from "./types";
 import { ELEVENLABS_USD_PER_CREDIT, parseCosts } from "./costs";
 import { parseBriefingImages } from "./profiles";
 
@@ -31,12 +31,14 @@ export interface VideoJobDTO {
   /** Perfil (empresa) para quem é o conteúdo. */
   companyId: string | null;
   briefingImages: BriefingImage[];
-  /** Vídeo base (avatar do Higgsfield ou vídeo do usuário) mostrado nas cenas com `avatar: true`. */
+  /** Vídeo base (avatar do HeyGen ou vídeo do usuário) mostrado nas cenas com `avatar: true`. */
   avatar: AvatarTrack | null;
   /** Quem fala: voz por IA, avatar por IA ou áudio/vídeo enviado. */
   speaker: Speaker;
   /** Foto escolhida na criação para o avatar (sem ela, a do perfil de quem fala). */
   avatarImageUrl: string | null;
+  /** Avatar/foto animada da conta do HeyGen escolhido na criação (sem ele, o do perfil; sem os dois, a foto). */
+  avatarCharacter: AvatarCharacter | null;
   status: VideoJobStatus;
   script: VideoScript | null;
   narrationUrl: string | null;
@@ -71,6 +73,7 @@ export function serializeVideoJob(job: VideoJob): VideoJobDTO {
     script: parseJson<VideoScript>(job.script),
     briefingImages: parseBriefingImages(job.briefingImages),
     avatar: parseJson<AvatarTrack>(job.avatar),
+    avatarCharacter: parseCharacter(job.avatarCharacter),
     speaker: parseSpeaker(job.speaker),
     narrationWords: parseJson<NarrationWord[]>(job.narrationWords),
     costs: parseCosts(job.costs),

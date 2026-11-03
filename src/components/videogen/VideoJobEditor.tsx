@@ -9,7 +9,7 @@ import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { CostPanel } from "@/components/videogen/CostPanel";
 import { SceneStudio } from "@/components/videogen/SceneStudio";
-import { BaseVideoPanel, avatarPhoto, jobApi } from "@/components/videogen/BaseVideoPanel";
+import { BaseVideoPanel, avatarWho, jobApi, type AvatarWho } from "@/components/videogen/BaseVideoPanel";
 import {
   AutoTextarea,
   CopyButton,
@@ -195,8 +195,8 @@ export function VideoJobEditor({ id }: { id: string }) {
     if (data) applyJob(data.job);
   }
 
-  /** Avatar por IA: manda a narração aprovada (e a foto) pro Higgsfield. */
-  async function startAvatar(scope: "all" | "marked", imageUrl: string | null) {
+  /** Avatar por IA: manda a narração aprovada (com o avatar escolhido ou a foto) pro HeyGen. */
+  async function startAvatar(scope: "all" | "marked", who: AvatarWho | null) {
     if (dirty && !(await save())) throw new Error("Não deu para salvar as alterações.");
     setBusy("avatar");
     setError(null);
@@ -205,7 +205,7 @@ export function VideoJobEditor({ id }: { id: string }) {
         await jobApi(`/api/videogen/jobs/${id}/avatar`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source: "higgsfield", imageUrl, scope }),
+          body: JSON.stringify({ source: "heygen", character: who?.character ?? null, imageUrl: who?.imageUrl ?? null, scope }),
         })
       );
     } finally {
@@ -430,7 +430,7 @@ export function VideoJobEditor({ id }: { id: string }) {
       busy={busy}
       dirty={dirty}
       imagesMissing={imagesMissing}
-      avatarImage={avatarPhoto(job, person)}
+      avatarWho={avatarWho(job, person)}
       onGenerateScript={regenerateScript}
       onGenerateImages={() => generateStoryboard()}
       onAdvance={advance}
@@ -597,15 +597,15 @@ export function VideoJobEditor({ id }: { id: string }) {
                           <button
                             type="button"
                             onClick={() =>
-                              speaker === "ai_avatar"
-                                ? startAvatar("all", avatarPhoto(job, person)).catch((e) => setError(e instanceof Error ? e.message : "Erro ao gerar o avatar."))
+                              speaker === "ai_avatar" && avatarWho(job, person)
+                                ? startAvatar("all", avatarWho(job, person)).catch((e) => setError(e instanceof Error ? e.message : "Erro ao gerar o avatar."))
                                 : advance()
                             }
-                            disabled={disabled || (speaker === "ai_avatar" && !avatarPhoto(job, person))}
+                            disabled={disabled}
                             className={`flex-1 ${primaryButton}`}
                           >
                             {busy === "avatar" ? <Spinner /> : <Icon name="check" className="h-4 w-4" />}
-                            {speaker === "ai_avatar" ? "Aprovar e gerar avatar" : "Aprovar narração"}
+                            {speaker === "ai_avatar" && avatarWho(job, person) ? "Aprovar e gerar avatar" : "Aprovar narração"}
                           </button>
                         )}
                       </div>
@@ -623,7 +623,7 @@ export function VideoJobEditor({ id }: { id: string }) {
 
           {/* 5 · Avatar */}
           {speaker === "ai_avatar" && (
-            <Stage {...stageProps("avatar")} hint="O serviço de avatar anima a foto falando a narração aprovada. Na timeline, escolha em cada cena avatar ou imagem.">
+            <Stage {...stageProps("avatar")} hint="O HeyGen anima o avatar (ou a foto) falando a narração aprovada. Na timeline, escolha em cada cena avatar ou imagem.">
               <BaseVideoPanel job={job} script={script} person={person} disabled={disabled} dirty={dirty} onSave={save} onJob={applyJob} onAvatarProgress={setJob} onStartAvatar={startAvatar} bare />
             </Stage>
           )}
@@ -827,7 +827,7 @@ function StepBar({
   busy,
   dirty,
   imagesMissing,
-  avatarImage,
+  avatarWho,
   onGenerateScript,
   onGenerateImages,
   onAdvance,
@@ -850,12 +850,12 @@ function StepBar({
   /** Cenas que ainda não têm imagem gerada (storyboard). */
   imagesMissing: number;
   /** Foto que o avatar vai usar (sem ela, o avatar não pode ser gerado). */
-  avatarImage: string | null;
+  avatarWho: AvatarWho | null;
   onGenerateScript: () => void;
   onGenerateImages: () => void;
   onAdvance: () => void;
   onNarration: () => void;
-  onStartAvatar: (imageUrl: string | null) => void;
+  onStartAvatar: (who: AvatarWho | null) => void;
   onQueue: () => void;
   onPreview: () => void;
   onUnqueue: () => void;
@@ -978,9 +978,9 @@ function StepBar({
       title = "Ouça a narração: aprove ou gere de novo";
       hint =
         speaker === "ai_avatar"
-          ? avatarImage
+          ? avatarWho
             ? `Aprovar manda só este áudio para gerar o avatar.${savingNote}`
-            : `Falta a foto do avatar: aprove a narração e envie a foto na etapa Avatar (ou cadastre no perfil de quem fala).${savingNote}`
+            : `Falta escolher o avatar: aprove a narração e escolha um avatar do HeyGen ou envie a foto na etapa Avatar (ou cadastre no perfil de quem fala).${savingNote}`
           : `Aprovada, a narração entra na timeline e libera a trilha e o render.${savingNote}`;
       action = (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -988,12 +988,12 @@ function StepBar({
             {busy === "narration" ? <Spinner /> : <Icon name="refresh" className="h-4 w-4" />}
             {busy === "narration" ? "Gerando…" : "Gerar de novo"}
           </button>
-          {speaker === "ai_avatar" && !avatarImage ? (
+          {speaker === "ai_avatar" && !avatarWho ? (
             continueButton("Aprovar narração")
           ) : speaker === "ai_avatar" ? (
             <button
               type="button"
-              onClick={() => onStartAvatar(avatarImage)}
+              onClick={() => onStartAvatar(avatarWho)}
               disabled={busy !== null}
               aria-busy={busy === "avatar"}
               className={`${actionClass} ${primaryButton} ${ink}`}
@@ -1010,7 +1010,7 @@ function StepBar({
   } else if (stage === "avatar") {
     if (avatarValid && avatar!.status === "generating") {
       title = `Gerando o avatar · ${avatarDone} de ${avatar!.segments.length} trecho(s)`;
-      hint = "O serviço de avatar anima a foto falando a narração aprovada. Leva alguns minutos; você pode continuar editando as cenas.";
+      hint = "O HeyGen anima o avatar falando a narração aprovada. Leva alguns minutos; você pode continuar editando as cenas.";
     } else if (avatarValid && avatar!.status === "failed") {
       title = "Parte do avatar falhou";
       hint = "Tente de novo os trechos que falharam no card Avatar, ou troque as cenas afetadas para imagem e continue.";
@@ -1020,11 +1020,11 @@ function StepBar({
       hint = `Na timeline, a faixa Avatar diz em que cenas aparece você e em quais aparece imagem.${savingNote}`;
       action = continueButton("Continuar para o render");
     } else {
-      title = avatarImage ? "Gere o avatar" : "Envie a foto do avatar";
-      hint = avatarImage ? `A narração aprovada vai para o serviço de avatar com a foto.${savingNote}` : "Envie a foto no card Avatar abaixo (ou cadastre no perfil de quem fala) e gere.";
-      if (avatarImage) {
+      title = avatarWho ? "Gere o avatar" : "Escolha o avatar";
+      hint = avatarWho ? `A narração aprovada vai para o HeyGen com ${avatarWho.character ? `o avatar ${avatarWho.character.name ?? ""}`.trim() : "a foto"}.${savingNote}` : "No card Avatar abaixo, escolha um avatar do HeyGen ou envie a foto (ou cadastre no perfil de quem fala) e gere.";
+      if (avatarWho) {
         action = (
-          <button type="button" onClick={() => onStartAvatar(avatarImage)} disabled={busy !== null} aria-busy={busy === "avatar"} className={`${actionClass} ${primaryButton} ${ink}`}>
+          <button type="button" onClick={() => onStartAvatar(avatarWho)} disabled={busy !== null} aria-busy={busy === "avatar"} className={`${actionClass} ${primaryButton} ${ink}`}>
             {busy === "avatar" ? <Spinner /> : <Icon name="sparkles" className="h-4 w-4" />}
             {busy === "avatar" ? "Enviando…" : "Gerar avatar"}
           </button>

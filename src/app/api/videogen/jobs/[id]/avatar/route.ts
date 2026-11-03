@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { deleteBlobIfOwned } from "@/lib/blobStorage";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
-import { advanceAvatar, discardAvatarFiles, parseAvatar, startHiggsfield } from "@/lib/videogen/avatar";
-import { higgsfieldConfigured } from "@/lib/videogen/higgsfield";
+import { advanceAvatar, discardAvatarFiles, parseAvatar, startHeygen } from "@/lib/videogen/avatar";
+import { heygenConfigured } from "@/lib/videogen/heygen";
 import { applyBaseSpeech } from "@/lib/videogen/baseVideo";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
 import { getProfile, isAllowedImageUrl } from "@/lib/videogen/profiles";
-import { fixedSpeech, type VideoScript } from "@/lib/videogen/types";
+import { fixedSpeech, parseCharacter, type VideoScript } from "@/lib/videogen/types";
 
 export const maxDuration = 300;
 
@@ -17,7 +17,7 @@ function busy(status: string) {
   return status === "queued" || status === "rendering";
 }
 
-/** Andamento do avatar: consulta o Higgsfield pelos trechos em geração e devolve o job atualizado. */
+/** Andamento do avatar: consulta o HeyGen pelos trechos em geração e devolve o job atualizado. */
 export async function GET(_request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const job = await prisma.videoJob.findUnique({ where: { id } });
@@ -33,14 +33,15 @@ export async function GET(_request: Request, ctx: Ctx) {
 
 /**
  * Cria o vídeo base.
- * { source: "higgsfield", imageUrl?, scope?: "all" | "marked" }: avatar falando a narração atual
- *   (foto do perfil da pessoa, ou a enviada). "all" = a fala inteira; "marked" = só as cenas marcadas.
+ * { source: "heygen", character?, imageUrl?, scope?: "all" | "marked" }: avatar falando a narração atual.
+ *   `character` = avatar/foto animada da conta do HeyGen; sem ele, a foto (enviada, do vídeo ou do perfil)
+ *   vira foto animada lá. "all" = a fala inteira; "marked" = só as cenas marcadas.
  * { source: "upload", videoUrl, durationS?, useVideo? }: áudio/vídeo do usuário (já no Blob). A fala
  *   é transcrita, vira a narração, e o roteiro é refeito em cima dela. `useVideo: false` = só o áudio.
  */
 export async function POST(request: Request, ctx: Ctx) {
   const { id } = await ctx.params;
-  let body: { source?: string; imageUrl?: string; scope?: string; videoUrl?: string; durationS?: number; useVideo?: boolean };
+  let body: { source?: string; imageUrl?: string; character?: unknown; scope?: string; videoUrl?: string; durationS?: number; useVideo?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -53,8 +54,8 @@ export async function POST(request: Request, ctx: Ctx) {
   const script = JSON.parse(job.script) as VideoScript;
 
   try {
-    if (body.source === "higgsfield") {
-      const cfg = higgsfieldConfigured();
+    if (body.source === "heygen" || body.source === "higgsfield") {
+      const cfg = heygenConfigured();
       if (!cfg.ok) return NextResponse.json({ error: cfg.problem }, { status: 503 });
       if (!job.narrationUrl) return NextResponse.json({ error: "Gere a narração antes do avatar." }, { status: 400 });
       const current = parseAvatar(job.avatar);
@@ -63,21 +64,31 @@ export async function POST(request: Request, ctx: Ctx) {
       }
       let imageUrl = typeof body.imageUrl === "string" ? body.imageUrl.trim() : "";
       if (imageUrl && !isAllowedImageUrl(imageUrl)) return NextResponse.json({ error: "Foto do avatar inválida." }, { status: 400 });
-      if (!imageUrl) imageUrl = job.avatarImageUrl || ((await getProfile(job.personId, "person"))?.avatarUrl ?? "");
-      if (!imageUrl) {
-        return NextResponse.json({ error: "Envie uma foto do avatar (ou cadastre uma no perfil de quem fala)." }, { status: 400 });
+      // quem fala: personagem escolhido agora > o do vídeo > o do perfil; senão a foto (agora > do vídeo > do perfil)
+      const person = await getProfile(job.personId, "person");
+      const character = parseCharacter(body.character) ?? (imageUrl ? null : (parseCharacter(job.avatarCharacter) ?? parseCharacter(person?.heygenAvatar)));
+      if (!character && !imageUrl) imageUrl = job.avatarImageUrl || person?.avatarUrl || "";
+      if (!character && !imageUrl) {
+        return NextResponse.json({ error: "Escolha um avatar do HeyGen ou envie uma foto (ou cadastre no perfil de quem fala)." }, { status: 400 });
       }
       const scope = body.scope === "marked" ? "marked" : "all";
       if (scope === "marked" && !script.scenes.some((s) => s.avatar)) {
         return NextResponse.json({ error: "Marque ao menos uma cena como avatar." }, { status: 400 });
       }
-      const avatar = await startHiggsfield(job, script, imageUrl, scope);
+      const avatar = await startHeygen(job, script, { character, imageUrl: character ? null : imageUrl }, scope);
       // sem nenhuma cena marcada ainda: abre com o avatar (o pedido do Rodrigo)
       const marked = script.scenes.some((s) => s.avatar);
       if (!marked && script.scenes[0]) script.scenes[0].avatar = true;
       const updated = await prisma.videoJob.update({
         where: { id },
-        data: { avatar: JSON.stringify(avatar), speaker: "ai_avatar", ...(marked ? {} : { script: JSON.stringify(script) }), error: null },
+        data: {
+          avatar: JSON.stringify(avatar),
+          speaker: "ai_avatar",
+          avatarCharacter: character ? JSON.stringify(character) : null,
+          ...(character ? {} : { avatarImageUrl: imageUrl || null }),
+          ...(marked ? {} : { script: JSON.stringify(script) }),
+          error: null,
+        },
       });
       return NextResponse.json({ job: serializeVideoJob(updated) });
     }
@@ -93,7 +104,7 @@ export async function POST(request: Request, ctx: Ctx) {
       const updated = await prisma.videoJob.update({ where: { id }, data });
       return NextResponse.json({ job: serializeVideoJob(updated) });
     }
-    return NextResponse.json({ error: "Escolha avatar (Higgsfield) ou vídeo seu." }, { status: 400 });
+    return NextResponse.json({ error: "Escolha avatar (HeyGen) ou vídeo seu." }, { status: 400 });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Erro ao criar o vídeo base." }, { status: 502 });
   }

@@ -20,7 +20,8 @@ import {
 import { useProfiles } from "@/lib/videogen/useProfiles";
 import { useVoices } from "@/lib/videogen/useVoices";
 import { uploadImage } from "@/lib/videogen/uploadImage";
-import type { Pronunciation, VideoProfileDTO, VideoProfileKind } from "@/lib/videogen/types";
+import { AvatarCharacterSelect } from "@/components/videogen/AvatarCharacterSelect";
+import { parseCharacter, type AvatarCharacter, type Pronunciation, type VideoProfileDTO, type VideoProfileKind } from "@/lib/videogen/types";
 
 interface Draft {
   id: string | null;
@@ -36,6 +37,7 @@ interface Draft {
   cta: string;
   logoUrl: string;
   avatarUrl: string;
+  heygenAvatar: AvatarCharacter | null;
   colors: string;
   pronunciations: Pronunciation[];
   isDefault: boolean;
@@ -57,6 +59,7 @@ function toDraft(p: VideoProfileDTO): Draft {
     cta: p.cta ?? "",
     logoUrl: p.logoUrl ?? "",
     avatarUrl: p.avatarUrl ?? "",
+    heygenAvatar: parseCharacter(p.heygenAvatar),
     colors: p.colors ?? "",
     pronunciations: p.pronunciations,
     isDefault: p.isDefault,
@@ -79,6 +82,7 @@ function emptyDraft(kind: VideoProfileKind): Draft {
     cta: "",
     logoUrl: "",
     avatarUrl: "",
+    heygenAvatar: null,
     colors: "",
     pronunciations: [],
     isDefault: false,
@@ -450,7 +454,15 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
               </div>
               <p className="mt-1 text-xs text-text-secondary">Escolher esta pessoa no vídeo já seleciona essa voz.</p>
               <div className="mt-4">
-                <span className={labelClass}>Foto do avatar (Higgsfield)</span>
+                <label htmlFor="profile-heygen" className={labelClass}>
+                  Avatar por IA (HeyGen)
+                </label>
+                <div className="mt-1.5">
+                  <AvatarCharacterSelect id="profile-heygen" value={d.heygenAvatar} onChange={(c) => set("heygenAvatar", c)} />
+                </div>
+              </div>
+              <div className="mt-4">
+                <span className={labelClass}>Foto do avatar</span>
                 <div className="mt-1.5 flex items-center gap-3">
                   <span className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-surface-2">
                     {d.avatarUrl ? (
@@ -484,7 +496,7 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
                   />
                 </div>
                 <p className="mt-1 text-xs text-text-secondary">
-                  Foto de frente, rosto bem visível, enquadrada do peito para cima. O Higgsfield anima esta foto falando com a voz acima.
+                  Usada quando nenhum avatar do HeyGen está escolhido: foto de frente, rosto bem visível, do peito para cima. O HeyGen anima a foto falando com a voz acima.
                 </p>
               </div>
             </div>
