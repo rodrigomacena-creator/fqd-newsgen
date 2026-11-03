@@ -350,7 +350,8 @@ reais encontradas ao construir o projeto, não só a estrutura.
   **Gancho**: o roteiro traz `script.hooks` (3 aberturas; a 1ª = cena 1) e o editor deixa trocar (`HookPicker`);
   o motor genérico abre com soco de zoom + clarão (`HOOK_LEN`). **Storyboard** (`storyboard.ts`, POST
   `.../storyboard`): gera a imagem de cada cena antes do render e salva em `scene.preview = {url, prompt}`; o worker
-  usa a prévia só se `preview.prompt` ainda é o `imagePrompt` da cena. **Vídeo de banco** (`stockVideo.ts`, só estilo
+  usa a prévia só se `preview.prompt` ainda é o `imagePrompt` da cena. Todo card do storyboard tem "Usar foto minha"/"Trocar foto" (upload vira `scene.imageUrl` e entra em
+  `briefingImages`; a foto antiga sai do briefing se nada mais a usa) e card com foto tem "Gerar com IA" (tira o `imageUrl`). **Vídeo de banco** (`stockVideo.ts`, só estilo
   livre com `image.photo`): a IA escreve `scene.stockQuery` (inglês); o app (storyboard ou `claim`, nunca o worker:
   as chaves ficam só na Vercel) acha o clipe e grava `scene.stock` (com `source`). Fonte principal: Pixabay
   (`PIXABAY_API_KEY`; a API não filtra vertical, então prefere arquivos verticais e aceita horizontal ≥1080p, que o

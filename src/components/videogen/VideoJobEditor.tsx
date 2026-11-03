@@ -2,7 +2,7 @@
 
 import { CoverPreview, PublishPanel } from "./PublishPanel";
 import { ScriptLoader } from "./ScriptLoader";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/Header";
@@ -30,7 +30,9 @@ import { useVoices } from "@/lib/videogen/useVoices";
 import { useStyles } from "@/lib/videogen/useStyles";
 import { useProfiles } from "@/lib/videogen/useProfiles";
 import { mergePronunciations } from "@/lib/videogen/pronunciation";
+import { uploadImage } from "@/lib/videogen/uploadImage";
 import {
+  MAX_BRIEFING_IMAGES,
   WORDS_PER_SECOND,
   fullNarration,
   type BriefingImage,
@@ -244,6 +246,34 @@ export function VideoJobEditor({ id }: { id: string }) {
   }
 
   /** Atualiza as imagens do briefing; cena que usava uma imagem removida volta para a imagem da IA. */
+  /**
+   * Storyboard: põe uma imagem enviada pelo usuário na cena. A foto antiga da cena sai do briefing se nenhuma outra cena
+   * (nem o fecho) usa, para caber no limite. Devolve uma mensagem de erro, se não couber.
+   */
+  function setSceneImage(index: number, url: string): string | null {
+    if (!script) return null;
+    const old = script.scenes[index]?.imageUrl;
+    const usedElsewhere =
+      !old ||
+      script.scenes.some((sc, i) => i !== index && sc.imageUrl === old) ||
+      script.cta.imageUrl === old ||
+      script.cta.logoUrl === old;
+    const base = usedElsewhere ? briefing : briefing.filter((b) => b.url !== old);
+    if (!base.some((b) => b.url === url) && base.length >= MAX_BRIEFING_IMAGES) {
+      return `Limite de ${MAX_BRIEFING_IMAGES} imagens suas por vídeo. Tire alguma nas imagens do briefing.`;
+    }
+    setBriefing(base.some((b) => b.url === url) ? base : [...base, { url }]);
+    updateScene(index, { imageUrl: url, ...(script.scenes[index]?.layout === "text_only" ? { layout: undefined } : {}) });
+    return null;
+  }
+
+  /** Storyboard: volta a cena para imagem gerada pela IA (a foto continua nas imagens do briefing). */
+  function backToGenerated(index: number) {
+    const sc = script?.scenes[index];
+    if (!sc) return;
+    updateScene(index, { imageUrl: undefined, ...(sc.imagePrompt.trim() ? {} : { imagePrompt: sc.visual || sc.narration }) });
+  }
+
   function changeBriefing(next: BriefingImage[]) {
     setBriefing(next);
     const keep = new Set(next.map((i) => i.url));
@@ -367,6 +397,8 @@ export function VideoJobEditor({ id }: { id: string }) {
           busy={busy === "storyboard"}
           busyScene={boardScene}
           onGenerate={generateStoryboard}
+          onUpload={setSceneImage}
+          onUseGenerated={backToGenerated}
         />
       )}
 
@@ -1037,6 +1069,8 @@ function Storyboard({
   busy,
   busyScene,
   onGenerate,
+  onUpload,
+  onUseGenerated,
 }: {
   scenes: VideoScene[];
   landscape?: boolean;
@@ -1044,7 +1078,36 @@ function Storyboard({
   busy: boolean;
   busyScene: number | null;
   onGenerate: (scene?: number, action?: "next_video" | "use_image") => void;
+  onUpload: (scene: number, url: string) => string | null;
+  onUseGenerated: (scene: number) => void;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [target, setTarget] = useState<number | null>(null);
+  const [uploading, setUploading] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  function pick(i: number) {
+    setTarget(i);
+    setUploadError(null);
+    fileRef.current?.click();
+  }
+
+  async function upload(file: File | undefined) {
+    if (!file || target === null) return;
+    const i = target;
+    setUploading(i);
+    try {
+      const url = await uploadImage(file, "briefing");
+      const problem = onUpload(i, url);
+      if (problem) setUploadError(problem);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Falha ao enviar a imagem.");
+    } finally {
+      setUploading(null);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
   const needs = scenes.filter((sc) => !sc.imageUrl && !sc.stock && sc.layout !== "text_only" && sc.imagePrompt.trim());
   const missing = needs.filter((sc) => !(sc.preview && sc.preview.prompt === sc.imagePrompt)).length;
   const pendingStock = scenes.filter((sc) => sc.stockQuery && !sc.stock && !sc.imageUrl).length;
@@ -1075,12 +1138,24 @@ function Storyboard({
           </button>
         )}
       </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => upload(e.target.files?.[0])}
+      />
+      {uploadError && (
+        <p role="alert" className="mt-3 rounded-lg bg-accent-red/10 px-3 py-2 text-xs text-accent-red">
+          {uploadError}
+        </p>
+      )}
       <ol className="mt-4 flex snap-x gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
         {scenes.map((sc, i) => {
           const fresh = Boolean(sc.preview && sc.preview.prompt === sc.imagePrompt);
           const src = sc.imageUrl || sc.stock?.thumb || sc.preview?.url;
           const generated = !sc.imageUrl && !sc.stock && sc.layout !== "text_only" && Boolean(sc.imagePrompt.trim());
-          const working = busy && (busyScene === i || (busyScene === null && generated && !fresh));
+          const working = uploading === i || (busy && (busyScene === i || (busyScene === null && generated && !fresh)));
           return (
             <li key={i} className={`shrink-0 snap-start ${landscape ? "w-[176px] sm:w-[208px]" : "w-[108px] sm:w-[124px]"}`}>
               <div className={`relative overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border ${landscape ? "aspect-video" : "aspect-[9/16]"}`}>
@@ -1111,7 +1186,17 @@ function Storyboard({
                 )}
               </div>
               {sc.imageUrl ? (
-                <p className="mt-1 text-center text-[11px] text-text-secondary">Sua foto</p>
+                <div className="mt-1 grid gap-0.5">
+                  <p className="text-center text-[11px] text-text-secondary">Sua foto</p>
+                  <button
+                    type="button"
+                    onClick={() => onUseGenerated(i)}
+                    disabled={disabled}
+                    className="inline-flex min-h-8 items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-accent-yellow hover:bg-accent-yellow/10 disabled:opacity-50"
+                  >
+                    <Icon name="sparkles" className="h-3.5 w-3.5" /> Gerar com IA
+                  </button>
+                </div>
               ) : sc.stock ? (
                 <div className="mt-1 grid gap-0.5">
                   <button
@@ -1140,9 +1225,15 @@ function Storyboard({
                 >
                   <Icon name="refresh" className="h-3.5 w-3.5" /> {sc.preview ? "Gerar de novo" : "Gerar"}
                 </button>
-              ) : (
-                <p className="mt-1 text-center text-[11px] text-text-secondary">&nbsp;</p>
-              )}
+              ) : null}
+              <button
+                type="button"
+                onClick={() => pick(i)}
+                disabled={disabled || uploading !== null}
+                className="inline-flex min-h-8 w-full items-center justify-center gap-1 rounded-lg text-[11px] text-text-secondary hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
+              >
+                <Icon name="image" className="h-3.5 w-3.5" /> {sc.imageUrl ? "Trocar foto" : "Usar foto minha"}
+              </button>
             </li>
           );
         })}
