@@ -8,6 +8,7 @@ import { VoiceSelect } from "@/components/videogen/VoiceSelect";
 import { BriefingImages } from "@/components/videogen/BriefingImages";
 import { ScriptLoader } from "@/components/videogen/ScriptLoader";
 import { TopicAiModal } from "@/components/videogen/TopicAiModal";
+import { VoiceCloneModal } from "@/components/videogen/VoiceCloneModal";
 import { formatUsd } from "@/components/videogen/CostPanel";
 import { FlowSteps, Icon, Spinner, StatusBadge, cardClass, fieldClass, iconButton, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
 import { useVoices } from "@/lib/videogen/useVoices";
@@ -27,12 +28,14 @@ import {
 import type { VideoJobDTO } from "@/lib/videogen/jobs";
 
 const MAX_TOPIC = 2000;
+const TRAIN_VOICE = "__treinar-voz__";
 const MAX_BATCH = 10;
 const noopSubscribe = () => () => {};
 
 export default function VideoGenPage() {
   const router = useRouter();
-  const { voices, loading: loadingVoices, error: voicesError } = useVoices();
+  const { voices, loading: loadingVoices, error: voicesError, addVoice } = useVoices();
+  const [trainingVoice, setTrainingVoice] = useState(false);
 
   const [topic, setTopic] = useState("");
   const [topicAi, setTopicAi] = useState(false);
@@ -75,7 +78,7 @@ export default function VideoGenPage() {
   );
   const patternId =
     chosenPattern ?? (wantedPattern && styles.some((s) => s.id === wantedPattern) ? wantedPattern : FREE_STYLE_ID);
-  const { people, companies, loaded: profilesLoaded } = useProfiles();
+  const { people, companies, loaded: profilesLoaded, setProfiles } = useProfiles();
   // null = ainda não escolheu (usa o perfil padrão); "" = nenhum
   const [chosenPerson, setChosenPerson] = useState<string | null>(null);
   const [chosenCompany, setChosenCompany] = useState<string | null>(null);
@@ -385,11 +388,26 @@ export default function VideoGenPage() {
                   profiles={people}
                   value={personId}
                   loaded={profilesLoaded}
+                  extraOption={{ value: TRAIN_VOICE, label: "+ Treinar nova voz…" }}
                   onChange={(id) => {
+                    if (id === TRAIN_VOICE) return setTrainingVoice(true);
                     setChosenPerson(id);
                     setChosenVoice(null);
                   }}
                 />
+                {trainingVoice && (
+                  <VoiceCloneModal
+                    onClose={() => setTrainingVoice(false)}
+                    onCreated={(profile) => {
+                      setProfiles((list) => [...list, profile]);
+                      if (profile.voiceId) {
+                        addVoice({ id: profile.voiceId, name: profile.name, category: "cloned", language: "pt", previewUrl: null });
+                      }
+                      setChosenPerson(profile.id);
+                      setChosenVoice(null);
+                    }}
+                  />
+                )}
                 <ProfileSelect
                   id="company"
                   label="Para qual empresa"
@@ -795,6 +813,7 @@ function ProfileSelect({
   profiles,
   value,
   loaded,
+  extraOption,
   onChange,
 }: {
   id: string;
@@ -805,6 +824,8 @@ function ProfileSelect({
   profiles: VideoProfileDTO[];
   value: string;
   loaded: boolean;
+  /** Opção extra no fim da lista que dispara uma ação (ex.: treinar nova voz) em vez de escolher um perfil. */
+  extraOption?: { value: string; label: string };
   onChange: (id: string) => void;
 }) {
   const selected = profiles.find((p) => p.id === value);
@@ -832,6 +853,11 @@ function ProfileSelect({
         {loaded && profiles.length === 0 && (
           <option value="" className="bg-background text-foreground">
             {emptyLabel}
+          </option>
+        )}
+        {loaded && extraOption && (
+          <option value={extraOption.value} className="bg-background text-foreground">
+            {extraOption.label}
           </option>
         )}
       </select>

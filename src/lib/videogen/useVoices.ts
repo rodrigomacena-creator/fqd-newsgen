@@ -24,5 +24,8 @@ export function useVoices() {
     };
   }, []);
 
-  return { voices, error, loading };
+  /** Põe na lista uma voz recém-criada (a listagem do ElevenLabs pode demorar a mostrar). */
+  const addVoice = (v: VoiceOption) => setVoices((list) => (list.some((x) => x.id === v.id) ? list : [v, ...list]));
+
+  return { voices, error, loading, addVoice };
 }

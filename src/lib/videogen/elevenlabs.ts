@@ -96,3 +96,26 @@ export async function textToSpeechWithTimestamps(
     credits: Number.isFinite(cost) && res.headers.has("character-cost") ? cost : null,
   };
 }
+
+/**
+ * Clonagem instantânea (Instant Voice Clone): cria uma voz nova na conta a partir de amostras de áudio.
+ * Devolve o voice_id. A conta precisa de plano com clonagem (Starter ou maior).
+ */
+export async function cloneVoice(params: {
+  name: string;
+  description?: string;
+  files: { name: string; type: string; data: ArrayBuffer }[];
+  removeBackgroundNoise: boolean;
+}): Promise<string> {
+  const form = new FormData();
+  form.append("name", params.name);
+  if (params.description) form.append("description", params.description);
+  form.append("remove_background_noise", String(params.removeBackgroundNoise));
+  form.append("labels", JSON.stringify({ language: "pt", origem: "videogen" }));
+  for (const f of params.files) form.append("files", new Blob([f.data], { type: f.type }), f.name);
+  const res = await fetch(`${API}/voices/add`, { method: "POST", headers: { "xi-api-key": apiKey() }, body: form });
+  if (!res.ok) throw new Error(`ElevenLabs recusou a criação da voz: ${await readError(res)}`);
+  const data = (await res.json()) as { voice_id?: string };
+  if (!data.voice_id) throw new Error("ElevenLabs não devolveu o id da voz.");
+  return data.voice_id;
+}
