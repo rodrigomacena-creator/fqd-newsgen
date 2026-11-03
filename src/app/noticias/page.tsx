@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { Header } from "@/components/Header";
 import { HistoryList } from "@/components/HistoryList";
+import { pickDisplayImage } from "@/lib/articleListing";
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100];
 const DEFAULT_PAGE_SIZE = 10;
@@ -10,43 +11,6 @@ function parseIntParam(value: string | string[] | undefined, fallback: number): 
   const raw = Array.isArray(value) ? value[0] : value;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
-
-interface StoredSection {
-  heading: string;
-  text: string;
-  image?: string;
-}
-
-// Prioriza a capa do portal; se a notícia não teve Portal (ex.: só Instagram) ou a
-// capa falhou na geração, usa qualquer outra imagem que exista — primeiro de uma
-// seção, depois do carrossel/legado do Instagram — pra sempre ter algo no histórico.
-function pickDisplayImage(article: {
-  coverImage: string | null;
-  sections: string;
-  instagramImages: string | null;
-  instagramImage: string | null;
-}): string | null {
-  if (article.coverImage) return article.coverImage;
-
-  try {
-    const sections: StoredSection[] = JSON.parse(article.sections);
-    const sectionImage = sections.find((s) => s.image)?.image;
-    if (sectionImage) return sectionImage;
-  } catch {
-    // sections inválido — ignora e segue tentando outras fontes de imagem
-  }
-
-  if (article.instagramImages) {
-    try {
-      const images: string[] = JSON.parse(article.instagramImages);
-      if (images[0]) return images[0];
-    } catch {
-      // instagramImages inválido — ignora
-    }
-  }
-
-  return article.instagramImage ?? null;
 }
 
 export default async function HistoryPage(props: PageProps<"/noticias">) {
@@ -88,7 +52,10 @@ export default async function HistoryPage(props: PageProps<"/noticias">) {
       <Header />
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12 sm:py-16">
-        <div className="flex items-center justify-between gap-4">
+        <Link href="/" className="inline-flex min-h-11 items-center text-sm text-text-secondary transition hover:text-accent-yellow">
+          ← Voltar ao NewsGen
+        </Link>
+        <div className="mt-2 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
               Histórico de notícias

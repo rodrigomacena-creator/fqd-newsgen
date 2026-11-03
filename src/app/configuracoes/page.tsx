@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { Header } from "@/components/Header";
 import { ModelPicker } from "@/components/ModelPicker";
 import { ProfileManager } from "@/components/ProfileManager";
@@ -62,7 +63,10 @@ export default function SettingsPage() {
       <Header />
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12 sm:py-16">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Configurações</h1>
+        <Link href="/" className="inline-flex min-h-11 items-center text-sm text-text-secondary transition hover:text-accent-yellow">
+          ← Voltar ao NewsGen
+        </Link>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Configurações do NewsGen</h1>
         <p className="mt-3 text-text-secondary">
           Modelos padrão de IA e perfis de tom de voz. Cada notícia também deixa
           escolher um modelo diferente na hora de gerar.

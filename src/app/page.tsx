@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { RecentArticles } from "@/components/RecentArticles";
 import { Header } from "@/components/Header";
 import { ModelPicker } from "@/components/ModelPicker";
 import { useModelOptions } from "@/lib/useModelOptions";
@@ -276,19 +277,38 @@ export default function Home() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <Header />
+      <Header wide />
 
-      <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12 sm:py-16">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          Transforme vídeos e páginas em notícia
-        </h1>
-        <p className="mt-3 text-text-secondary">
-          Cole links de vídeos do YouTube e/ou páginas com texto. Nossa IA lê todas
-          as fontes e escreve uma matéria única, mesclando o conteúdo — do jeito
-          que você configurar abaixo.
-        </p>
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-2xl">
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">NewsGen</h1>
+            <p className="mt-2 text-text-secondary">
+              Cole links de vídeos do YouTube e/ou páginas com texto. A IA lê todas as fontes e escreve uma matéria
+              única, do jeito que você configurar abaixo.
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <a href="#suas-noticias" className="inline-flex min-h-11 items-center text-sm font-medium text-accent-yellow lg:hidden">
+              Suas notícias ↓
+            </a>
+            <Link
+              href="/configuracoes"
+              className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-text-secondary transition hover:text-accent-yellow"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.3 4.3c.4-1.7 3-1.7 3.4 0a1.7 1.7 0 002.6 1.1c1.5-.9 3.3.8 2.4 2.4a1.7 1.7 0 001 2.5c1.8.4 1.8 3 0 3.4a1.7 1.7 0 00-1 2.6c.9 1.5-.9 3.3-2.4 2.4a1.7 1.7 0 00-2.6 1c-.4 1.8-3 1.8-3.4 0a1.7 1.7 0 00-2.5-1c-1.6.9-3.4-.9-2.5-2.4a1.7 1.7 0 00-1-2.6c-1.7-.4-1.7-3 0-3.4a1.7 1.7 0 001-2.5c-.9-1.6.9-3.3 2.5-2.4a1.7 1.7 0 002.5-1.1z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              Configurações
+            </Link>
+          </div>
+        </div>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+        <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+        <div className="min-w-0">
+
+        <form onSubmit={handleSubmit} className="space-y-5">
           <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
             <h2 className="text-[15px] font-bold uppercase tracking-wide text-accent-yellow">
               Fontes
@@ -760,6 +780,11 @@ export default function Home() {
             {error}
           </p>
         )}
+        </div>
+        <div className="lg:sticky lg:top-24">
+          <RecentArticles />
+        </div>
+        </div>
       </main>
     </div>
   );

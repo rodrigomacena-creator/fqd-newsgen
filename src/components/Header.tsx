@@ -5,11 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
 
+// Dois produtos: NewsGen (notícias: gerar, histórico, configurações) e VideoGen.
 const NAV_LINKS = [
-  { href: "/", label: "Gerar" },
-  { href: "/noticias", label: "Histórico" },
-  { href: "/videogen", label: "VideoGen" },
-  { href: "/configuracoes", label: "Configurações" },
+  { href: "/", label: "NewsGen", match: ["/noticias", "/noticia/", "/configuracoes"] },
+  { href: "/videogen", label: "VideoGen", match: [] as string[] },
 ];
 
 /** wide: alinha com páginas de layout largo (max-w-6xl), como o VideoGen. */
@@ -36,7 +35,9 @@ export function Header({ wide = false }: { wide?: boolean } = {}) {
         <div className="flex min-w-0 items-center gap-1">
           <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto sm:gap-1">
             {NAV_LINKS.map((link) => {
-              const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+              const active =
+                (link.href === "/" ? pathname === "/" : pathname.startsWith(link.href)) ||
+                link.match.some((m) => pathname.startsWith(m));
               return (
                 <Link
                   key={link.href}

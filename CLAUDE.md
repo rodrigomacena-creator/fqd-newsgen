@@ -248,6 +248,10 @@ reais encontradas ao construir o projeto, não só a estrutura.
   OpenRouter)
 - Páginas: `/` (home, form multi-fonte), `/noticia/[id]` (visualizar/editar), `/noticias`
   (histórico paginado + seleção em massa), `/configuracoes` (settings + perfis)
+- **Menu do topo** (`Header.tsx`): só dois produtos, **NewsGen** (`/`, ativo também em `/noticias`, `/noticia/*` e
+  `/configuracoes`) e **VideoGen**. A home do NewsGen segue o layout do VideoGen: formulário à esquerda, "Suas notícias"
+  (`RecentArticles.tsx`, GET `/api/articles?take=6`, `pickDisplayImage()` em `src/lib/articleListing.ts`) à direita e link
+  "Configurações" no topo; histórico completo e configurações têm "Voltar ao NewsGen".
 - `src/components/EditableText.tsx`, `RemovableImage.tsx`, `ModelPicker.tsx`,
   `ProfileCard.tsx`/`ProfileManager.tsx`, `HistoryList.tsx`, `InstagramPostCard.tsx`
 
