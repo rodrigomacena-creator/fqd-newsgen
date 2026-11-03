@@ -398,7 +398,7 @@ export default function VideoGenPage() {
           <div className="max-w-2xl">
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Novo vídeo</h1>
             <p className="mt-2 text-text-secondary">
-              Cinco perguntas, uma de cada vez. Os campos mudam conforme a resposta anterior, e nada é cobrado antes do último passo.
+              Responda os cinco passos na ordem. Nada é cobrado antes do último.
             </p>
           </div>
           {jobs && jobs.length > 0 && (
