@@ -1,6 +1,6 @@
 "use client";
 
-import { fieldClass } from "@/components/videogen/ui";
+import { Spinner, fieldClass } from "@/components/videogen/ui";
 import { useHeygenCharacters } from "@/lib/videogen/useHeygenCharacters";
 import type { AvatarCharacter } from "@/lib/videogen/types";
 
@@ -29,23 +29,32 @@ export function AvatarCharacterSelect({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={value.previewUrl} alt="" className="h-11 w-11 shrink-0 rounded-full border border-border object-cover" />
         )}
-        <select
-          id={id}
-          value={value?.id ?? ""}
-          disabled={disabled}
-          onChange={(e) => onChange(list.find((c) => c.id === e.target.value) ?? null)}
-          className={`${fieldClass} bg-background text-foreground`}
-        >
-          <option value="" className="bg-background text-foreground">
-            {loading && list.length === 0 ? "Carregando os avatares…" : "Escolha o avatar"}
-          </option>
-          {list.map((c) => (
-            <option key={c.id} value={c.id} className="bg-background text-foreground">
-              {c.name || c.id}
-              {c.kind === "talking_photo" ? " (foto animada)" : ""}
+        <span className="relative block min-w-0 flex-1">
+          <select
+            id={id}
+            value={value?.id ?? ""}
+            disabled={disabled}
+            aria-busy={loading}
+            onChange={(e) => onChange(list.find((c) => c.id === e.target.value) ?? null)}
+            className={`${fieldClass} bg-background text-foreground ${loading ? "pr-10" : ""}`}
+          >
+            <option value="" className="bg-background text-foreground">
+              {loading && list.length === 0 ? "Carregando os avatares…" : "Escolha o avatar"}
             </option>
-          ))}
-        </select>
+            {list.map((c) => (
+              <option key={c.id} value={c.id} className="bg-background text-foreground">
+                {c.name || c.id}
+                {c.kind === "talking_photo" ? " (foto animada)" : ""}
+              </option>
+            ))}
+          </select>
+          {loading && (
+            // loadzinho dentro do campo enquanto a lista vem do HeyGen (a primeira carga leva ~45 s)
+            <span className="pointer-events-none absolute inset-y-0 right-8 flex items-center text-text-secondary">
+              <Spinner className="h-4 w-4" />
+            </span>
+          )}
+        </span>
       </div>
       <p className="mt-1 text-xs text-text-secondary">
         {loading && list.length === 0
