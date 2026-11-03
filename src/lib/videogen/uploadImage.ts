@@ -132,3 +132,17 @@ export async function uploadBaseFile(file: File, onProgress?: (pct: number) => v
   });
   return { url: blob.url, kind };
 }
+
+/** Sobe um vídeo para tocar numa cena (storyboard) direto do navegador pro Vercel Blob, na pasta do job. */
+export async function uploadSceneClip(file: File, jobId: string, onProgress?: (pct: number) => void): Promise<string> {
+  const problem = videoProblem(file);
+  if (problem) throw new Error(problem);
+  const blob = await upload(`videogen/${jobId}/clipes/${slug(file.name)}.${VIDEO_TYPES[file.type]}`, file, {
+    access: "public",
+    handleUploadUrl: "/api/videogen/uploads",
+    contentType: file.type,
+    multipart: file.size > 20 * 1024 * 1024,
+    onUploadProgress: onProgress ? (e) => onProgress(e.percentage) : undefined,
+  });
+  return blob.url;
+}

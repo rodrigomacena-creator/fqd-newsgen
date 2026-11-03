@@ -30,7 +30,7 @@ import { useVoices } from "@/lib/videogen/useVoices";
 import { useStyles } from "@/lib/videogen/useStyles";
 import { useProfiles } from "@/lib/videogen/useProfiles";
 import { mergePronunciations } from "@/lib/videogen/pronunciation";
-import { uploadImage } from "@/lib/videogen/uploadImage";
+import { uploadImage, uploadSceneClip } from "@/lib/videogen/uploadImage";
 import {
   MAX_BRIEFING_IMAGES,
   SPEAKER_LABEL,
@@ -295,6 +295,18 @@ export function VideoJobEditor({ id }: { id: string }) {
     return null;
   }
 
+  /** Storyboard: põe um vídeo enviado pelo usuário na cena (toca no lugar da imagem; fica na pasta do job). */
+  function setSceneClip(index: number, url: string) {
+    const sc = script?.scenes[index];
+    if (!sc) return;
+    updateScene(index, {
+      stock: { url, thumb: "", id: 0, query: "", source: "upload" },
+      stockQuery: undefined,
+      imageUrl: undefined,
+      ...(sc.layout === "text_only" ? { layout: undefined } : {}),
+    });
+  }
+
   /** Storyboard: volta a cena para imagem gerada pela IA (a foto continua nas imagens do briefing). */
   function backToGenerated(index: number) {
     const sc = script?.scenes[index];
@@ -449,6 +461,7 @@ export function VideoJobEditor({ id }: { id: string }) {
 
       {script && (
         <Storyboard
+          jobId={job.id}
           scenes={script.scenes}
           landscape={job.format === "16:9"}
           disabled={disabled}
@@ -456,6 +469,7 @@ export function VideoJobEditor({ id }: { id: string }) {
           busyScene={boardScene}
           onGenerate={generateStoryboard}
           onUpload={setSceneImage}
+          onUploadClip={setSceneClip}
           onUseGenerated={backToGenerated}
         />
       )}
@@ -1206,6 +1220,7 @@ const boardAction =
   "inline-flex items-center justify-center gap-1 rounded-lg text-[11px] font-medium text-accent-yellow hover:bg-accent-yellow/10 disabled:opacity-50";
 
 function Storyboard({
+  jobId,
   scenes,
   landscape,
   disabled,
@@ -1213,8 +1228,10 @@ function Storyboard({
   busyScene,
   onGenerate,
   onUpload,
+  onUploadClip,
   onUseGenerated,
 }: {
+  jobId: string;
   scenes: VideoScene[];
   landscape?: boolean;
   disabled: boolean;
@@ -1222,6 +1239,7 @@ function Storyboard({
   busyScene: number | null;
   onGenerate: (scene?: number, action?: "next_video" | "use_image") => void;
   onUpload: (scene: number, url: string) => string | null;
+  onUploadClip: (scene: number, url: string) => void;
   onUseGenerated: (scene: number) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -1240,11 +1258,14 @@ function Storyboard({
     const i = target;
     setUploading(i);
     try {
-      const url = await uploadImage(file, "briefing");
-      const problem = onUpload(i, url);
-      if (problem) setUploadError(problem);
+      if (file.type.startsWith("video/")) {
+        onUploadClip(i, await uploadSceneClip(file, jobId));
+      } else {
+        const problem = onUpload(i, await uploadImage(file, "briefing"));
+        if (problem) setUploadError(problem);
+      }
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Falha ao enviar a imagem.");
+      setUploadError(err instanceof Error ? err.message : "Falha ao enviar o arquivo.");
     } finally {
       setUploading(null);
       if (fileRef.current) fileRef.current.value = "";
@@ -1284,7 +1305,7 @@ function Storyboard({
       <input
         ref={fileRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
         className="hidden"
         onChange={(e) => upload(e.target.files?.[0])}
       />
@@ -1302,11 +1323,13 @@ function Storyboard({
           return (
             <li key={i} className={`shrink-0 snap-start ${landscape ? "w-[176px] sm:w-[208px]" : "w-[108px] sm:w-[124px]"}`}>
               <div className={`relative overflow-hidden rounded-xl bg-surface-2 ring-1 ring-border ${landscape ? "aspect-video" : "aspect-[9/16]"}`}>
-                {src && (
+                {sc.stock?.source === "upload" ? (
+                  <video src={`${sc.stock.url}#t=0.5`} muted playsInline preload="metadata" aria-label={`Cena ${i + 1}: seu vídeo`} className="h-full w-full object-cover" />
+                ) : src ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={src} alt={`Cena ${i + 1}`} className={`h-full w-full object-cover ${!sc.imageUrl && !fresh ? "opacity-40" : ""}`} />
-                )}
-                {!src && (
+                ) : null}
+                {!src && sc.stock?.source !== "upload" && (
                   <span className="absolute inset-0 flex items-center justify-center px-2 text-center text-[11px] text-text-secondary">
                     {sc.layout === "text_only" ? "Só texto" : "Ainda sem imagem"}
                   </span>
@@ -1331,10 +1354,14 @@ function Storyboard({
               {/* mesmas linhas em todo card (situação, ação principal, foto sua) para os botões ficarem alinhados */}
               <div className="mt-1 grid grid-rows-[20px_32px_32px] gap-0.5">
                 <p className="flex items-center justify-center text-[11px] text-text-secondary">
-                  {sc.imageUrl ? "Sua foto" : sc.stock ? "Vídeo de banco" : sc.layout === "text_only" ? "Só texto" : generated ? "Imagem da IA" : "Sem imagem"}
+                  {sc.imageUrl ? "Sua imagem" : sc.stock?.source === "upload" ? "Seu vídeo" : sc.stock ? "Vídeo de banco" : sc.layout === "text_only" ? "Só texto" : generated ? "Imagem da IA" : "Sem imagem"}
                 </p>
                 {sc.imageUrl ? (
                   <button type="button" onClick={() => onUseGenerated(i)} disabled={disabled} className={boardAction}>
+                    <Icon name="sparkles" className="h-3.5 w-3.5" /> Gerar com IA
+                  </button>
+                ) : sc.stock?.source === "upload" ? (
+                  <button type="button" onClick={() => onGenerate(i, "use_image")} disabled={disabled} className={boardAction}>
                     <Icon name="sparkles" className="h-3.5 w-3.5" /> Gerar com IA
                   </button>
                 ) : sc.stock ? (
@@ -1354,9 +1381,9 @@ function Storyboard({
                   disabled={disabled || uploading !== null}
                   className="inline-flex items-center justify-center gap-1 rounded-lg text-[11px] text-text-secondary hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
                 >
-                  <Icon name="image" className="h-3.5 w-3.5" /> {sc.imageUrl ? "Trocar foto" : "Usar foto minha"}
+                  <Icon name="up" className="h-3.5 w-3.5" /> {sc.imageUrl || sc.stock?.source === "upload" ? "Trocar arquivo" : "Upload de imagem / vídeo"}
                 </button>
-                {sc.stock && !sc.imageUrl && (
+                {sc.stock && sc.stock.source !== "upload" && !sc.imageUrl && (
                   <button
                     type="button"
                     onClick={() => onGenerate(i, "use_image")}

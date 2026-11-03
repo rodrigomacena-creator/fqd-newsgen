@@ -374,7 +374,7 @@ export function SceneStudio({
               </>
             )}
             {shown !== "cta" && (
-              <Chip>{avatar && shownScene?.avatar ? baseLabel : shownScene?.imageUrl ? "Sua foto" : shownPreview ? "Storyboard" : "Imagem por IA"}</Chip>
+              <Chip>{avatar && shownScene?.avatar ? baseLabel : shownScene?.imageUrl ? "Sua imagem" : shownScene?.stock?.source === "upload" ? "Seu vídeo" : shownPreview ? "Storyboard" : "Imagem por IA"}</Chip>
             )}
             {!timing.measured && !noNarration && <Chip>estimado</Chip>}
           </div>
@@ -1008,7 +1008,7 @@ function SceneInspector({
           }
         />
 
-        {!scene.imageUrl && scene.layout !== "text_only" && (
+        {!scene.imageUrl && scene.layout !== "text_only" && scene.stock?.source !== "upload" && (
           <div>
             <label htmlFor={ids("stock")} className={studioLabel}>
               Vídeo de banco <span className="font-normal normal-case tracking-normal text-text-secondary">(opcional, busca em inglês)</span>

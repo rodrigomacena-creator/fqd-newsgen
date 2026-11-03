@@ -16,7 +16,7 @@ import { defaultDirection, directionPromptRule, normalizeDirection } from "./dir
 import { SCENE_LAYOUTS, enforcePhotoPrompts, freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
 import { HUMANIZER_RULE } from "./humanizer";
 import { CTA_EFFECTS, type VideoFormat } from "./types";
-import { STOCK_URL_RE } from "./stockVideo";
+import { STOCK_URL_RE, UPLOADED_CLIP_RE } from "./stockVideo";
 
 // Claude via OpenRouter (Rodrigo quer um provedor só pra LLM).
 export const VIDEOGEN_TEXT_MODEL = process.env.VIDEOGEN_TEXT_MODEL || "anthropic/claude-sonnet-5.5";
@@ -208,6 +208,10 @@ export function normalizeScript(input: unknown): VideoScript {
     if (st && typeof st.url === "string" && STOCK_URL_RE.test(st.url)) {
       scene.stock = { url: st.url, thumb: str(st.thumb), id: Number(st.id) || 0, query: str(st.query), pick: Number(st.pick) || 0 };
       if (st.source === "pixabay" || st.source === "pexels") scene.stock.source = st.source;
+    } else if (st && typeof st.url === "string" && st.source === "upload" && UPLOADED_CLIP_RE.test(st.url)) {
+      // vídeo enviado pelo usuário: toca na cena como um vídeo de banco (sem busca)
+      scene.stock = { url: st.url, thumb: "", id: 0, query: "", source: "upload" };
+      delete scene.stockQuery;
     }
     return scene;
   });

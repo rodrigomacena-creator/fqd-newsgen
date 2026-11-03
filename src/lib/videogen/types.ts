@@ -24,7 +24,7 @@ export interface VideoScene {
   /** Só no estilo livre: busca em inglês de um vídeo de banco (Pixabay/Pexels) para esta cena. */
   stockQuery?: string;
   /** Clipe de banco (Pixabay/Pexels) escolhido para a cena (o worker usa no lugar da imagem). */
-  stock?: { url: string; thumb: string; id: number; query: string; pick?: number; source?: "pixabay" | "pexels" };
+  stock?: { url: string; thumb: string; id: number; query: string; pick?: number; source?: "pixabay" | "pexels" | "upload" };
   /** Mostra o vídeo base (avatar do Higgsfield ou vídeo do usuário) nesta cena em vez da imagem. */
   avatar?: boolean;
 }

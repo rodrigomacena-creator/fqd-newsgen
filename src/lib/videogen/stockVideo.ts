@@ -8,6 +8,8 @@ type Stock = NonNullable<VideoScene["stock"]>;
 
 /** Hosts de onde o worker pode baixar um clipe (normalizeScript só aceita estes). */
 export const STOCK_URL_RE = /^https:\/\/([a-z0-9-]+\.)*(pixabay\.com|pexels\.com)\//i;
+/** Vídeo enviado pelo usuário para uma cena (Blob, pasta do job: some junto quando o vídeo é excluído). */
+export const UPLOADED_CLIP_RE = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/videogen\/[a-z0-9]{16,40}\/clipes\//i;
 
 export function stockEnabled(): boolean {
   return Boolean(process.env.PIXABAY_API_KEY || process.env.PEXELS_API_KEY);
