@@ -146,7 +146,12 @@ const bareVoiceName = (v: HeygenVoice) => v.name.replace(/\s*\((?:male|female|un
 export function voiceNamedLike(name: string | undefined, voices: HeygenVoice[]): HeygenVoice | undefined {
   const n = (name ?? "").trim().toLowerCase();
   if (!n) return undefined;
-  return voices.find((v) => bareVoiceName(v) === n) ?? voices.find((v) => bareVoiceName(v).startsWith(n));
+  return (
+    voices.find((v) => bareVoiceName(v) === n) ??
+    // "Erick Melo" (sem número) → "Erick Melo Padrão HeyGen" antes de "Erick Melo -- 15"
+    voices.find((v) => bareVoiceName(v).startsWith(n) && /padr[ãa]o|default/i.test(bareVoiceName(v))) ??
+    voices.find((v) => bareVoiceName(v).startsWith(n))
+  );
 }
 
 /**
