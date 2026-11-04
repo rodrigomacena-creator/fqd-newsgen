@@ -72,6 +72,22 @@ export function VideoJobEditor({ id }: { id: string }) {
       return 0;
     }
   });
+  // vídeo pronto reaberto para edição ("Editar novamente"): as etapas voltam a abrir; o mp4 atual fica até renderizar de novo
+  const [reopened, setReopenedState] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem(`videogen.reeditar.${id}`) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setReopened = (on: boolean) => {
+    setReopenedState(on);
+    try {
+      if (on) localStorage.setItem(`videogen.reeditar.${id}`, "1");
+      else localStorage.removeItem(`videogen.reeditar.${id}`);
+    } catch {}
+  };
   const setStored = (n: number) => {
     setStoredState(n);
     try {
@@ -242,6 +258,7 @@ export function VideoJobEditor({ id }: { id: string }) {
       ...(mode ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) } : {}),
     });
     if (data?.job) applyJob(data.job);
+    if (data?.job && !remove) setReopened(false);
   }
 
   async function remove() {
@@ -412,7 +429,8 @@ export function VideoJobEditor({ id }: { id: string }) {
   const avatarValid = Boolean(job.avatar && (avatarGenerating || (job.narrationUrl && job.avatar.narrationUrl === job.narrationUrl)) && !avatarStale(job.avatar, script));
   const avatarReady = avatarValid && !avatarGenerating && job.avatar?.status === "ready";
   // até onde os dados deixam ir (teto) e de onde não faz sentido voltar (piso)
-  const ceiling = flowDone
+  const editingAgain = flowDone && reopened;
+  const ceiling = flowDone && !reopened
     ? idx("done")
     : !script
       ? 0
@@ -423,9 +441,16 @@ export function VideoJobEditor({ id }: { id: string }) {
           : speaker === "ai_avatar" && !avatarReady
             ? idx("avatar")
             : idx("render");
-  const floor = flowDone ? idx("done") : speaker === "ai_avatar" && avatarValid ? idx("avatar") : needsNarration && job.narrationUrl ? idx("narration") : 0;
+  const floor = editingAgain ? 0 : flowDone ? idx("done") : speaker === "ai_avatar" && avatarValid ? idx("avatar") : needsNarration && job.narrationUrl ? idx("narration") : 0;
   const current = Math.min(Math.max(stored, floor), ceiling);
   const imagesMissing = script ? script.scenes.filter((sc) => needsGeneratedImage(sc) && !(sc.preview && sc.preview.prompt === sc.imagePrompt)).length : 0;
+
+  /** Vídeo pronto com algum erro: reabre as etapas (imagens, cenas, narração...) para ajustar e renderizar de novo. */
+  function reopen() {
+    setReopened(true);
+    setStored(idx("render"));
+    setTimeout(() => document.getElementById("etapa-images")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  }
 
   function advance() {
     const next = Math.min(current + 1, stages.length - 1);
@@ -451,6 +476,8 @@ export function VideoJobEditor({ id }: { id: string }) {
       onAdvance={advance}
       onNarration={generateNarration}
       onStartAvatar={(who) => startAvatar(who).catch((e) => setError(e instanceof Error ? e.message : "Erro ao gerar o avatar."))}
+      reopened={reopened}
+      onReopen={reopen}
       onQueue={() => queue()}
       onPreview={() => queue(false, "preview")}
       onUnqueue={() => queue(true)}
@@ -488,6 +515,24 @@ export function VideoJobEditor({ id }: { id: string }) {
         <div role="alert" className="mt-5 flex gap-2 rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
           <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
           <span className="min-w-0 [overflow-wrap:anywhere]">{error || job.error}</span>
+        </div>
+      )}
+
+      {editingAgain && (
+        <div role="status" className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+          <p className="min-w-0 flex-1">
+            <span className="font-semibold">Editando um vídeo pronto.</span> O mp4 atual continua disponível até você renderizar de novo.
+          </p>
+          <div className="flex shrink-0 items-center gap-3">
+            {job.videoUrl && (
+              <a href={job.videoUrl} target="_blank" rel="noreferrer" className="text-xs font-medium underline hover:text-accent-yellow">
+                Ver vídeo atual
+              </a>
+            )}
+            <button type="button" onClick={() => setReopened(false)} disabled={busy !== null} className="text-xs font-medium underline hover:text-accent-yellow disabled:opacity-50">
+              Voltar ao vídeo pronto
+            </button>
+          </div>
         </div>
       )}
 
@@ -676,13 +721,19 @@ export function VideoJobEditor({ id }: { id: string }) {
 
           {/* 7 · Pronto */}
           {flowDone && job.videoUrl && (
-            <Stage {...stageProps("done")} hint="Assista, baixe, ajuste a legenda e publique.">
+            <Stage {...stageProps("done")} hint="Assista, baixe, ajuste o título e a legenda e publique. Algum erro no vídeo? Use Editar novamente.">
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <div>
                   <video controls preload="metadata" src={job.videoUrl} className={`mx-auto ${job.format === "16:9" ? "aspect-video" : "aspect-[9/16] max-h-[70dvh]"} w-full rounded-xl bg-black object-contain`} />
                   <a href={downloadUrl(job.videoUrl)} download className={`mt-4 w-full ${primaryButton} !bg-foreground !text-background hover:!bg-foreground/85`}>
                     <Icon name="download" className="h-4 w-4" /> Baixar mp4
                   </a>
+                  <button type="button" onClick={reopen} disabled={disabled} className={`mt-2 w-full ${secondaryButton}`}>
+                    <Icon name="edit" className="h-4 w-4" /> Editar novamente
+                  </button>
+                  <p className="mt-1.5 text-xs text-text-secondary">
+                    Imagens, cenas, narração ou trilha com erro? Reabre as etapas; o mp4 atual fica disponível até você renderizar de novo.
+                  </p>
                   <CoverPreview job={job} />
                 </div>
                 <div>
@@ -699,6 +750,24 @@ export function VideoJobEditor({ id }: { id: string }) {
                   />
                   <p id="keywords-help" className="mt-1 text-xs text-text-secondary">
                     Separadas por vírgula. O vídeo destaca essas palavras na legenda (mudou? renderize de novo).
+                  </p>
+                  <div className="flex items-end justify-between gap-2">
+                    <label htmlFor="post-title" className={labelClass}>
+                      Título sugerido para o post <span className="font-normal normal-case tracking-normal text-text-secondary">({(script.postTitle ?? script.title).length}/100)</span>
+                    </label>
+                    <CopyButton text={script.postTitle ?? script.title} />
+                  </div>
+                  <input
+                    id="post-title"
+                    aria-describedby="post-title-help"
+                    value={script.postTitle ?? script.title}
+                    maxLength={100}
+                    onChange={(e) => update({ postTitle: e.target.value })}
+                    disabled={disabled}
+                    className={`mt-1 ${fieldClass}`}
+                  />
+                  <p id="post-title-help" className="mt-1 text-xs text-text-secondary">
+                    {script.postTitle ? "Sugerido pela IA junto do roteiro; edite à vontade. Vira o título padrão da publicação no YouTube." : "Este vídeo é anterior à sugestão de título: partimos do título do vídeo. Edite à vontade."}
                   </p>
                   <div className="mt-4 flex items-end justify-between gap-2">
                     <label htmlFor="caption" className={labelClass}>
@@ -844,6 +913,8 @@ function StepBar({
   onAdvance,
   onNarration,
   onStartAvatar,
+  reopened,
+  onReopen,
   onQueue,
   onPreview,
   onUnqueue,
@@ -869,13 +940,15 @@ function StepBar({
   onAdvance: () => void;
   onNarration: () => void;
   onStartAvatar: (character: AvatarCharacter | null) => void;
+  reopened: boolean;
+  onReopen: () => void;
   onQueue: () => void;
   onPreview: () => void;
   onUnqueue: () => void;
   onSave: () => void;
   onDiscard: () => void;
 }) {
-  const done = job.status === "done" && Boolean(job.videoUrl);
+  const done = job.status === "done" && Boolean(job.videoUrl) && !reopened;
   const savingNote = dirty ? " Suas alterações são salvas antes." : "";
   const actionClass = "w-full sm:w-auto";
   // Botão principal em tinta (preto no claro, claro no escuro): o vermelho sai da faixa.
@@ -942,11 +1015,16 @@ function StepBar({
     }
   } else if (done) {
     title = "Vídeo pronto";
-    hint = "Assista, baixe e publique na última etapa. A legenda do post está lá.";
+    hint = "Assista, baixe e publique na última etapa. O título e a legenda do post estão lá. Algum erro? Edite novamente.";
     action = (
-      <a href={downloadUrl(job.videoUrl!)} download className={`${actionClass} ${primaryButton} ${ink}`}>
-        <Icon name="download" className="h-4 w-4" /> Baixar mp4
-      </a>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <button type="button" onClick={onReopen} disabled={busy !== null} className={`${actionClass} ${secondaryButton} bg-background/70`}>
+          <Icon name="edit" className="h-4 w-4" /> Editar novamente
+        </button>
+        <a href={downloadUrl(job.videoUrl!)} download className={`${actionClass} ${primaryButton} ${ink}`}>
+          <Icon name="download" className="h-4 w-4" /> Baixar mp4
+        </a>
+      </div>
     );
   } else if (!renderable) {
     title = "Estilo removido";

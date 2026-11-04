@@ -223,6 +223,8 @@ export interface VideoScript {
   hooks?: { narration: string; onScreen: string }[];
   /** Prompt em inglês pra trilha (ElevenLabs Music). */
   musicPrompt: string;
+  /** Título sugerido para o post (YouTube/Reels/portal); vídeos antigos não têm e usam `title`. */
+  postTitle?: string;
   /** Legenda do post (Instagram/YouTube) com hashtags. */
   postCaption: string;
   /** Pronúncias extras deste vídeo, somadas ao dicionário padrão. */

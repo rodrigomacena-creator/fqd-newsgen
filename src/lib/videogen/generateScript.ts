@@ -154,6 +154,7 @@ ${ctaRule(ctx.person, ctx.company)}${imagesRule}${directionPromptRule(pattern.id
 - Pronúncia: siglas e nomes em inglês são falados como em inglês (SEO e GEO letra por letra). Escreva na narração a grafia normal; o sistema já converte estes termos: ${dictionary}. Se usar outro termo/marca em inglês que um narrador brasileiro leria errado, adicione em "pronunciations" com uma grafia fonética em português (ex.: {"display": "Claude", "spoken": "Clód"}).
 - "keywords": 3 a 8 palavras da narração/tela que merecem destaque visual.
 - "musicPrompt": em inglês, descreve a trilha instrumental no clima do padrão (sem vocais), para o ElevenLabs Music.
+- "postTitle": título sugerido para o POST do vídeo (YouTube, Reels, portal), em português, até 70 caracteres, que desperta curiosidade sem prometer o que o vídeo não entrega; sem hashtags, sem emojis, sem aspas e sem ponto final. Diferente do "title" interno.
 - "postCaption": legenda do post em português, 2–4 linhas, com CTA e 3–6 hashtags.
 - Não invente números, estatísticas ou citações específicas que você não possa sustentar; prefira afirmações gerais e verdadeiras.
 ${HUMANIZER_RULE}
@@ -168,6 +169,7 @@ Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
   "hooks": [{ "narration": "...", "onScreen": "..." }],
   "keywords": ["..."],
   "musicPrompt": "...",
+  "postTitle": "...",
   "postCaption": "...",
   "pronunciations": [{ "display": "...", "spoken": "..." }]${free ? ',\n  "styleSpec": { "palette": {...}, "background": {...}, "image": {...}, "caption": {...}, "title": {...}, "transition": {...}, "overlay": {...}, "cta": {...}, "motion": {...} }' : ""}
 }`;
@@ -230,6 +232,7 @@ export function normalizeScript(input: unknown): VideoScript {
     keywords: (Array.isArray(d.keywords) ? d.keywords : []).map(str).filter(Boolean),
     ...(hooks.length > 1 ? { hooks } : {}),
     musicPrompt: str(d.musicPrompt),
+    ...(str(d.postTitle) ? { postTitle: str(d.postTitle).slice(0, 100) } : {}),
     postCaption: str(d.postCaption),
     pronunciations,
     ...(sanitizeStyleSpec(d.styleSpec) ? { styleSpec: sanitizeStyleSpec(d.styleSpec) } : {}),

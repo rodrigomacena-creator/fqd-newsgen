@@ -58,8 +58,15 @@ export function PublishPanel({ job }: { job: VideoJobDTO }) {
   const [want, setWant] = useState<Record<string, boolean>>({});
   const landscape = job.format === "16:9";
   // horizontal = vídeo normal do YouTube (sem #Shorts); vertical vira Shorts
-  const [title, setTitle] = useState(() => (landscape ? (job.script?.title || job.topic).slice(0, 100) : `${(job.script?.title || job.topic).slice(0, 88)} #Shorts`));
+  const postTitle = job.script?.postTitle || job.script?.title || job.topic;
+  const [title, setTitle] = useState(() => (landscape ? postTitle.slice(0, 100) : `${postTitle.slice(0, 88)} #Shorts`));
   const [caption, setCaption] = useState(() => job.script?.postCaption || "");
+  // título sugerido salvo mudou (editado na etapa Pronto): a publicação passa a usá-lo
+  const [lastPostTitle, setLastPostTitle] = useState(postTitle);
+  if (postTitle !== lastPostTitle) {
+    setLastPostTitle(postTitle);
+    setTitle(landscape ? postTitle.slice(0, 100) : `${postTitle.slice(0, 88)} #Shorts`);
+  }
   const [privacy, setPrivacy] = useState("public");
   const [schedule, setSchedule] = useState(false);
   const [when, setWhen] = useState(() => localInput(new Date(Date.now() + 2 * 3600_000)));
