@@ -3,6 +3,7 @@
 import type { VideoJob } from "@/generated/prisma/client";
 import { generateVideoScript } from "./generateScript";
 import { recentFreeStyles, resolveStyle } from "./templates";
+import { graphicsUsage } from "./graphics";
 import { jobProfiles, parseBriefingImages } from "./profiles";
 import { articleSource } from "./articleSource";
 import { realignToTranscript } from "./avatar";
@@ -76,6 +77,7 @@ export async function scriptFromTranscript(job: VideoJob, words: NarrationWord[]
     extraInstructions: job.extraInstructions,
     styleNotes: job.styleNotes,
     recentStyles: style.pattern.kind === "free" ? await recentFreeStyles() : [],
+    graphicsUsage: graphicsUsage(style.spec),
     model: job.textModel,
     sourceText: (await articleSource(job.articleId))?.text,
     format: job.format === "16:9" ? "16:9" : "9:16",

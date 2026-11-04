@@ -2,13 +2,15 @@
 // A imagem fica em scene.preview = {url, prompt}; o worker usa essa imagem (em vez de gerar outra)
 // enquanto o imagePrompt da cena continuar igual ao prompt que gerou a prévia.
 import { put } from "@vercel/blob";
+import { graphicNeedsImage } from "./graphics";
 import type { VideoScene } from "./types";
 
 /** Mesmo modelo de imagem do worker (VIDEOGEN_IMAGE_MODEL em worker/providers.py). */
 export const VIDEOGEN_IMAGE_MODEL = process.env.VIDEOGEN_IMAGE_MODEL || "google/gemini-nano-banana-2.1";
 
-/** Cena que precisa de imagem gerada (sem foto do usuário, sem ser "só texto" nem avatar, com prompt). */
+/** Cena que precisa de imagem gerada (sem foto do usuário, sem ser "só texto", avatar ou grafismo sem imagem, com prompt). */
 export function needsGeneratedImage(sc: VideoScene): boolean {
+  if (sc.graphic && !graphicNeedsImage(sc.graphic)) return false;
   return !sc.imageUrl && !sc.stock && !sc.avatar && sc.layout !== "text_only" && Boolean(sc.imagePrompt.trim());
 }
 
@@ -22,6 +24,7 @@ export function previewIsFresh(sc: VideoScene): boolean {
  * tela cheia 16:9; card 4:5; círculo, polaroid, metade e dividida (imagem ao lado do texto) quadrada.
  */
 export function sceneAspect(format: string, scene: VideoScene, specLayout?: string | null): string {
+  if (scene.graphic?.type === "rank_item") return "16:9"; // faixa larga que atravessa a tela
   if (format !== "16:9") return "9:16";
   const layout = scene.layout || specLayout || "fullbleed";
   if (layout === "card") return "4:5";

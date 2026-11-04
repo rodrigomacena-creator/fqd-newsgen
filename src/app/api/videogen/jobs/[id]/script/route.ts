@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { recentFreeStyles, resolveStyle } from "@/lib/videogen/templates";
+import { graphicsUsage } from "@/lib/videogen/graphics";
 import { generateVideoScript } from "@/lib/videogen/generateScript";
 import { serializeVideoJob } from "@/lib/videogen/jobs";
 import { appendCosts, costEntry } from "@/lib/videogen/costs";
@@ -55,6 +56,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/videogen/j
       styleNotes: job.styleNotes,
       // inclui o roteiro atual deste vídeo: "gerar de novo" deve sair diferente
       recentStyles: style.pattern.kind === "free" ? await recentFreeStyles() : [],
+      graphicsUsage: graphicsUsage(style.spec),
       model: job.textModel,
       sourceText: (await articleSource(job.articleId))?.text,
       format: job.format === "16:9" ? "16:9" : "9:16",

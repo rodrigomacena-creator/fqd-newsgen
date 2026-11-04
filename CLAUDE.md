@@ -321,6 +321,19 @@ reais encontradas ao construir o projeto, não só a estrutura.
   em `review` ("Para aprovar"; versões em `revisions`, cada uma com o próprio mp4); POST `.../approve` → `ready`. Só `ready` aparece
   para vídeos novos; `resolveStyle()` aceita review/fila se já há ficha (vídeos que já usam o template continuam renderizando).
   Teste local sem o app: `python3 worker.py --template-file marca.json --out pasta/` (JSON no formato do claim, URLs `file://`).
+  **Motion graphics (grafismos animados, 04/11/2026)** (`worker/render/mograph.py` ↔ `src/lib/videogen/graphics.ts`, só no motor
+  genérico: estilo livre e templates): desenho vetorial com **skia-python** (na VPS: `apt install libegl1` + `pip install skia-python`).
+  Cada cena pode ter `scene.graphic` (`counter`, `bars`, `ranking`, `rank_item`, `line_chart`, `donut`, `steps`, `checklist`, `versus`,
+  `timeline`, `icon`, `icons`; `normalize_graphic()` é a fonte da verdade e descarta o inválido), desenhado ao vivo no meio da tela no
+  lugar da imagem (traço com ponta de caneta, números contando, barras crescendo). `rank_item` = uma posição por cena, encadeada: posição,
+  valor e detalhe rolam como odômetro a partir da cena anterior (mesmo prefixo/sufixo), faixa fixa `header` no topo (substitui o título
+  da cena) e a imagem da cena atravessa a tela numa faixa larga (gerada em 16:9: `scene_aspect`/`sceneAspect`). Só `rank_item` usa imagem;
+  os outros não geram imagem nem clipe de banco. Ícones: Lucide (ISC), 2.313 convertidos em `worker/assets/icons/lucide.json.gz` por
+  `worker/tools/build_icons.py`, busca por nome/tags (`find_icon`). A ficha ganhou o grupo `graphics` (style clean/hand, stroke, color,
+  glow, decor none/grid/lines/dots/shapes/rings = fundo vivo, pen, usage none/some/many = quantas cenas o roteiro recebe), títulos
+  `write_on`/`letters`/`mask_up` e transições `circle_reveal`/`stripes`/`diagonal`/`blocks`. O roteiro recebe a regra
+  (`graphicsPromptRule`, quantidade por `graphicsUsage(spec)`; no estilo livre a IA escolhe o `usage` na própria ficha). Editor: campo
+  "Grafismo animado" no inspector da cena (`GraphicFields.tsx`). Ficha/roteiro sem nada disso renderiza igual a antes.
   Pronúncia (`pronunciation.ts`): o texto enviado ao TTS troca siglas/marcas em inglês e o site
   (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
   caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.

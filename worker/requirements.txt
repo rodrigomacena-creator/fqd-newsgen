@@ -4,3 +4,4 @@ requests>=2.31
 yt-dlp>=2025.1.1
 onnxruntime>=1.17  # recorte do objeto (render/cutout.py, modelo U²-Net baixado na 1ª vez)
 pymupdf>=1.24  # guia de marca em PDF/SVG nos templates do zero (brand_assets.py)
+skia-python>=138  # motion graphics vetoriais (render/mograph.py); precisa de libegl1 no sistema

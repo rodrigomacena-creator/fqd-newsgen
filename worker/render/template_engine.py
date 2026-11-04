@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
+from . import mograph as mg
 from . import motion as mv
 from .common import FPS, H, W, FrameWriter, asset, cover_resize, ease, font, grain_frames, group_lines, keyword_set, landscape, norm, spread_words, vignette
 from .timeline import build_timeline
@@ -81,9 +82,10 @@ CHOICES = {
     "image.motion": ["push_in", "pull_out", "pan", "ken_burns", "zoom_punch", "drift", "static"],
     "caption.animation": ["word_pop", "word_reveal", "karaoke", "line_fade", "typewriter"],
     "caption.highlight": ["box", "color", "underline", "none"],
-    "title.animation": ["slide_up", "fade", "pop", "typewriter", "kinetic", "blur_in"],
+    "title.animation": ["slide_up", "fade", "pop", "typewriter", "kinetic", "blur_in", *mg.TITLE_ANIMATIONS],
     "transition.kind": ["cut", "punch_zoom", "crossfade", "slide_left", "slide_up", "blur_zoom", "flash",
-                        "whip_pan", "zoom_in", "glitch"],
+                        "whip_pan", "zoom_in", "glitch", *mg.SHAPE_TRANSITIONS],
+    **mg.GRAPHICS_CHOICES,
     "motion.energy": ["calm", "medium", "high"],
     "motion.camera": ["none", "handheld", "shake_on_beat"],
     "motion.particles": ["none", "dust", "bokeh", "sparks"],
@@ -203,6 +205,8 @@ def normalize_spec(raw):
         out[group] = g
     if raw.get("brand") is not None:
         out["brand"] = brand
+    # motion graphics (render/mograph.py): estilo do traço, fundo vivo e quanto o roteiro usa grafismos
+    out["graphics"] = mg.normalize_graphics(raw.get("graphics"))
     out["caption"]["maxWordsPerLine"] = int(out["caption"]["maxWordsPerLine"])
     _ensure_legible(out)
     _place_watermark(out)
@@ -345,6 +349,10 @@ class SceneVisual:
     def __init__(self, spec, img, texture, seed, layout=None, clip=None):
         self.spec = spec
         lay = spec["image"]
+        graphic = layout == "graphic"  # cena com grafismo: só o fundo (a imagem, se houver, é do grafismo)
+        if graphic:
+            layout, clip = None, None
+        self.decor = None
         self.clip = clip  # vídeo de banco: a cena vira tela cheia e cada quadro vem do vídeo
         if clip is not None:
             layout = "fullbleed"
@@ -361,6 +369,8 @@ class SceneVisual:
         self.phase = rnd.uniform(0, 6.28, 6)
         img = _filter(img.convert("RGB"), lay["filter"], spec) if img is not None else None
         self.bg = _background(spec, img, texture)
+        if graphic:
+            self.layout, img = "graphic", None
         # fundo com folga para a paralaxe (cor lisa não precisa)
         self.bg_moves = spec["background"]["kind"] != "solid"
         if self.bg_moves:
@@ -482,6 +492,11 @@ class SceneVisual:
             fr = self.bg_big.crop((int(ox), int(oy), int(ox) + W, int(oy) + H))
         else:
             fr = self.bg.copy()
+        if self.decor is not None and self.layout != "fullbleed" and self.clip is None:
+            # fundo vivo (grade, linhas, formas...) entre o fundo e a imagem
+            arr = np.array(fr)
+            self.decor.draw(arr, t, local_t, int(t * FPS))
+            fr = Image.fromarray(arr)
         if self.clip is not None:
             raw = self.clip.at(local_t)
             self.big = raw if getattr(self.clip, "raw", False) else _filter(raw, self.spec["image"]["filter"], self.spec)
@@ -914,6 +929,14 @@ class Title:
             out = ease(max(0.0, (local_t - (span - 0.18)) / 0.18))
         exit_alpha, exit_dy = 1 - out, -40 * out
 
+        if anim in mg.TITLE_ANIMATIONS:
+            st = self.style
+            mg.draw_title(fr, st.text(text.strip()), anim,
+                          {"path": st.path, "size": int(self.cfg["size"]), "color": st.color, "stroke": st.stroke,
+                           "stroke_w": st.stroke_w, "accent": st.accent},
+                          local_t, span, col_x, cy + idle_dy, max_w, exit_k=out,
+                          box_color=rgb(self.cfg["boxColor"]) if self.cfg["box"] else None)
+            return
         if anim == "kinetic":
             items, total_h = self._kinetic_layout(text)
             top = cy - total_h / 2
@@ -997,9 +1020,11 @@ class Finisher:
         return out
 
 
-def _transition(prev, cur, k, kind):
+def _transition(prev, cur, k, kind, accent="#E10600"):
     """Mistura o fim da cena anterior com o início da atual (k vai de 0 a 1)."""
     k = min(max(k, 0.0), 1.0)
+    if kind in mg.SHAPE_TRANSITIONS:  # transições de forma na cor de destaque
+        return mg.shape_transition(prev, cur, k, kind, accent)
     if kind == "crossfade":
         return (prev.astype(np.float32) * (1 - k) + cur.astype(np.float32) * k).astype(np.uint8)
     if kind == "slide_left":
@@ -1182,12 +1207,25 @@ def render(job, assets, out_path, on_progress=None):
     bg_fill = rgb(spec["palette"]["background"])
 
     visuals = {}
+    graphics = {}  # grafismo por cena (render/mograph.py)
+    decor = mg.Decor(spec)
+    gfonts = {"title": font_path(spec["title"]["font"]), "body": font_path(spec["caption"]["font"])}
+    prev_graphic = None
     for n, sc in enumerate(tl.scenes):
         path = assets.get("images", {}).get(sc.index)
         img = Image.open(path).convert("RGB") if path else None
         layout = sc.data.get("layout") if sc.data.get("layout") in SCENE_LAYOUTS else None
         clip = None
         base = (assets.get("base_clips") or {}).get(sc.index)
+        g = mg.normalize_graphic(sc.data.get("graphic")) if not base else None
+        if g:
+            gr = mg.Graphic(g, spec, gfonts, image=img if mg.needs_image(g) else None, prev=prev_graphic)
+            graphics[sc.index] = gr
+            prev_graphic = gr
+            visuals[sc.index] = SceneVisual(spec, img, texture, seed=n, layout="graphic")
+            visuals[sc.index].decor = decor if decor.active() else None
+            visuals[sc.index].direction = None
+            continue
         if base and img is not None:  # vídeo base (avatar): tela cheia tocando o vídeo no tempo da fala
             try:
                 clip = BaseClip(base[0], base[1])
@@ -1201,6 +1239,8 @@ def render(job, assets, out_path, on_progress=None):
                 clip = None
         visuals[sc.index] = SceneVisual(spec, img, texture, seed=n, layout=layout, clip=clip)
         visuals[sc.index].direction = dirs.get(sc.index)
+        if decor.active():
+            visuals[sc.index].decor = decor
 
     def emphasis_at(t):
         sc = max((s for s in tl.scenes if s.start <= t), key=lambda s: s.start, default=None)
@@ -1251,7 +1291,7 @@ def render(job, assets, out_path, on_progress=None):
                 fr = cta_card.frame(local)
                 if local < tdur and tl.scenes:
                     prev = visuals[tl.scenes[-1].index].frame(1.0, 99.0, t)
-                    fr = _transition(prev, fr, local / tdur, trans["kind"])
+                    fr = _transition(prev, fr, local / tdur, trans["kind"], spec["palette"]["accent"])
                 fr = np.array(fr, copy=True)
                 particles.draw(fr, t)
             else:
@@ -1264,7 +1304,7 @@ def render(job, assets, out_path, on_progress=None):
                 fr = vis.frame(local / span, local, t, b if mo["beatPulse"] else 0.0, b)
                 flash = 0.0
                 if directed:
-                    no_marks = spec["image"]["photo"] or vis.layout in ("fullbleed", "text_only", "split", "top_half")
+                    no_marks = spec["image"]["photo"] or vis.layout in ("fullbleed", "text_only", "split", "top_half", "graphic")
                     if not no_marks and marks.kind.get(sc.index, "none") != "none" and t >= marks.at[sc.index]:
                         box = vis.box or (W * 0.22, H * 0.3, W * 0.78, H * 0.54)
                         im = Image.fromarray(fr).convert("RGBA")
@@ -1278,7 +1318,7 @@ def render(job, assets, out_path, on_progress=None):
                 elif i > 0 and local < tdur:
                     prev_sc = tl.scenes[i - 1]
                     prev = visuals[prev_sc.index].frame(1.0, prev_sc.end - prev_sc.start, t)
-                    fr = _transition(prev, fr, local / tdur, trans["kind"])
+                    fr = _transition(prev, fr, local / tdur, trans["kind"], spec["palette"]["accent"])
                 if i == 0 and local < HOOK_LEN:
                     # gancho: o vídeo abre com um soco de zoom e um clarão, para segurar quem está rolando
                     k = ease(local / HOOK_LEN)
@@ -1294,6 +1334,8 @@ def render(job, assets, out_path, on_progress=None):
                     fr = np.clip(fr.astype(np.float32) + 60 * flash, 0, 255).astype(np.uint8)
                 particles.draw(fr, t)
                 watermark.draw(fr)  # antes dos textos: se encostar no título/legenda, o texto fica por cima
+                if sc.index in graphics:
+                    graphics[sc.index].draw(fr, local, span, n)
                 # 16:9: imagem ao lado = texto numa coluna à esquerda; tela cheia = texto mais largo
                 col_x, col_w = text_column(vis.layout)
                 if isinstance(vis.clip, BaseClip):
@@ -1302,12 +1344,19 @@ def render(job, assets, out_path, on_progress=None):
                     title.col, captions.col = (col_x, col_w, AVATAR_TITLE_Y), (col_x, col_w, AVATAR_CAPTION_Y)
                 elif side_mode(vis.layout):
                     title.col, captions.col = (col_x, col_w, 0.34), (col_x, col_w, 0.72)
+                elif vis.layout == "graphic":
+                    # grafismo no meio: título em cima e legenda embaixo, fora da área dele
+                    title.col = (col_x, col_w, min(spec["title"]["y"], 0.13))
+                    cy_cap = spec["caption"]["y"]
+                    captions.col = (col_x, col_w, cy_cap if cy_cap >= 0.76 else 0.82)
                 elif landscape():
                     title.col = (col_x, col_w, min(max(spec["title"]["y"], 0.12), 0.4))
                     captions.col = (col_x, col_w, min(max(spec["caption"]["y"], 0.6), 0.86))
                 else:
                     title.col = captions.col = None  # posição da ficha de estilo
-                if side_mode(vis.layout):
+                if sc.index in graphics and graphics[sc.index].d.get("header"):
+                    pass  # a faixa fixa do grafismo (ex.: nome do ranking) já é o título da cena
+                elif side_mode(vis.layout):
                     title.draw(fr, sc.data.get("onScreen") or "", local, span)
                 elif vis.layout in ("split", "top_half") and spec["title"]["y"] < 0.62:
                     title_low.draw(fr, sc.data.get("onScreen") or "", local, span)

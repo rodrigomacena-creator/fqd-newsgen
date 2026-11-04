@@ -14,6 +14,7 @@ import { mergePronunciations } from "./pronunciation";
 import { isAllowedImageUrl } from "./profiles";
 import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
 import { SCENE_LAYOUTS, enforcePhotoPrompts, freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
+import { graphicNeedsImage, graphicsPromptRule, sanitizeGraphic } from "./graphics";
 import { HUMANIZER_RULE } from "./humanizer";
 import { CTA_EFFECTS, CTA_FONT_SCALE, type VideoFormat } from "./types";
 import { STOCK_URL_RE, UPLOADED_CLIP_RE } from "./stockVideo";
@@ -99,6 +100,8 @@ interface ScriptContext {
   imageCount: number;
   /** "16:9" = vídeo horizontal para o YouTube; senão vertical (Reels/Shorts). */
   format: VideoFormat;
+  /** Quantos grafismos o estilo pede (spec.graphics.usage); só nos estilos do motor genérico. */
+  graphicsUsage: "none" | "some" | "many";
 }
 
 function buildSystemPrompt(pattern: VideoPattern, guide: string, durationS: number, ctx: ScriptContext): string {
@@ -111,6 +114,13 @@ function buildSystemPrompt(pattern: VideoPattern, guide: string, durationS: numb
     .map((p) => `"${p.display}" → "${p.spoken}"`)
     .join(", ");
   const free = pattern.kind === "free";
+  // grafismos animados só existem no motor genérico (estilo livre e templates)
+  const graphicsRule =
+    pattern.kind === "builtin"
+      ? ""
+      : free
+        ? graphicsPromptRule("some").replace(/Use grafismo em 1 a 3 cenas[^.]*\./, 'Use a quantidade que você escolheu em "graphics.usage" (many = maioria das cenas; some = 1 a 3; none = nenhuma).')
+        : graphicsPromptRule(ctx.graphicsUsage);
   const intro = free
     ? `Você vai escrever o roteiro de UM vídeo e criar o estilo visual dele do zero (estilo livre). Siga o guia abaixo.
 
@@ -150,7 +160,7 @@ Regras do roteiro:
 - "onScreen" é o texto grande na tela quando o padrão usa (palavra-chave, número, título curto); pode ser vazio.
 - "imagePrompt" é em INGLÊS, para um modelo de imagem (Gemini/nano banana), formato ${landscape ? "horizontal 16:9 (nas cenas com a imagem ao lado do texto, assunto centralizado num quadro quase quadrado)" : "vertical 9:16"}. Descreva só a imagem estática da cena no estilo do padrão (fundo, materiais, luz, composição, paleta). NUNCA peça texto, letras, logotipos ou números dentro da imagem: o texto é colocado depois pelo render. Mantenha o mesmo estilo visual em todas as cenas para o vídeo parecer uma peça só.
 - "visual" é uma descrição curta em português do que aparece, para revisão humana.
-${ctaRule(ctx.person, ctx.company)}${imagesRule}${directionPromptRule(pattern.id)}${formatRule}
+${ctaRule(ctx.person, ctx.company)}${imagesRule}${directionPromptRule(pattern.id)}${graphicsRule}${formatRule}
 - Pronúncia: siglas e nomes em inglês são falados como em inglês (SEO e GEO letra por letra). Escreva na narração a grafia normal; o sistema já converte estes termos: ${dictionary}. Se usar outro termo/marca em inglês que um narrador brasileiro leria errado, adicione em "pronunciations" com uma grafia fonética em português (ex.: {"display": "Claude", "spoken": "Clód"}).
 - "keywords": 3 a 8 palavras da narração/tela que merecem destaque visual.
 - "musicPrompt": em inglês, descreve a trilha instrumental no clima do padrão (sem vocais), para o ElevenLabs Music.
@@ -163,7 +173,7 @@ Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
 {
   "title": "título interno curto do vídeo",
   "scenes": [
-    { "narration": "...", "onScreen": "...", "visual": "...", "imagePrompt": "...", "durationS": 2${free ? ', "layout": "...", "stockQuery": "... (opcional)"' : ""}${ctx.imageCount ? ', "userImage": null' : ""}, "direction": { "cut": "...", "camera": "...", "object": "...", "mark": "...", "emphasis": "..." } }
+    { "narration": "...", "onScreen": "...", "visual": "...", "imagePrompt": "...", "durationS": 2${free ? ', "layout": "...", "stockQuery": "... (opcional)"' : ""}${graphicsRule ? ', "graphic": {...} (opcional)' : ""}${ctx.imageCount ? ', "userImage": null' : ""}, "direction": { "cut": "...", "camera": "...", "object": "...", "mark": "...", "emphasis": "..." } }
   ],
   "cta": { "narration": "...", "onScreen": "..." },
   "hooks": [{ "narration": "...", "onScreen": "..." }],
@@ -202,10 +212,13 @@ export function normalizeScript(input: unknown): VideoScript {
       scene.preview = { url: pv.url, prompt: pv.prompt };
     }
     if (o.avatar === true) scene.avatar = true;
+    const graphic = sanitizeGraphic(o.graphic);
+    if (graphic) scene.graphic = graphic;
+    const graphicOnly = graphic && !graphicNeedsImage(graphic); // grafismo no lugar da imagem: nada de clipe de banco
     const layout = str(o.layout);
     if (SCENE_LAYOUTS.includes(layout)) scene.layout = layout;
     const stockQuery = str(o.stockQuery).slice(0, 80);
-    if (stockQuery) scene.stockQuery = stockQuery;
+    if (stockQuery && !graphicOnly) scene.stockQuery = stockQuery;
     const st = (o.stock ?? null) as Record<string, unknown> | null;
     if (st && typeof st.url === "string" && STOCK_URL_RE.test(st.url)) {
       scene.stock = { url: st.url, thumb: str(st.thumb), id: Number(st.id) || 0, query: str(st.query), pick: Number(st.pick) || 0 };
@@ -297,6 +310,8 @@ export async function generateVideoScript(params: {
    * cenas (sem mudar palavras), cria texto da tela/imagens e marca em quais cenas a pessoa aparece.
    */
   fixedNarration?: string | null;
+  /** Templates: quantos grafismos a ficha pede (graphicsUsage(spec)); padrão "some". */
+  graphicsUsage?: "none" | "some" | "many";
 }): Promise<{ script: VideoScript; usd: number }> {
   const client = getOpenRouterClient();
   const userParts = [`Tema do vídeo: ${params.topic}`];
@@ -343,6 +358,7 @@ export async function generateVideoScript(params: {
     company: params.company ?? null,
     imageCount: attached.length,
     format: params.format === "16:9" ? "16:9" : "9:16",
+    graphicsUsage: params.graphicsUsage ?? "some",
   };
   const messages: { role: "system" | "user" | "assistant"; content: string | Part[] }[] = [
     {

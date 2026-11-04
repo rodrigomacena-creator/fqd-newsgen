@@ -26,6 +26,7 @@ import requests
 
 from brand_assets import collect_material, prepare_render
 from providers import download, generate_image, generate_music, silent_audio
+from render import mograph
 from render import template_engine
 from render.audio_fx import build_sfx_track, sfx_cues
 from render.common import mix
@@ -120,7 +121,8 @@ Formato da ficha "spec" (todas as cores em "#RRGGBB"; números dentro das faixas
   "transition": {{"kind": ..., "durationS": 0.05-0.9}},
   "overlay": {{"grain": 0-1, "vignette": 0-1, "tint": cor ou "", "tintStrength": 0-0.6, "letterbox": true/false}},
   "cta": {{"style": ..., "background": ..., "color": ..., "font": ...}},
-  "motion": {{"energy": quanto tudo se mexe (calm = lento e elegante, medium, high = frenético), "camera": none | handheld (tremida de mão contínua) | shake_on_beat (tranco a cada corte e palavra-chave), "particles": none | dust (poeira clara) | bokeh (círculos desfocados na cor de destaque) | sparks (faíscas subindo), "beatPulse": true/false (zoom rápido a cada corte e palavra-chave), "textIdle": none | float (texto flutua) | pulse (texto respira), "textExit": true/false (texto sai antes do corte)}}
+  "motion": {{"energy": quanto tudo se mexe (calm = lento e elegante, medium, high = frenético), "camera": none | handheld (tremida de mão contínua) | shake_on_beat (tranco a cada corte e palavra-chave), "particles": none | dust (poeira clara) | bokeh (círculos desfocados na cor de destaque) | sparks (faíscas subindo), "beatPulse": true/false (zoom rápido a cada corte e palavra-chave), "textIdle": none | float (texto flutua) | pulse (texto respira), "textExit": true/false (texto sai antes do corte)}},
+  "graphics": {{"style": clean | hand (traço rabiscado à mão), "stroke": 3-26, "color": accent | text, "glow": true/false, "decor": none | grid | lines | dots | shapes | rings (fundo vivo atrás dos grafismos), "pen": true/false (ponta de caneta desenhando), "usage": none | some | many (quantas cenas do roteiro terão grafismo animado)}}
 }}
 
 """
@@ -130,6 +132,12 @@ a referência se mexe: zoom constante, câmera tremida, textos que entram palavr
 "kinetic"), cortes com chicote (whip_pan), mergulho (zoom_in) ou glitch. Na dúvida, prefira mais
 movimento a menos: só escolha "static", energy "calm" e camera "none" se a referência for
 claramente parada e contemplativa. Varie as escolhas conforme o vídeo, não use sempre as mesmas.
+Motion graphics: o motor desenha grafismos ao vivo no lugar da imagem da cena (número contando, barras
+crescendo, ranking com odômetro, gráfico de linha, rosca de porcentagem, passo a passo, checklist,
+versus, linha do tempo, ícones desenhados traço a traço). Se a referência ou o pedido tem dados,
+listas, infográficos ou desenhos animados, use "graphics.usage" many e um "decor" combinando; títulos
+podem ser escritos à mão (write_on), letra a letra (letters) ou subir de uma máscara (mask_up), e
+transições por forma (circle_reveal, stripes, diagonal, blocks) dão cara de motion design.
 
 """
 
@@ -144,7 +152,7 @@ Responda SÓ com um JSON válido (sem markdown), em português do Brasil nos tex
   "imageStyle": sufixo em inglês acrescentado a todo prompt de imagem (enquadramento, luz, cor, textura, o que evitar; nunca peça texto na imagem),
   "musicPrompt": prompt em inglês da trilha instrumental parecida com a da referência,
   "spec": a ficha acima,
-  "sample": {{"title": título, "scenes": [2 cenas, cada uma {{"narration": até 5 palavras, "onScreen": até 4 palavras, "imagePrompt": em inglês}}], "cta": {{"onScreen": até 4 palavras}}, "keywords": [1 ou 2 palavras da narração para destacar]}} — exemplo de 5s sobre posicionamento de marca
+  "sample": {{"title": título, "scenes": [2 cenas, cada uma {{"narration": até 5 palavras, "onScreen": até 4 palavras, "imagePrompt": em inglês, "graphic": opcional, só se graphics.usage não for none: {{"type": "counter", "value": "87%", "label": "..."}} ou {{"type": "icons", "items": [{{"icon": "rocket", "label": "..."}}]}} ou {{"type": "steps", "items": [{{"label": "...", "icon": "..."}}]}} (ícones em inglês, biblioteca Lucide)}}], "cta": {{"onScreen": até 4 palavras}}, "keywords": [1 ou 2 palavras da narração para destacar]}} — exemplo de 5s sobre posicionamento de marca
 }}"""
 
 PROMPT = HEAD_REFERENCE + SPEC_FORMAT + MOTION_REFERENCE + RESPONSE_FORMAT
@@ -338,6 +346,7 @@ def sample_job(result, spec, seconds=SAMPLE_SECONDS):
         "title": sample.get("title") or "Exemplo",
         "scenes": [{"narration": str(s.get("narration") or "").strip(), "onScreen": str(s.get("onScreen") or "").strip(),
                     "imagePrompt": str(s.get("imagePrompt") or "").strip(), "visual": "", "durationS": 1.5,
+                    **({"graphic": s["graphic"]} if isinstance(s.get("graphic"), dict) else {}),
                     # o exemplo já mostra o movimento por cena que os roteiros novos recebem
                     "direction": default_direction(i)} for i, s in enumerate(scenes)],
         "cta": {"onScreen": str(cta.get("onScreen") or "Siga para mais").strip(), "narration": ""},
@@ -426,7 +435,9 @@ def _finish(result, workdir, report, costs, upload, material=None, prev_spec=Non
         music_f = None if files["music"] else ex.submit(generate_music, result.get("musicPrompt"), seconds + 5,
                                                         workdir / "trilha.mp3", costs=costs)
         futs = {i: ex.submit(generate_image, f"{s['imagePrompt']}. {style}".strip(), workdir / f"cena_{i}.jpg", costs=costs)
-                for i, s in enumerate(job["script"]["scenes"]) if spec["image"]["layout"] != "none" or spec["background"]["kind"] == "blurred_image"}
+                for i, s in enumerate(job["script"]["scenes"])
+                if (spec["image"]["layout"] != "none" or spec["background"]["kind"] == "blurred_image")
+                and not (mograph.normalize_graphic(s.get("graphic")) and not mograph.needs_image(mograph.normalize_graphic(s.get("graphic"))))}
         for i, f in futs.items():
             try:
                 images[i] = f.result()

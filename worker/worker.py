@@ -261,6 +261,9 @@ def is_landscape(job):
 def scene_aspect(job, sc):
     """Proporção da imagem gerada para a cena. Vertical: sempre 9:16. Horizontal (16:9): tela cheia
     pede 16:9; card/polaroid/círculo e metade/dividida (imagem ao lado do texto) pedem quadrada/4:5."""
+    g = sc.get("graphic") if isinstance(sc.get("graphic"), dict) else {}
+    if g.get("type") == "rank_item":
+        return "16:9"  # a imagem do item de ranking é uma faixa larga que atravessa a tela
     if not is_landscape(job):
         return "9:16"
     layout = sc.get("layout") or ((job.get("templateSpec") or {}).get("image") or {}).get("layout") or "fullbleed"
@@ -319,6 +322,12 @@ def _produce(job, workdir, report, costs, assets, preview):
     spec_bg = ((job.get("templateSpec") or {}).get("background") or {}) if module is template_engine else {}
     if spec_img.get("layout") == "none" and spec_bg.get("kind") != "blurred_image":
         used -= {i for i, sc in enumerate(scenes) if not sc.get("layout") and not sc.get("imageUrl")}
+    # cena com grafismo (render/mograph.py) só gera imagem se o grafismo mostra uma (item de ranking, versus)
+    if module is template_engine:
+        from render import mograph
+        used -= {i for i, sc in enumerate(scenes)
+                 if mograph.normalize_graphic(sc.get("graphic")) and not mograph.needs_image(mograph.normalize_graphic(sc.get("graphic")))
+                 and not sc.get("imageUrl")}
     # vídeo base: cenas marcadas como avatar mostram o vídeo, não geram imagem
     base_segments = base_track(job) if module is template_engine else []
     avatar_scenes = {i for i, sc in enumerate(scenes) if sc.get("avatar")} if base_segments else set()
@@ -331,7 +340,7 @@ def _produce(job, workdir, report, costs, assets, preview):
         path = workdir / f"cena_{i:02d}.jpg"
         if sc.get("imageUrl"):
             try:
-                return prepare_user_image(sc["imageUrl"], path, *((1920, 1080) if is_landscape(job) else (1080, 1920)))
+                return prepare_user_image(sc["imageUrl"], path, *((1920, 1080) if is_landscape(job) or scene_aspect(job, sc) == "16:9" else (1080, 1920)))
             except Exception as e:
                 if not (sc.get("imagePrompt") or sc.get("visual")):
                     raise

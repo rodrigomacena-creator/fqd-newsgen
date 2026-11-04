@@ -30,7 +30,7 @@ Teste local sem o app: `python3 worker.py --template-video referencia.mp4 --out 
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-venv ffmpeg fonts-inter fonts-liberation curl
+sudo apt install -y git python3 python3-venv ffmpeg fonts-inter fonts-liberation curl libegl1  # libegl1: skia-python (grafismos)
 # Node 22 (o Node 18 do apt do Ubuntu é velho demais para o @vercel/blob, que pede >= 20)
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash - && sudo apt install -y nodejs
 sudo useradd -r -m -d /opt/fqd-newsgen videogen   # usuário só para o worker

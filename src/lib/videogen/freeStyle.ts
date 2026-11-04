@@ -3,6 +3,7 @@
 // (worker/render/template_engine.py) renderiza. normalize_spec() do worker corrige qualquer valor
 // inválido, então aqui só garantimos o formato básico.
 // Arquivo puro (sem imports de servidor): o seletor de estilo do client também usa FREE_STYLE.
+import { GRAPHICS_SPEC_HELP } from "./graphics";
 import type { VideoPattern } from "./patterns";
 
 export const FREE_STYLE_ID = "estilo-livre";
@@ -60,8 +61,13 @@ const CHOICES: Record<string, string[]> = {
   "image.motion": ["push_in", "pull_out", "pan", "ken_burns", "zoom_punch", "drift", "static"],
   "caption.animation": ["word_pop", "word_reveal", "karaoke", "line_fade", "typewriter"],
   "caption.highlight": ["box", "color", "underline", "none"],
-  "title.animation": ["slide_up", "fade", "pop", "typewriter", "kinetic", "blur_in"],
-  "transition.kind": ["cut", "punch_zoom", "crossfade", "slide_left", "slide_up", "blur_zoom", "flash", "whip_pan", "zoom_in", "glitch"],
+  "title.animation": ["slide_up", "fade", "pop", "typewriter", "kinetic", "blur_in", "write_on", "letters", "mask_up"],
+  "transition.kind": ["cut", "punch_zoom", "crossfade", "slide_left", "slide_up", "blur_zoom", "flash", "whip_pan", "zoom_in", "glitch",
+    "circle_reveal", "stripes", "diagonal", "blocks"],
+  "graphics.style": ["clean", "hand"],
+  "graphics.color": ["accent", "text"],
+  "graphics.decor": ["none", "grid", "lines", "dots", "shapes", "rings"],
+  "graphics.usage": ["none", "some", "many"],
   "motion.energy": ["calm", "medium", "high"],
   "motion.camera": ["none", "handheld", "shake_on_beat"],
   "motion.particles": ["none", "dust", "bokeh", "sparks"],
@@ -124,8 +130,11 @@ Formato do "styleSpec" (cores sempre "#RRGGBB"; números dentro das faixas):
   "transition": {"kind": ..., "durationS": 0.05-0.9},
   "overlay": {"grain": 0-1, "vignette": 0-1, "tint": cor ou "", "tintStrength": 0-0.6, "letterbox": true/false},
   "cta": {"style": ..., "background": ..., "color": ..., "font": ...},
-  "motion": {"energy": calm | medium | high, "camera": none | handheld | shake_on_beat, "particles": none | dust | bokeh | sparks, "beatPulse": true/false (zoom rápido a cada corte e palavra-chave), "textIdle": none | float | pulse, "textExit": true/false (texto sai antes do corte)}
+  "motion": {"energy": calm | medium | high, "camera": none | handheld | shake_on_beat, "particles": none | dust | bokeh | sparks, "beatPulse": true/false (zoom rápido a cada corte e palavra-chave), "textIdle": none | float | pulse, "textExit": true/false (texto sai antes do corte)},
+  ${GRAPHICS_SPEC_HELP}
 }
+
+Animações de título novas: write_on (as letras são escritas traço a traço, como caneta), letters (letra a letra caindo com mola), mask_up (sobe de trás de uma máscara, cara de abertura de TV). Transições novas por forma na cor de destaque: circle_reveal (círculo abrindo), stripes (faixas varrendo), diagonal (lâmina diagonal), blocks (blocos em sequência).
 
 Regras do visual:
 - Cada cena tem o campo "layout" (um dos formatos acima). Varie: use pelo menos 3 formatos diferentes no vídeo, nunca o mesmo em mais de 3 cenas seguidas, e coloque cenas text_only nas viradas e números quando combinar com o arquétipo. Numa cena text_only o "onScreen" é obrigatório (até 6 palavras) e "imagePrompt" fica vazio.
@@ -134,6 +143,7 @@ Regras do visual:
 - Texto sobre foto precisa ser legível: contorno, caixa de fundo ou posição fora da imagem. Title e caption não podem ficar na mesma altura (y).
 - Movimento é o que diferencia um Reels de um slideshow: na dúvida, prefira mais movimento. Só use "static", energy "calm" e camera "none" se o assunto pedir algo contemplativo (ou se o usuário pedir).
 - Os "imagePrompt" de todas as cenas seguem o MESMO estilo visual que você inventou (mesma luz, paleta, tipo de imagem: foto, ilustração, colagem, 3D render, etc.), combinando com as cores do styleSpec. Nunca peça texto, letras, números ou logos dentro da imagem.
+- Grafismos: escolha "graphics.usage" conforme o tema (many para dados, rankings, tutoriais e comparações; some no resto; none só se o arquétipo for puramente fotográfico/contemplativo) e um "graphics.decor" que combine com o arquétipo.
 - O "musicPrompt" combina com o clima escolhido (e com o direcionamento do usuário, se houver).`;
 }
 
@@ -151,7 +161,7 @@ export function sanitizeStyleSpec(raw: unknown): Record<string, unknown> | undef
   const out: Record<string, unknown> = {};
   const archetype = (raw as Record<string, unknown>).archetype;
   if (typeof archetype === "string" && archetype.trim()) out.archetype = archetype.trim().slice(0, 40);
-  for (const group of ["palette", "background", "image", "caption", "title", "transition", "overlay", "cta", "motion"]) {
+  for (const group of ["palette", "background", "image", "caption", "title", "transition", "overlay", "cta", "motion", "graphics"]) {
     const g = (raw as Record<string, unknown>)[group];
     if (g && typeof g === "object" && !Array.isArray(g)) out[group] = g;
   }

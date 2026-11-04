@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerE
 import { AutoTextarea, CopyButton, Icon, Spinner } from "./ui";
 import { uploadImage } from "@/lib/videogen/uploadImage";
 import { SceneImage } from "./SceneImage";
+import { GraphicFields } from "./GraphicFields";
+import { graphicNeedsImage } from "@/lib/videogen/graphics";
 import { VoiceWave } from "./VoiceWave";
 import { sceneTiming } from "@/lib/videogen/sceneTiming";
 import { DIRECTION_FIELD_LABEL, DIRECTION_FIELDS, DIRECTION_OPTIONS, defaultDirection, type SceneDirection } from "@/lib/videogen/direction";
@@ -55,7 +57,10 @@ export function SceneStudio({
   avatar = null,
   avatarValid = false,
   lockedNarration = false,
+  graphics = false,
 }: {
+  /** O estilo roda no motor genérico (estilo livre/template): a cena pode ter grafismo animado. */
+  graphics?: boolean;
   /** Vídeo base (avatar/vídeo seu): ganha uma trilha fixa na timeline e cada cena escolhe avatar ou imagem. */
   avatar?: AvatarTrack | null;
   /** A trilha base é da narração atual (senão está desatualizada). */
@@ -455,6 +460,7 @@ export function SceneStudio({
             hasBase={Boolean(avatar)}
             baseLabel={baseLabel}
             lockedNarration={lockedNarration}
+            graphics={graphics}
             scene={script.scenes[selected]}
             block={timing.scenes[selected]}
             measured={timing.measured}
@@ -857,6 +863,7 @@ function SceneInspector({
   hasBase,
   baseLabel,
   lockedNarration,
+  graphics,
   scene,
   block,
   measured,
@@ -876,6 +883,7 @@ function SceneInspector({
 }: {
   directed: boolean;
   onEnableDirection: () => void;
+  graphics: boolean;
   hasBase: boolean;
   baseLabel: string;
   lockedNarration: boolean;
@@ -988,7 +996,12 @@ function SceneInspector({
           )}
         </div>
 
-        <SceneImage
+        {graphics && !scene.avatar && (
+          <GraphicFields index={index} graphic={scene.graphic} disabled={disabled} onChange={(graphic) => onChange({ graphic })} />
+        )}
+
+        {(!scene.graphic || graphicNeedsImage(scene.graphic)) && (
+          <SceneImage
           index={index}
           scene={scene}
           briefing={briefing}
@@ -1013,9 +1026,10 @@ function SceneInspector({
               />
             </div>
           }
-        />
+          />
+        )}
 
-        {!scene.imageUrl && scene.layout !== "text_only" && scene.stock?.source !== "upload" && (
+        {!scene.imageUrl && !scene.graphic && scene.layout !== "text_only" && scene.stock?.source !== "upload" && (
           <div>
             <label htmlFor={ids("stock")} className={studioLabel}>
               Vídeo de banco <span className="font-normal normal-case tracking-normal text-text-secondary">(opcional, busca em inglês)</span>

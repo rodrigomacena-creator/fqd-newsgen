@@ -29,6 +29,7 @@ import { useVoices } from "@/lib/videogen/useVoices";
 import { useStyles } from "@/lib/videogen/useStyles";
 import { useProfiles } from "@/lib/videogen/useProfiles";
 import { mergePronunciations } from "@/lib/videogen/pronunciation";
+import { BUILTIN_PATTERN_IDS } from "@/lib/videogen/patterns";
 import { uploadImage, uploadSceneClip } from "@/lib/videogen/uploadImage";
 import {
   MAX_BRIEFING_IMAGES,
@@ -610,6 +611,7 @@ export function VideoJobEditor({ id }: { id: string }) {
               avatar={job.avatar}
               avatarValid={avatarValid}
               lockedNarration={fromUpload}
+              graphics={!BUILTIN_PATTERN_IDS.includes(job.patternId)}
             />
             {speaker === "upload" && (
               <div className="mt-4">

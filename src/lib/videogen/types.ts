@@ -1,6 +1,7 @@
 // Tipos compartilhados do VideoGen (client + servidor + contrato com o worker).
 // Este arquivo é "puro" (sem imports de servidor) de propósito.
 import type { SceneDirection } from "./direction";
+import type { SceneGraphic } from "./graphics";
 
 export interface VideoScene {
   /** Trecho da narração falado nesta cena, com a grafia de exibição (vira legenda). */
@@ -27,6 +28,8 @@ export interface VideoScene {
   stock?: { url: string; thumb: string; id: number; query: string; pick?: number; source?: "pixabay" | "pexels" | "upload" };
   /** Mostra o vídeo base (avatar do HeyGen ou vídeo do usuário) nesta cena em vez da imagem. */
   avatar?: boolean;
+  /** Grafismo animado da cena (motor genérico: estilo livre e templates). Ver graphics.ts ↔ worker/render/mograph.py. */
+  graphic?: SceneGraphic;
 }
 
 // ---------- vídeo base (avatar falando / vídeo do usuário) ----------
