@@ -77,3 +77,47 @@ export async function fetchVideoTranscript(videoId: string): Promise<string> {
 
   return text;
 }
+
+/**
+ * Data em que o vídeo foi ao ar (publicação no YouTube), em ISO 8601 UTC. Usa a YouTube Data API
+ * (`YOUTUBE_API_KEY`) e, sem a chave ou se ela falhar, lê a data da página do vídeo.
+ * Devolve null se não conseguir: quem chama segue sem data em vez de falhar.
+ */
+export async function fetchVideoPublishedAt(videoId: string): Promise<string | null> {
+  const toIso = (v: unknown) => {
+    const t = typeof v === "string" ? Date.parse(v) : NaN;
+    return Number.isNaN(t) ? null : new Date(t).toISOString();
+  };
+  const key = process.env.YOUTUBE_API_KEY;
+  if (key) {
+    try {
+      const res = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=snippet,liveStreamingDetails&id=${encodeURIComponent(videoId)}&key=${key}`,
+        { signal: AbortSignal.timeout(10_000) }
+      );
+      if (res.ok) {
+        const data = (await res.json()) as {
+          items?: { snippet?: { publishedAt?: string }; liveStreamingDetails?: { actualStartTime?: string } }[];
+        };
+        const item = data.items?.[0];
+        // programa transmitido ao vivo: vale o horário em que a transmissão começou
+        const iso = toIso(item?.liveStreamingDetails?.actualStartTime) ?? toIso(item?.snippet?.publishedAt);
+        if (iso) return iso;
+      }
+    } catch {
+      // cai pra leitura da página
+    }
+  }
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
+      headers: { "Accept-Language": "pt-BR,pt;q=0.9", "User-Agent": "Mozilla/5.0 (compatible; FQDNewsGen/1.0)" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const m = html.match(/itemprop="datePublished"\s+content="([^"]+)"/) ?? html.match(/"publishDate":"([^"]+)"/);
+    return toIso(m?.[1]);
+  } catch {
+    return null;
+  }
+}

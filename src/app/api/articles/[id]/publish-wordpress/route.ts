@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createWordPressPost } from "@/lib/wordpress";
+import { fetchVideoPublishedAt } from "@/lib/youtube";
 import { videoEmbedHtml } from "@/lib/videoEmbed";
 import { blocksToHtml, type RichBlock } from "@/lib/richBlocks";
 
@@ -78,6 +79,9 @@ export async function POST(
     ? `https://i.ytimg.com/vi/${youtubeSource.videoId}/maxresdefault.jpg`
     : undefined;
 
+  // a data do post é a data em que o programa foi ao ar (vídeo do YouTube); sem ela, o WordPress usa a data de hoje
+  const publishedAt = youtubeSource?.videoId ? await fetchVideoPublishedAt(youtubeSource.videoId) : null;
+
   try {
     const categoryIds = [categoryId, ...(programCategoryId ? [programCategoryId] : [])];
 
@@ -87,6 +91,7 @@ export async function POST(
       excerpt: article.subtitle,
       categoryIds,
       featuredImageUrl,
+      publishedAt,
     });
 
     await prisma.article.update({
