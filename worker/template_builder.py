@@ -134,7 +134,10 @@ movimento a menos: só escolha "static", energy "calm" e camera "none" se a refe
 claramente parada e contemplativa. Varie as escolhas conforme o vídeo, não use sempre as mesmas.
 Motion graphics: o motor desenha grafismos ao vivo no lugar da imagem da cena (número contando, barras
 crescendo, ranking com odômetro, gráfico de linha, rosca de porcentagem, passo a passo, checklist,
-versus, linha do tempo, ícones desenhados traço a traço). Se a referência ou o pedido tem dados,
+versus, linha do tempo, ícones desenhados traço a traço) e também cenas de motion de tela cheia
+(palavra de partículas, palavra enchendo de líquido, pôster tipográfico, globo com rotas, mapa com trajeto,
+relógio de placas, chat, celular com notificações, barras 3D, espectro de som, explosão, cartões, código
+digitando, órbita de ícones, busca). Se a referência ou o pedido tem dados,
 listas, infográficos ou desenhos animados, use "graphics.usage" many e um "decor" combinando; títulos
 podem ser escritos à mão (write_on), letra a letra (letters) ou subir de uma máscara (mask_up), e
 transições por forma (circle_reveal, stripes, diagonal, blocks) dão cara de motion design.

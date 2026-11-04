@@ -54,6 +54,12 @@ export const PHOTO_SUFFIX =
 
 // Espelho de CHOICES e FONT_DESCRIPTIONS de worker/render/template_engine.py.
 // Ao adicionar uma opção lá, acrescente aqui também para a IA poder escolher.
+/** Transições aceitas pela ficha e por scene.transition (espelho de CHOICES["transition.kind"] do template_engine.py). */
+export const TRANSITION_KINDS = [
+  "cut", "punch_zoom", "crossfade", "slide_left", "slide_up", "blur_zoom", "flash", "whip_pan", "zoom_in", "glitch",
+  "circle_reveal", "stripes", "diagonal", "blocks",
+];
+
 const CHOICES: Record<string, string[]> = {
   "background.kind": ["solid", "gradient", "blurred_image"],
   "image.layout": ["fullbleed", "card", "circle", "top_half", "polaroid", "split", "text_only"],
@@ -62,8 +68,7 @@ const CHOICES: Record<string, string[]> = {
   "caption.animation": ["word_pop", "word_reveal", "karaoke", "line_fade", "typewriter"],
   "caption.highlight": ["box", "color", "underline", "none"],
   "title.animation": ["slide_up", "fade", "pop", "typewriter", "kinetic", "blur_in", "write_on", "letters", "mask_up"],
-  "transition.kind": ["cut", "punch_zoom", "crossfade", "slide_left", "slide_up", "blur_zoom", "flash", "whip_pan", "zoom_in", "glitch",
-    "circle_reveal", "stripes", "diagonal", "blocks"],
+  "transition.kind": TRANSITION_KINDS,
   "graphics.style": ["clean", "hand"],
   "graphics.color": ["accent", "text"],
   "graphics.decor": ["none", "grid", "lines", "dots", "shapes", "rings"],

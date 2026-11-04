@@ -30,6 +30,8 @@ export interface VideoScene {
   avatar?: boolean;
   /** Grafismo animado da cena (motor genérico: estilo livre e templates). Ver graphics.ts ↔ worker/render/mograph.py. */
   graphic?: SceneGraphic;
+  /** Transição de entrada desta cena (motor genérico); vale mais que a da ficha. Ver TRANSITION_KINDS em freeStyle.ts. */
+  transition?: string;
 }
 
 // ---------- vídeo base (avatar falando / vídeo do usuário) ----------

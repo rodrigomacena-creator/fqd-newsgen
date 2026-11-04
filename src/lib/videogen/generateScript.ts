@@ -13,7 +13,7 @@ import {
 import { mergePronunciations } from "./pronunciation";
 import { isAllowedImageUrl } from "./profiles";
 import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
-import { SCENE_LAYOUTS, enforcePhotoPrompts, freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
+import { SCENE_LAYOUTS, TRANSITION_KINDS, enforcePhotoPrompts, freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
 import { graphicNeedsImage, graphicsPromptRule, sanitizeGraphic } from "./graphics";
 import { HUMANIZER_RULE } from "./humanizer";
 import { CTA_EFFECTS, CTA_FONT_SCALE, type VideoFormat } from "./types";
@@ -214,6 +214,8 @@ export function normalizeScript(input: unknown): VideoScript {
     if (o.avatar === true) scene.avatar = true;
     const graphic = sanitizeGraphic(o.graphic);
     if (graphic) scene.graphic = graphic;
+    const transition = str(o.transition);
+    if (TRANSITION_KINDS.includes(transition)) scene.transition = transition;
     const graphicOnly = graphic && !graphicNeedsImage(graphic); // grafismo no lugar da imagem: nada de clipe de banco
     const layout = str(o.layout);
     if (SCENE_LAYOUTS.includes(layout)) scene.layout = layout;

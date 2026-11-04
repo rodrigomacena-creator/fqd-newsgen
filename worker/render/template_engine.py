@@ -1287,6 +1287,27 @@ def render(job, assets, out_path, on_progress=None):
 
     trans = spec["transition"]
     tdur = trans["durationS"] if trans["kind"] != "cut" else 0
+    kinds = CHOICES["transition.kind"]
+
+    def scene_trans(data):
+        """Transição de entrada da cena: scene.transition (opcional) vale mais que a da ficha."""
+        k = data.get("transition")
+        if k in kinds:
+            return k, (0.0 if k == "cut" else max(tdur, 0.3))
+        return trans["kind"], tdur
+
+    def fx_of(idx):
+        g = graphics.get(idx)
+        return g if g is not None and g.fx is not None else None
+
+    def scene_frame(idx, u, local, span, t, *beat):
+        """Quadro da cena; grafismo de tela cheia (fx) entra já aqui, para as transições o mostrarem."""
+        fr = visuals[idx].frame(u, local, t, *beat)
+        g = fx_of(idx)
+        if g is not None:
+            fr = np.array(fr, copy=True)
+            g.draw(fr, min(local, span), span, int(t * FPS))
+        return fr
     total = int(math.ceil(tl.duration * FPS))
     writer = FrameWriter(out_path)
     try:
@@ -1296,7 +1317,8 @@ def render(job, assets, out_path, on_progress=None):
                 local = t - tl.cta_start
                 fr = cta_card.frame(local)
                 if local < tdur and tl.scenes:
-                    prev = visuals[tl.scenes[-1].index].frame(1.0, 99.0, t)
+                    last = tl.scenes[-1]
+                    prev = scene_frame(last.index, 1.0, 99.0, last.end - last.start, t)
                     fr = _transition(prev, fr, local / tdur, trans["kind"], spec["palette"]["accent"])
                 fr = np.array(fr, copy=True)
                 particles.draw(fr, t)
@@ -1307,9 +1329,10 @@ def render(job, assets, out_path, on_progress=None):
                 local = t - sc.start
                 b = beat_at(t)
                 vis = visuals[sc.index]
-                fr = vis.frame(local / span, local, t, b if mo["beatPulse"] else 0.0, b)
+                fr = scene_frame(sc.index, local / span, local, span, t, b if mo["beatPulse"] else 0.0, b)
+                kind_in, dur_in = scene_trans(sc.data)
                 flash = 0.0
-                if directed:
+                if directed and sc.data.get("transition") not in kinds:
                     no_marks = spec["image"]["photo"] or vis.layout in ("fullbleed", "text_only", "split", "top_half", "graphic")
                     if not no_marks and marks.kind.get(sc.index, "none") != "none" and t >= marks.at[sc.index]:
                         box = vis.box or (W * 0.22, H * 0.3, W * 0.78, H * 0.54)
@@ -1321,10 +1344,11 @@ def render(job, assets, out_path, on_progress=None):
                         im, _ = mv.apply_cut(Image.fromarray(fr).convert("RGBA"), d["cut"], local, bg_fill)
                         fr = np.asarray(im.convert("RGB"))
                         flash = mv.cut_flash(d["cut"], local)
-                elif i > 0 and local < tdur:
+                elif i > 0 and local < dur_in:
                     prev_sc = tl.scenes[i - 1]
-                    prev = visuals[prev_sc.index].frame(1.0, prev_sc.end - prev_sc.start, t)
-                    fr = _transition(prev, fr, local / tdur, trans["kind"], spec["palette"]["accent"])
+                    pspan = prev_sc.end - prev_sc.start
+                    prev = scene_frame(prev_sc.index, 1.0, pspan, pspan, t)
+                    fr = _transition(prev, fr, local / dur_in, kind_in, spec["palette"]["accent"])
                 if i == 0 and local < HOOK_LEN:
                     # gancho: o vídeo abre com um soco de zoom e um clarão, para segurar quem está rolando
                     k = ease(local / HOOK_LEN)
@@ -1340,7 +1364,7 @@ def render(job, assets, out_path, on_progress=None):
                     fr = np.clip(fr.astype(np.float32) + 60 * flash, 0, 255).astype(np.uint8)
                 particles.draw(fr, t)
                 watermark.draw(fr)  # antes dos textos: se encostar no título/legenda, o texto fica por cima
-                if sc.index in graphics:
+                if sc.index in graphics and fx_of(sc.index) is None:
                     graphics[sc.index].draw(fr, local, span, n)
                 # 16:9: imagem ao lado = texto numa coluna à esquerda; tela cheia = texto mais largo
                 col_x, col_w = text_column(vis.layout)

@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { AutoTextarea } from "./ui";
 import {
+  FX_GRAPHICS,
   GRAPHIC_LABELS,
   GRAPHIC_TYPES,
   type GraphicItem,
@@ -72,6 +73,57 @@ const STARTERS: Record<GraphicType, SceneGraphic> = {
       { icon: "shield", label: "Seguro" },
     ],
   },
+  particle_text: { type: "particle_text", text: "Motion", sub: "" },
+  liquid_text: { type: "liquid_text", text: "Energia", sub: "" },
+  split_reveal: { type: "split_reveal", text: "Surpresa", sub: "" },
+  kinetic_poster: {
+    type: "kinetic_poster",
+    items: [{ label: "Rápido" }, { label: "Bonito" }, { label: "Seu" }],
+  },
+  morph: {
+    type: "morph",
+    items: [{ label: "Forma" }, { label: "Cor" }, { label: "Ritmo" }],
+  },
+  globe: { type: "globe", label: "Alcance global", sub: "" },
+  route: { type: "route", from: "São Paulo", to: "Lisboa", value: "" },
+  flip_clock: { type: "flip_clock", value: "2026", label: "" },
+  chat: {
+    type: "chat",
+    items: [{ text: "Oi! Tudo bem?" }, { text: "Tudo ótimo!", side: "right" }],
+  },
+  phone: {
+    type: "phone",
+    label: "",
+    items: [{ label: "Curtidas", text: "+1.240 no seu Reel", icon: "heart" }],
+  },
+  iso_bars: {
+    type: "iso_bars",
+    items: [
+      { label: "2024", value: "28" },
+      { label: "2025", value: "47" },
+    ],
+  },
+  equalizer: { type: "equalizer", text: "", icon: "mic" },
+  burst: { type: "burst", text: "Lançou!", icon: "rocket" },
+  loader: { type: "loader", text: "Pronto" },
+  card_stack: {
+    type: "card_stack",
+    items: [
+      { label: "Passo 1", text: "" },
+      { label: "Passo 2", text: "" },
+    ],
+  },
+  code: { type: "code", lines: ["const ideia = 'vídeo'", "render(ideia)"], output: "" },
+  orbit: {
+    type: "orbit",
+    text: "Você",
+    items: [{ icon: "camera" }, { icon: "music" }, { icon: "mail" }],
+  },
+  search: {
+    type: "search",
+    text: "como fazer um vídeo",
+    items: [{ label: "Resultado", text: "" }],
+  },
 };
 
 /** Como cada tipo de lista vira linhas "a | b" no textarea. */
@@ -99,6 +151,20 @@ const LIST_SHAPE: Partial<
     keys: ["label", "text"],
     hint: "Um marco por linha: ano | texto",
   },
+  kinetic_poster: { keys: ["label", "text"], hint: "Uma palavra por linha" },
+  morph: { keys: ["label", "text"], hint: "Uma palavra por linha (uma forma cada)" },
+  chat: {
+    keys: ["text", "side"],
+    hint: "Uma mensagem por linha; termine com | right para o balão da direita",
+  },
+  phone: {
+    keys: ["label", "text"],
+    hint: "Uma notificação por linha: título | texto",
+  },
+  iso_bars: { keys: ["label", "value"], hint: "Uma barra por linha: nome | valor" },
+  card_stack: { keys: ["label", "text"], hint: "Um cartão por linha: título | texto" },
+  orbit: { keys: ["icon", "label"], hint: "Um por linha: ícone em inglês | texto" },
+  search: { keys: ["label", "text"], hint: "Um resultado por linha: título | texto" },
 };
 
 function toLines(
@@ -307,6 +373,69 @@ export function GraphicFields({
               ))}
             </div>
           )}
+          {(graphic.type === "particle_text" ||
+            graphic.type === "liquid_text" ||
+            graphic.type === "split_reveal") && (
+            <>
+              {text("text", "Palavra", "Motion", 24)}
+              {text("sub", "Linha embaixo (opcional)")}
+            </>
+          )}
+          {graphic.type === "globe" && (
+            <>
+              {text("label", "Título")}
+              {text("sub", "Linha embaixo (opcional)")}
+            </>
+          )}
+          {graphic.type === "route" && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                {text("from", "Saída", "São Paulo", 24)}
+                {text("to", "Chegada", "Lisboa", 24)}
+              </div>
+              {text("value", "Distância (opcional)", "7.900 km", 20)}
+            </>
+          )}
+          {graphic.type === "flip_clock" && (
+            <>
+              {text("value", "Número (só dígitos e :)", "2026", 8)}
+              {text("label", "Legenda (opcional)")}
+            </>
+          )}
+          {graphic.type === "phone" && text("label", "Título em cima (opcional)")}
+          {graphic.type === "iso_bars" && text("unit", "Unidade (opcional)", "mil", 10)}
+          {(graphic.type === "equalizer" ||
+            graphic.type === "burst" ||
+            graphic.type === "loader") && (
+            <>
+              {text("text", "Texto", "Pronto", 30)}
+              {graphic.type !== "loader" &&
+                text("icon", "Ícone (nome em inglês)", "rocket", 30)}
+            </>
+          )}
+          {graphic.type === "orbit" && text("text", "Texto do centro", "Você", 12)}
+          {graphic.type === "search" && text("text", "O que é pesquisado", "", 40)}
+          {graphic.type === "code" && (
+            <>
+              <ListField
+                key={`${index}-lines`}
+                id={id("lines")}
+                hint="Código, uma linha por linha (até 9)"
+                initial={(graphic.lines ?? []).join("\n")}
+                disabled={disabled}
+                onChange={(t) =>
+                  set({
+                    lines: t
+                      .split("\n")
+                      .filter((l) => l.trim())
+                      .map((l) => l.slice(0, 46))
+                      .slice(0, 9),
+                  })
+                }
+              />
+              {text("output", "Resultado (opcional)", "pronto!", 40)}
+            </>
+          )}
           {graphic.type === "icon" && (
             <>
               {text("icon", "Ícone (nome em inglês)", "rocket", 30)}
@@ -314,7 +443,9 @@ export function GraphicFields({
             </>
           )}
           <p className={small}>
-            O grafismo é desenhado ao vivo no meio da tela, no lugar da imagem.
+            {FX_GRAPHICS.includes(graphic.type)
+              ? "Cena de tela cheia: a animação ocupa a tela toda (deixe o texto da tela vazio)."
+              : "O grafismo é desenhado ao vivo no meio da tela, no lugar da imagem."}{" "}
             Ícones: nomes da biblioteca Lucide em inglês (search, heart,
             trophy...).
           </p>

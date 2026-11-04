@@ -17,6 +17,25 @@ export const GRAPHIC_TYPES = [
   "timeline",
   "icon",
   "icons",
+  // cenas de motion de tela cheia (worker/render/mograph_fx.py)
+  "particle_text",
+  "liquid_text",
+  "kinetic_poster",
+  "split_reveal",
+  "morph",
+  "globe",
+  "route",
+  "flip_clock",
+  "chat",
+  "phone",
+  "iso_bars",
+  "equalizer",
+  "burst",
+  "card_stack",
+  "loader",
+  "code",
+  "orbit",
+  "search",
 ] as const;
 export type GraphicType = (typeof GRAPHIC_TYPES)[number];
 
@@ -33,13 +52,36 @@ export const GRAPHIC_LABELS: Record<GraphicType, string> = {
   timeline: "Linha do tempo",
   icon: "Ícone desenhado",
   icons: "Ícones",
+  particle_text: "Palavra de partículas",
+  liquid_text: "Palavra enchendo",
+  kinetic_poster: "Pôster tipográfico",
+  split_reveal: "Tela abrindo em fatias",
+  morph: "Forma que se transforma",
+  globe: "Globo com rotas",
+  route: "Mapa com trajeto",
+  flip_clock: "Relógio de placas",
+  chat: "Conversa de chat",
+  phone: "Celular com notificações",
+  iso_bars: "Barras 3D",
+  equalizer: "Espectro de som",
+  burst: "Explosão",
+  card_stack: "Pilha de cartões",
+  loader: "Carregando → pronto",
+  code: "Código digitando",
+  orbit: "Órbita de ícones",
+  search: "Busca com resultados",
 };
+
+/** Tipos que ocupam a tela inteira (pintam o próprio fundo; título e legenda da cena ficam por cima). */
+export const FX_GRAPHICS: readonly GraphicType[] = GRAPHIC_TYPES.slice(GRAPHIC_TYPES.indexOf("particle_text"));
 
 export interface GraphicItem {
   label?: string;
   value?: string;
   icon?: string;
   text?: string;
+  /** chat: "right" = balão da direita */
+  side?: string;
 }
 
 export interface SceneGraphic {
@@ -52,6 +94,10 @@ export interface SceneGraphic {
   sub?: string;
   header?: string;
   icon?: string;
+  text?: string;
+  to?: string;
+  lines?: string[];
+  output?: string;
   items?: GraphicItem[];
   points?: number[];
   labels?: string[];
@@ -71,8 +117,8 @@ function s(v: unknown, n: number): string {
 function item(v: unknown): GraphicItem {
   const o = (typeof v === "string" ? { label: v } : v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const out: GraphicItem = {};
-  for (const k of ["label", "value", "icon", "text"] as const) {
-    const x = s(o[k], 40);
+  for (const k of ["label", "value", "icon", "text", "side"] as const) {
+    const x = s(o[k], k === "text" ? 80 : 40);
     if (x) out[k] = x;
   }
   return out;
@@ -85,7 +131,7 @@ export function sanitizeGraphic(raw: unknown): SceneGraphic | undefined {
   const type = o.type as GraphicType;
   if (!GRAPHIC_TYPES.includes(type)) return undefined;
   const g: SceneGraphic = { type };
-  for (const k of ["value", "from", "label", "unit", "rank", "sub", "header", "icon"] as const) {
+  for (const k of ["value", "from", "to", "label", "unit", "rank", "sub", "header", "icon", "text", "output"] as const) {
     const x = s(o[k], 60);
     if (x) g[k] = x;
   }
@@ -101,6 +147,10 @@ export function sanitizeGraphic(raw: unknown): SceneGraphic | undefined {
     if (pts.length) g.points = pts;
   }
   if (Array.isArray(o.labels)) g.labels = o.labels.map((l) => s(l, 10)).slice(0, 12);
+  if (Array.isArray(o.lines)) {
+    const lines = o.lines.map((l) => (typeof l === "string" ? l.slice(0, 46) : "")).filter((l) => l.trim()).slice(0, 9);
+    if (lines.length) g.lines = lines;
+  }
   if (o.left) g.left = item(o.left);
   if (o.right) g.right = item(o.right);
   return g;
@@ -141,5 +191,25 @@ export function graphicsPromptRule(usage: "none" | "some" | "many"): string {
   - {"type":"versus","left":{"label":"SEO","value":"10 links","icon":"search"},"right":{"label":"GEO","value":"1 resposta","icon":"bot"}}: comparação lado a lado
   - {"type":"timeline","items":[{"label":"1985","text":"..."},...]}: 2 a 5 marcos no tempo
   - {"type":"icon","icon":"rocket","label":"..."} e {"type":"icons","items":[{"icon":"clock","label":"Rápido"},...]}: 1 a 3 ícones desenhados traço a traço
+  Cenas de motion de TELA CHEIA (pintam o próprio fundo, ótimas para abrir, virar capítulo e fechar; use no máximo uma a cada 3 cenas, sem repetir tipo):
+  - {"type":"particle_text","text":"PALAVRA","sub":"..."}: milhares de partículas voam e formam a palavra (1 palavra curta)
+  - {"type":"liquid_text","text":"PALAVRA","sub":"..."}: contorno da palavra desenhado e enchendo de líquido com ondas
+  - {"type":"kinetic_poster","items":["Rápido","Bonito","Seu"]}: 2 a 7 palavras batendo na tela uma a uma, trocando de cor
+  - {"type":"split_reveal","text":"PALAVRA","sub":"..."}: fatias coloridas se abrem revelando a palavra
+  - {"type":"morph","items":["Forma","Cor","Ritmo"]}: uma forma que vira outra (círculo, quadrado, triângulo...) a cada palavra
+  - {"type":"globe","label":"...","sub":"..."}: globo girando com rotas entre cidades (alcance, mundo, internacional)
+  - {"type":"route","from":"São Paulo","to":"Lisboa","value":"7.900 km"}: mapa com trajeto tracejado e pino andando
+  - {"type":"flip_clock","value":"2026","label":"..."}: placas de relógio virando até o número (só dígitos, ":" e ",")
+  - {"type":"chat","items":[{"text":"..."},{"text":"...","side":"right"}]}: conversa com "digitando..." e balões (2 a 5)
+  - {"type":"phone","label":"...","items":[{"label":"Curtidas","text":"+1.240","icon":"heart"}]}: celular subindo com 1 a 4 notificações
+  - {"type":"iso_bars","items":[{"label":"2024","value":"28"},...],"unit":"mil"}: barras 3D crescendo (2 a 5)
+  - {"type":"equalizer","text":"...","icon":"mic"}: espectro de áudio circular pulsando (som, podcast, música)
+  - {"type":"burst","text":"Lançou!","icon":"rocket"}: explosão de confete e raios (lançamento, conquista, fecho)
+  - {"type":"card_stack","items":[{"label":"...","text":"...","icon":"..."}]}: pilha de cartões passando um a um (2 a 4)
+  - {"type":"loader","text":"Pronto"}: carregamento até 100% que vira um check
+  - {"type":"code","lines":["const x = 1", "..."],"output":"..."}: editor de código digitando (até 9 linhas curtas) e o resultado
+  - {"type":"orbit","text":"Você","items":[{"icon":"camera","label":"Reels"},...]}: 3 a 6 ícones orbitando um centro
+  - {"type":"search","text":"o que a pessoa pesquisa","items":[{"label":"...","text":"...","icon":"..."}]}: busca digitada e até 3 resultados
+  Cena de tela cheia: "onScreen" vazio (a própria cena já tem o texto) e "imagePrompt" vazio. Para dar ritmo, a cena pode ter "transition" (entrada própria): circle_reveal, stripes, diagonal, blocks, whip_pan, zoom_in, glitch, flash, slide_up, punch_zoom.
   Ícones: nome em inglês da biblioteca Lucide (search, rocket, heart, star, clock, shield, users, brain, banknote, trending-up, lightbulb, globe, smartphone, car, trophy, gamepad-2, camera, music, check, x, zap, target...). Textos dos grafismos curtos (até 3 palavras por rótulo). Números só se forem verdadeiros e sustentáveis (do tema, da notícia ou de conhecimento geral consolidado); sem número confiável, prefira steps, checklist, icons ou versus. Cena com grafismo: o "onScreen" vira um título curto em cima (até 4 palavras) ou fica vazio, e o "imagePrompt" fica vazio (exceto rank_item). Em rank_item, "onScreen" fica vazio (o "header" já é o título fixo). Não use layout text_only junto com grafismo.`;
 }

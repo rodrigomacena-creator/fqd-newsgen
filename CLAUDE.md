@@ -334,6 +334,12 @@ reais encontradas ao construir o projeto, não só a estrutura.
   `write_on`/`letters`/`mask_up` e transições `circle_reveal`/`stripes`/`diagonal`/`blocks`. O roteiro recebe a regra
   (`graphicsPromptRule`, quantidade por `graphicsUsage(spec)`; no estilo livre a IA escolhe o `usage` na própria ficha). Editor: campo
   "Grafismo animado" no inspector da cena (`GraphicFields.tsx`). Ficha/roteiro sem nada disso renderiza igual a antes.
+  **Cenas de motion de tela cheia** (`worker/render/mograph_fx.py`, 18 tipos em `FX_TYPES` ↔ `FX_GRAPHICS` em `graphics.ts`:
+  particle_text, liquid_text, kinetic_poster, split_reveal, morph, globe, route, flip_clock, chat, phone, iso_bars, equalizer,
+  burst, card_stack, loader, code, orbit, search): também entram por `scene.graphic`, mas pintam a tela inteira (fundo próprio) e
+  são desenhadas junto com o visual da cena (`scene_frame()` no `render`), então as transições as mostram. `normalize()` do
+  módulo é a fonte da verdade do formato de cada uma. **Transição por cena**: `scene.transition` (opcional, `TRANSITION_KINDS`
+  em `freeStyle.ts` ↔ `CHOICES["transition.kind"]`) vale mais que a da ficha e que o corte do movimento por cena.
   Pronúncia (`pronunciation.ts`): o texto enviado ao TTS troca siglas/marcas em inglês e o site
   (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
   caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.
