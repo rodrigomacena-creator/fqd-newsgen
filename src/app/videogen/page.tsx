@@ -390,9 +390,9 @@ export default function VideoGenPage() {
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="max-w-2xl">
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Novo vídeo</h1>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">VideoGen</h1>
             <p className="mt-2 text-text-secondary">
-              Responda os cinco passos na ordem. Nada é cobrado antes do último.
+              Crie vídeos de conteúdo para redes sociais de forma rápida.
             </p>
           </div>
           {jobs && jobs.length > 0 && (
