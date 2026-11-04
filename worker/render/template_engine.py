@@ -999,13 +999,16 @@ def _transition(prev, cur, k, kind):
     return cur
 
 
+CTA_FONT_W = 92 / 1080  # fonte padrão do CTA = 8,5% da largura do vídeo (92 px em 1080)
+
+
 def cta_font_scale(cta):
-    """Tamanho do texto do CTA escolhido no editor (1 = padrão); fora de 0,6–1,8 ou inválido volta ao padrão."""
+    """Tamanho do texto do CTA escolhido no editor (1 = padrão = 8,5% da largura do vídeo); fora de 0,1–2 ou inválido volta ao padrão."""
     try:
         v = float(cta.get("fontScale"))
     except (TypeError, ValueError):
         return 1.0
-    return v if 0.6 <= v <= 1.8 else 1.0
+    return v if 0.1 <= v <= 2.0 else 1.0
 
 
 class CtaCard:
@@ -1016,8 +1019,12 @@ class CtaCard:
         style = TextStyle({"font": cfg["font"], "size": 96, "uppercase": spec["caption"]["uppercase"],
                            "color": cfg["color"], "stroke": "", "strokeWidth": 0}, spec["palette"])
         text = _plain(text)
-        # texto maior pode usar um pouco mais da largura (o card tem 60px de folga de cada lado)
-        self.text = _text_block(text, style, int(92 * scale), max_w=860 if scale <= 1 else 920, fit_width=True) if text.strip() else None
+        # tudo proporcional à largura do vídeo (W lido na hora do render): a mesma porcentagem fica igual no vertical e no horizontal.
+        # Texto maior pode usar um pouco mais da largura (o card tem folga dos dois lados); nunca passa da tela (fit_width).
+        self.pad = int(W * 60 / 1080)
+        size = max(8, int(round(W * CTA_FONT_W * scale)))
+        max_w = int(W * (0.796 if scale <= 1 else 0.852))
+        self.text = _text_block(text, style, size, max_w=max_w, fit_width=True) if text.strip() else None
         self.base = background_frame
 
     def frame(self, local_t):
@@ -1030,7 +1037,7 @@ class CtaCard:
         if self.text is not None:
             tw, th = self.text.width, self.text.height
             if self.style_kind == "card":
-                pad = 60
+                pad = self.pad
                 y0 = H / 2 - th / 2 - pad
                 _box(fr, (W - tw) / 2 - pad, y0 + (1 - k) * 80, (W + tw) / 2 + pad, y0 + th + 2 * pad + (1 - k) * 80,
                      self.bg_color, 0.96 * k)

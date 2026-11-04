@@ -343,8 +343,8 @@ export function summarizeCosts(entries: CostEntry[], usdPerCredit: number): Cost
 }
 
 /** Efeitos do fecho: mesmo cardápio de EFFECTS em worker/render/cta_fx.py. */
-/** Faixa do tamanho do texto do CTA (espelha cta_font_scale em worker/render/template_engine.py). */
-export const CTA_FONT_SCALE = { min: 0.6, max: 1.8, step: 0.1 } as const;
+/** Faixa do tamanho do texto do CTA; 1 = padrão = 8,5% da largura do vídeo (espelha cta_font_scale em worker/render/template_engine.py). */
+export const CTA_FONT_SCALE = { min: 0.1, max: 2, step: 0.05 } as const;
 
 export const CTA_EFFECTS = [
   { id: "none", label: "Nenhum" },

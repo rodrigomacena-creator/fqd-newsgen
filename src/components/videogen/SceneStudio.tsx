@@ -385,6 +385,7 @@ export function SceneStudio({
         </div>
 
         <div
+          style={{ containerType: "inline-size" }}
           className={`relative shrink-0 overflow-hidden border-[3px] border-[#26262C] bg-[#18181C] shadow-[0_24px_60px_-20px_rgba(0,0,0,.8)] sm:border-4 ${
             landscape ? "aspect-video w-[180px] rounded-xl sm:w-[300px] sm:rounded-2xl" : "aspect-[9/16] w-[118px] rounded-[22px] sm:w-[210px] sm:rounded-[30px]"
           }`}
@@ -410,8 +411,9 @@ export function SceneStudio({
             </div>
           )}
           {shown === "cta" ? (
-            <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 rounded-lg bg-[#E10600] px-2 py-2.5 text-center text-[11px] font-extrabold uppercase leading-tight text-white sm:inset-x-3 sm:text-sm">
-              <span style={{ fontSize: `${script.cta.fontScale ?? 1}em` }}>{script.cta.onScreen || "CTA"}</span>
+            <div className="absolute inset-x-[5%] top-1/2 -translate-y-1/2 rounded-lg bg-[#E10600] px-[3%] py-[3%] text-center font-extrabold uppercase leading-tight text-white">
+              {/* tamanho proporcional à largura da prévia (8,5% da largura = padrão do render), como no vídeo */}
+              <span style={{ fontSize: `${8.52 * (script.cta.fontScale ?? 1)}cqw` }}>{script.cta.onScreen || "CTA"}</span>
             </div>
           ) : (
             shownScene?.onScreen && (
@@ -1218,7 +1220,7 @@ function CtaInspector({
             className="mt-2 w-full accent-[#FF3B3B] disabled:opacity-50"
           />
           <p id="cta-size-help" className="mt-1 text-xs text-text-secondary">
-            Diminui ou aumenta o texto do CTA na tela. Vale no próximo render (estilo livre e templates).
+            100% = padrão: o texto é proporcional à largura do vídeo (a mesma % fica igual no vertical e no horizontal). Pode ir de 10% a 200%; o texto nunca passa da largura da tela. Vale no próximo render.
           </p>
         </div>
       </div>
