@@ -24,7 +24,7 @@ import numpy as np
 import skia
 
 from . import common as C
-from . import mograph_fx
+from . import mograph_fx, mograph_fx2
 from .motion import bounce_out, clamp, ease_io, expo_out, spring
 
 # ---------- ficha ----------
@@ -40,7 +40,7 @@ GRAPHICS_CHOICES = {
 BASE_TYPES = ("counter", "bars", "ranking", "rank_item", "line_chart", "donut", "steps", "checklist", "versus",
               "timeline", "icon", "icons")
 # cenas de motion de tela cheia (render/mograph_fx.py): pintam a tela inteira, sem imagem
-GRAPHIC_TYPES = BASE_TYPES + mograph_fx.FX_TYPES
+GRAPHIC_TYPES = BASE_TYPES + mograph_fx2.ALL_FX
 # tipos que mostram a imagem da cena (os outros não geram imagem)
 IMAGE_GRAPHICS = ("rank_item",)
 TITLE_ANIMATIONS = ("write_on", "letters", "mask_up")
@@ -73,8 +73,8 @@ def normalize_graphic(g):
     """Grafismo de uma cena, limpo. None se não serve (a cena fica como sem grafismo)."""
     if not isinstance(g, dict) or g.get("type") not in GRAPHIC_TYPES:
         return None
-    if g["type"] in mograph_fx.FX_TYPES:
-        return mograph_fx.normalize(g)
+    if g["type"] in mograph_fx2.ALL_FX:
+        return mograph_fx2.normalize(g)
     t = g["type"]
     items = [i for i in (g.get("items") or []) if isinstance(i, (dict, str))] if isinstance(g.get("items"), list) else []
 
@@ -443,7 +443,7 @@ class Graphic:
         self.image = image  # PIL RGB/RGBA (rank_item/versus)
         self.prev = prev  # grafismo da cena anterior (rank_item encadeia o contador)
         self._img = None
-        self.fx = mograph_fx.FX(data, spec, fonts) if data["type"] in mograph_fx.FX_TYPES else None
+        self.fx = mograph_fx2.FXPlus(data, spec, fonts) if data["type"] in mograph_fx2.ALL_FX else None
 
     def rows(self):
         if self.fx:
@@ -455,7 +455,14 @@ class Graphic:
         if self.fx:  # tela cheia: a transição da cena cuida da saída
             with Canvas(fr, self.rows()) as c:
                 if c is not None:
-                    self.fx.draw(c, t, span, n_frame)
+                    c.save()
+                    try:
+                        self.fx.draw(c, t, span, n_frame)
+                    except Exception as e:  # um quadro com problema não derruba o vídeo inteiro
+                        if not getattr(self, "_fx_err", False):
+                            print(f"grafismo {self.d['type']}: {e}", flush=True)
+                            self._fx_err = True
+                    c.restore()
             return
         pen = Pen(self.spec, n_frame)
         out = 0.0

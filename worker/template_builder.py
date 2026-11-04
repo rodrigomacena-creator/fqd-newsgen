@@ -137,7 +137,9 @@ crescendo, ranking com odômetro, gráfico de linha, rosca de porcentagem, passo
 versus, linha do tempo, ícones desenhados traço a traço) e também cenas de motion de tela cheia
 (palavra de partículas, palavra enchendo de líquido, pôster tipográfico, globo com rotas, mapa com trajeto,
 relógio de placas, chat, celular com notificações, barras 3D, espectro de som, explosão, cartões, código
-digitando, órbita de ícones, busca). Se a referência ou o pedido tem dados,
+digitando, órbita de ícones, busca, texto com glitch/elástico/em onda/decodificando, letreiro, marca-texto,
+citação, contagem regressiva, caleidoscópio, túnel, cubo 3D, fogos, anéis de meta, pizza, velas da bolsa,
+velocímetro, bolhas, funil, Venn, avaliação, bateria, cursor clicando, curtida, etiqueta de preço). Se a referência ou o pedido tem dados,
 listas, infográficos ou desenhos animados, use "graphics.usage" many e um "decor" combinando; títulos
 podem ser escritos à mão (write_on), letra a letra (letters) ou subir de uma máscara (mask_up), e
 transições por forma (circle_reveal, stripes, diagonal, blocks) dão cara de motion design.

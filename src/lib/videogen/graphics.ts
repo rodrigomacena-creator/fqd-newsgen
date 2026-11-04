@@ -36,6 +36,38 @@ export const GRAPHIC_TYPES = [
   "code",
   "orbit",
   "search",
+  // segunda leva (worker/render/mograph_fx2.py)
+  "glitch_text",
+  "stretch_text",
+  "wave_text",
+  "echo_text",
+  "scramble_text",
+  "marquee",
+  "highlight_text",
+  "quote",
+  "countdown",
+  "kaleidoscope",
+  "tunnel",
+  "dot_wave",
+  "blob",
+  "spiro",
+  "fireworks",
+  "cube",
+  "helix",
+  "activity_rings",
+  "pie",
+  "calendar_grid",
+  "candles",
+  "gauge",
+  "bubbles",
+  "venn",
+  "funnel",
+  "rating",
+  "battery",
+  "thermometer",
+  "cursor_click",
+  "like_button",
+  "price_tag",
 ] as const;
 export type GraphicType = (typeof GRAPHIC_TYPES)[number];
 
@@ -70,6 +102,37 @@ export const GRAPHIC_LABELS: Record<GraphicType, string> = {
   code: "Código digitando",
   orbit: "Órbita de ícones",
   search: "Busca com resultados",
+  glitch_text: "Texto com glitch",
+  stretch_text: "Letras elásticas",
+  wave_text: "Texto em onda",
+  echo_text: "Texto em eco",
+  scramble_text: "Texto decodificando",
+  marquee: "Letreiro correndo",
+  highlight_text: "Frase com marca-texto",
+  quote: "Citação",
+  countdown: "Contagem regressiva",
+  kaleidoscope: "Caleidoscópio",
+  tunnel: "Túnel de velocidade",
+  dot_wave: "Onda de pontos",
+  blob: "Gota líquida",
+  spiro: "Espirógrafo",
+  fireworks: "Fogos de artifício",
+  cube: "Cubo 3D girando",
+  helix: "Hélice de DNA",
+  activity_rings: "Anéis de metas",
+  pie: "Gráfico de pizza",
+  calendar_grid: "Calendário enchendo",
+  candles: "Gráfico da bolsa",
+  gauge: "Velocímetro",
+  bubbles: "Bolhas de dados",
+  venn: "Diagrama de Venn",
+  funnel: "Funil",
+  rating: "Avaliação com estrelas",
+  battery: "Bateria carregando",
+  thermometer: "Termômetro",
+  cursor_click: "Cursor clicando",
+  like_button: "Curtida explodindo",
+  price_tag: "Etiqueta de preço",
 };
 
 /** Tipos que ocupam a tela inteira (pintam o próprio fundo; título e legenda da cena ficam por cima). */
@@ -210,6 +273,11 @@ export function graphicsPromptRule(usage: "none" | "some" | "many"): string {
   - {"type":"code","lines":["const x = 1", "..."],"output":"..."}: editor de código digitando (até 9 linhas curtas) e o resultado
   - {"type":"orbit","text":"Você","items":[{"icon":"camera","label":"Reels"},...]}: 3 a 6 ícones orbitando um centro
   - {"type":"search","text":"o que a pessoa pesquisa","items":[{"label":"...","text":"...","icon":"..."}]}: busca digitada e até 3 resultados
+  Mais cenas de tela cheia (mesmas regras):
+  - texto: {"type":"glitch_text"|"stretch_text"|"wave_text"|"echo_text"|"scramble_text","text":"PALAVRA","sub":"..."} (glitch digital, letras elásticas que caem e quicam, letras em onda, eco em camadas, letras decodificando); {"type":"marquee","items":["Rápido","Fácil"]} (letreiros correndo pela tela inteira); {"type":"highlight_text","text":"frase curta","value":"palavra-chave"} (frase aparecendo com marca-texto e círculo na palavra); {"type":"quote","text":"citação","label":"autor"} (só citação verdadeira); {"type":"countdown","value":"3","text":"Já!"} (contagem regressiva)
+  - formas (fundo vivo para uma palavra): {"type":"kaleidoscope"|"tunnel"|"dot_wave"|"blob"|"spiro"|"helix"|"fireworks","text":"PALAVRA","sub":"..."} (caleidoscópio, túnel de velocidade, onda numa grade de pontos, gota líquida, espirógrafo se desenhando, hélice de DNA, fogos de artifício); {"type":"cube","items":["A","B","C","D"]} (cubo 3D girando, uma palavra por face, 2 a 4)
+  - dados: {"type":"activity_rings","label":"...","items":[{"label":"...","value":"80%"}]} (1 a 3 anéis de meta); {"type":"pie","label":"...","items":[{"label":"...","value":"45"}]} (2 a 6 fatias); {"type":"bubbles","label":"...","items":[{"label":"...","value":"..."}]} (2 a 6 bolhas, tamanho pelo valor, mesma unidade); {"type":"funnel","label":"...","items":[{"label":"...","value":"..."}]} (2 a 6 etapas); {"type":"venn","items":[{"label":"..."},{"label":"..."}],"text":"interseção"}; {"type":"calendar_grid"|"candles"|"gauge"|"battery"|"thermometer","label":"...","value":"..."} (dias enchendo um calendário, gráfico de velas da bolsa subindo + resultado, velocímetro em %, bateria carregando em %, termômetro em graus)
+  - interface: {"type":"rating","value":"4.9","label":"...","text":"comentário"}; {"type":"cursor_click","label":"título da tela","text":"texto do botão"}; {"type":"like_button","value":"12.480","label":"..."}; {"type":"price_tag","from":"R$ 199","to":"R$ 99","label":"..."}
   Cena de tela cheia: "onScreen" vazio (a própria cena já tem o texto) e "imagePrompt" vazio. Para dar ritmo, a cena pode ter "transition" (entrada própria): circle_reveal, stripes, diagonal, blocks, whip_pan, zoom_in, glitch, flash, slide_up, punch_zoom.
   Ícones: nome em inglês da biblioteca Lucide (search, rocket, heart, star, clock, shield, users, brain, banknote, trending-up, lightbulb, globe, smartphone, car, trophy, gamepad-2, camera, music, check, x, zap, target...). Textos dos grafismos curtos (até 3 palavras por rótulo). Números só se forem verdadeiros e sustentáveis (do tema, da notícia ou de conhecimento geral consolidado); sem número confiável, prefira steps, checklist, icons ou versus. Cena com grafismo: o "onScreen" vira um título curto em cima (até 4 palavras) ou fica vazio, e o "imagePrompt" fica vazio (exceto rank_item). Em rank_item, "onScreen" fica vazio (o "header" já é o título fixo). Não use layout text_only junto com grafismo.`;
 }

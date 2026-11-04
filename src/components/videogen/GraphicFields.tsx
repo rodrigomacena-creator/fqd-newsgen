@@ -124,6 +124,58 @@ const STARTERS: Record<GraphicType, SceneGraphic> = {
     text: "como fazer um vídeo",
     items: [{ label: "Resultado", text: "" }],
   },
+  glitch_text: { type: "glitch_text", text: "Glitch", sub: "" },
+  stretch_text: { type: "stretch_text", text: "Elástico", sub: "" },
+  wave_text: { type: "wave_text", text: "Onda", sub: "" },
+  echo_text: { type: "echo_text", text: "Eco", sub: "" },
+  scramble_text: { type: "scramble_text", text: "Segredo", sub: "" },
+  marquee: { type: "marquee", items: [{ label: "Rápido" }, { label: "Fácil" }] },
+  highlight_text: { type: "highlight_text", text: "O segredo é o ritmo", value: "ritmo" },
+  quote: { type: "quote", text: "", label: "" },
+  countdown: { type: "countdown", value: "3", text: "Já!" },
+  kaleidoscope: { type: "kaleidoscope", text: "Padrão", sub: "" },
+  tunnel: { type: "tunnel", text: "Velocidade", sub: "" },
+  dot_wave: { type: "dot_wave", text: "Pulso", sub: "" },
+  blob: { type: "blob", text: "Fluido", sub: "" },
+  spiro: { type: "spiro", text: "Precisão", sub: "" },
+  helix: { type: "helix", text: "DNA", sub: "" },
+  fireworks: { type: "fireworks", text: "Parabéns!" },
+  cube: { type: "cube", items: [{ label: "Ideia" }, { label: "Vídeo" }] },
+  activity_rings: { type: "activity_rings", label: "", items: [{ label: "Meta", value: "80%" }] },
+  pie: {
+    type: "pie",
+    label: "",
+    items: [
+      { label: "A", value: "60" },
+      { label: "B", value: "40" },
+    ],
+  },
+  bubbles: {
+    type: "bubbles",
+    label: "",
+    items: [
+      { label: "A", value: "10" },
+      { label: "B", value: "5" },
+    ],
+  },
+  funnel: {
+    type: "funnel",
+    label: "",
+    items: [
+      { label: "Visitas", value: "10 mil" },
+      { label: "Clientes", value: "300" },
+    ],
+  },
+  venn: { type: "venn", items: [{ label: "A" }, { label: "B" }], text: "" },
+  calendar_grid: { type: "calendar_grid", label: "", value: "30 dias" },
+  candles: { type: "candles", label: "", value: "+120%" },
+  gauge: { type: "gauge", label: "", value: "87%" },
+  battery: { type: "battery", label: "", value: "100%" },
+  thermometer: { type: "thermometer", label: "", value: "40°" },
+  rating: { type: "rating", value: "4.9", label: "", text: "" },
+  cursor_click: { type: "cursor_click", label: "", text: "Clique aqui" },
+  like_button: { type: "like_button", value: "1.000", label: "" },
+  price_tag: { type: "price_tag", from: "R$ 199", to: "R$ 99", label: "" },
 };
 
 /** Como cada tipo de lista vira linhas "a | b" no textarea. */
@@ -165,6 +217,13 @@ const LIST_SHAPE: Partial<
   card_stack: { keys: ["label", "text"], hint: "Um cartão por linha: título | texto" },
   orbit: { keys: ["icon", "label"], hint: "Um por linha: ícone em inglês | texto" },
   search: { keys: ["label", "text"], hint: "Um resultado por linha: título | texto" },
+  marquee: { keys: ["label", "text"], hint: "Uma palavra por linha" },
+  cube: { keys: ["label", "text"], hint: "Uma palavra por face (2 a 4)" },
+  activity_rings: { keys: ["label", "value"], hint: "Um anel por linha: nome | porcentagem" },
+  pie: { keys: ["label", "value"], hint: "Uma fatia por linha: nome | valor" },
+  bubbles: { keys: ["label", "value"], hint: "Uma bolha por linha: nome | valor" },
+  funnel: { keys: ["label", "value"], hint: "Uma etapa por linha: nome | valor" },
+  venn: { keys: ["label", "text"], hint: "Um círculo por linha (2 ou 3)" },
 };
 
 function toLines(
@@ -414,6 +473,70 @@ export function GraphicFields({
             </>
           )}
           {graphic.type === "orbit" && text("text", "Texto do centro", "Você", 12)}
+          {[
+            "glitch_text",
+            "stretch_text",
+            "wave_text",
+            "echo_text",
+            "scramble_text",
+            "kaleidoscope",
+            "tunnel",
+            "dot_wave",
+            "blob",
+            "spiro",
+            "helix",
+          ].includes(graphic.type) && (
+            <>
+              {text("text", "Palavra", "Motion", 24)}
+              {text("sub", "Linha embaixo (opcional)")}
+            </>
+          )}
+          {graphic.type === "fireworks" && text("text", "Texto", "Parabéns!", 24)}
+          {graphic.type === "highlight_text" && (
+            <>
+              {text("text", "Frase", "O segredo é o ritmo", 70)}
+              {text("value", "Palavra destacada", "ritmo", 20)}
+            </>
+          )}
+          {graphic.type === "quote" && (
+            <>
+              {text("text", "Citação", "", 120)}
+              {text("label", "Autor")}
+            </>
+          )}
+          {graphic.type === "countdown" && (
+            <>
+              {text("value", "Começa em (1 a 10)", "3", 2)}
+              {text("text", "Texto no fim", "Já!", 24)}
+            </>
+          )}
+          {graphic.type === "venn" && text("text", "Texto no meio (opcional)", "", 20)}
+          {[
+            "activity_rings",
+            "pie",
+            "bubbles",
+            "funnel",
+            "calendar_grid",
+            "candles",
+            "gauge",
+            "battery",
+            "thermometer",
+            "rating",
+            "cursor_click",
+            "like_button",
+            "price_tag",
+          ].includes(graphic.type) && text("label", "Título (opcional)")}
+          {["calendar_grid", "candles", "gauge", "battery", "thermometer", "rating", "like_button"].includes(
+            graphic.type,
+          ) && text("value", "Número", "87%", 20)}
+          {graphic.type === "rating" && text("text", "Comentário (opcional)", "", 80)}
+          {graphic.type === "cursor_click" && text("text", "Texto do botão", "Clique aqui", 24)}
+          {graphic.type === "price_tag" && (
+            <div className="grid grid-cols-2 gap-2">
+              {text("from", "Preço antigo", "R$ 199", 16)}
+              {text("to", "Preço novo", "R$ 99", 16)}
+            </div>
+          )}
           {graphic.type === "search" && text("text", "O que é pesquisado", "", 40)}
           {graphic.type === "code" && (
             <>

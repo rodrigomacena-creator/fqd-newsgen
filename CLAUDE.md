@@ -340,6 +340,12 @@ reais encontradas ao construir o projeto, não só a estrutura.
   são desenhadas junto com o visual da cena (`scene_frame()` no `render`), então as transições as mostram. `normalize()` do
   módulo é a fonte da verdade do formato de cada uma. **Transição por cena**: `scene.transition` (opcional, `TRANSITION_KINDS`
   em `freeStyle.ts` ↔ `CHOICES["transition.kind"]`) vale mais que a da ficha e que o corte do movimento por cena.
+  **Segunda leva (04/11/2026, 31 tipos)** em `worker/render/mograph_fx2.py` (`FX2_TYPES`; `ALL_FX` = as duas levas; `FXPlus`
+  herda de `FX`; `normalize()` dele cobre as duas): texto (glitch_text, stretch_text, wave_text, echo_text, scramble_text, marquee,
+  highlight_text, quote, countdown), formas (kaleidoscope, tunnel, dot_wave, blob, spiro, fireworks, cube, helix), dados
+  (activity_rings, pie, calendar_grid, candles, gauge, bubbles, venn, funnel, rating, battery, thermometer) e interface
+  (cursor_click, like_button, price_tag). Novo tipo: método `_<tipo>` em `FXPlus` + `normalize` + `GRAPHIC_TYPES`/labels/prompt em
+  `graphics.ts` + `STARTERS`/campos em `GraphicFields.tsx`.
   Pronúncia (`pronunciation.ts`): o texto enviado ao TTS troca siglas/marcas em inglês e o site
   (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
   caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.
