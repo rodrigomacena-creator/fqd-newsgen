@@ -146,3 +146,68 @@ export async function uploadSceneClip(file: File, jobId: string, onProgress?: (p
   });
   return blob.url;
 }
+
+// ---------- material da marca (templates "do zero") ----------
+
+export type BrandUploadKind = "logo" | "guia" | "fonte" | "sfx" | "trilha" | "imagem";
+
+const BRAND_EXT_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  pdf: "application/pdf",
+  ttf: "font/ttf",
+  otf: "font/otf",
+  woff: "font/woff",
+  woff2: "font/woff2",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  m4a: "audio/mp4",
+  ogg: "audio/ogg",
+};
+
+const BRAND_RULES: Record<BrandUploadKind, { exts: string[]; maxMb: number; label: string }> = {
+  logo: { exts: ["png", "jpg", "jpeg", "webp", "svg"], maxMb: 15, label: "PNG, JPG, WebP ou SVG" },
+  guia: { exts: ["pdf", "png", "jpg", "jpeg", "webp", "svg"], maxMb: 60, label: "PDF ou imagem" },
+  fonte: { exts: ["ttf", "otf", "woff", "woff2"], maxMb: 10, label: "TTF, OTF, WOFF ou WOFF2" },
+  sfx: { exts: ["mp3", "wav", "m4a", "ogg"], maxMb: 25, label: "MP3, WAV, M4A ou OGG" },
+  trilha: { exts: ["mp3", "wav", "m4a", "ogg"], maxMb: 25, label: "MP3, WAV, M4A ou OGG" },
+  imagem: { exts: ["png", "jpg", "jpeg", "webp"], maxMb: 15, label: "PNG, JPG ou WebP" },
+};
+
+/** Extensões aceitas por tipo de material (para o accept do input). */
+export function brandAccept(kind: BrandUploadKind): string {
+  return BRAND_RULES[kind].exts.map((e) => `.${e}`).join(",");
+}
+
+function extOf(name: string): string {
+  return (name.split(".").pop() ?? "").toLowerCase();
+}
+
+export function brandFileProblem(file: File, kind: BrandUploadKind): string | null {
+  const rule = BRAND_RULES[kind];
+  if (!rule.exts.includes(extOf(file.name))) return `"${file.name}": envie ${rule.label}.`;
+  if (file.size > rule.maxMb * 1024 * 1024) return `"${file.name}" passa de ${rule.maxMb} MB.`;
+  return null;
+}
+
+/** Pasta do material de um template novo (todos os arquivos dele sobem para a mesma). */
+export function newBrandFolder(): string {
+  return randomId();
+}
+
+/** Sobe um arquivo do material da marca direto pro Vercel Blob e devolve a URL pública. */
+export async function uploadBrandFile(file: File, kind: BrandUploadKind, folder: string): Promise<string> {
+  const problem = brandFileProblem(file, kind);
+  if (problem) throw new Error(problem);
+  const ext = extOf(file.name);
+  const blob = await upload(`videogen/marcas/${folder}/${kind}-${slug(file.name)}.${ext}`, file, {
+    access: "public",
+    handleUploadUrl: "/api/videogen/uploads",
+    contentType: BRAND_EXT_TYPES[ext],
+    multipart: file.size > 20 * 1024 * 1024,
+  });
+  return blob.url;
+}

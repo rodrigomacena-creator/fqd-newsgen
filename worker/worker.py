@@ -12,6 +12,7 @@ Uso:
   python3 worker.py --once          # processa no máximo um job e sai
   python3 worker.py --job-file j.json --out teste.mp4   # render local de um job salvo, sem o app
   python3 worker.py --template-video ref.mp4 --out pasta/   # monta um template local, sem o app
+  python3 worker.py --template-file marca.json --out pasta/ # template de marca (ou ajuste) local, sem o app
 """
 import argparse
 import contextlib
@@ -30,6 +31,7 @@ from pathlib import Path
 
 import requests
 
+from brand_assets import prepare_render
 from providers import download, generate_image, generate_music, prepare_user_image, silent_audio
 from render import RENDERERS, template_engine
 from render.audio_fx import build_sfx_track, detect_beats, sfx_cues
@@ -296,6 +298,9 @@ def _produce(job, workdir, report, costs, assets, preview):
 
     tl = build_timeline(script, job.get("narrationWords"))
     workdir.mkdir(parents=True, exist_ok=True)
+    # material da marca do template (fontes, logo, efeitos, trilha); ficha sem marca = tudo vazio
+    brand_files = prepare_render(job.get("templateSpec"), workdir, WORKDIR / "marca-cache", log) \
+        if module is template_engine else prepare_render(None, workdir)
     report(5)
 
     narration = None
@@ -366,6 +371,8 @@ def _produce(job, workdir, report, costs, assets, preview):
     music_prompt = script.get("musicPrompt") or ""
     track = script.get("musicTrack") or {}
     def get_music():
+        if brand_files["music"]:  # trilha enviada com o material da marca: vale para todo vídeo do template
+            return brand_files["music"]
         path = workdir / "trilha.mp3"
         if track.get("url") and track.get("prompt") == music_prompt and float(track.get("seconds") or 0) >= tl.duration + 1:
             try:
@@ -463,6 +470,8 @@ def _produce(job, workdir, report, costs, assets, preview):
             extra["texture"] = download(texture_url, workdir / "textura.jpg")
         extra["clips"] = clips
         extra["base_clips"] = base_clips
+        extra["fonts"] = brand_files["fonts"]
+        extra["watermark"] = brand_files["watermark"]
     duration = module.render(job, {"images": images, **extra}, str(video_only), on_progress=lambda p: report(50 + 40 * p))
     report(91)
 
@@ -483,6 +492,8 @@ def _produce(job, workdir, report, costs, assets, preview):
                 image = str(path)
         except Exception as e:
             log(f"{kind}: {e} (segue sem)")
+    if logo is None and logo_mode == "company" and brand_files["logo"]:
+        logo = str(brand_files["logo"])  # perfil sem logo: usa o logo da marca do template
     accent = (((job.get("templateSpec") or {}).get("palette") or {}).get("accent")) or "#E8322B"
     try:
         branded = overlay_cta(str(video_only), tl.cta_start, duration, str(workdir / "video_cta.mp4"),
@@ -494,7 +505,7 @@ def _produce(job, workdir, report, costs, assets, preview):
 
     sfx = None
     try:
-        sfx = build_sfx_track(sfx_cues(tl, script), duration, workdir / "efeitos.wav")
+        sfx = build_sfx_track(sfx_cues(tl, script), duration, workdir / "efeitos.wav", custom=brand_files["sfx"])
     except Exception as e:
         log(f"efeitos sonoros: {e} (segue sem)")
     final = workdir / "video.mp4"
@@ -637,6 +648,7 @@ def main():
     ap.add_argument("--out", default="video.mp4", help="saída do --job-file")
     ap.add_argument("--reuse", action="store_true", help="com --job-file: reaproveita imagens e trilha já geradas")
     ap.add_argument("--template-video", help="monta um template local a partir deste vídeo ou link do YouTube/Pinterest (sem o app); saída em --out")
+    ap.add_argument("--template-file", help="monta/ajusta um template local a partir de um JSON no formato do claim (ex.: template de marca); saída em --out")
     args = ap.parse_args()
     global REUSE_ASSETS
     REUSE_ASSETS = args.reuse
@@ -645,6 +657,13 @@ def main():
         import template_builder
 
         result = template_builder.build_local(args.template_video, args.out)
+        log("ok", result["sampleUrl"])
+        return
+
+    if args.template_file:
+        import template_builder
+
+        result = template_builder.build_template_local(args.template_file, args.out)
         log("ok", result["sampleUrl"])
         return
 

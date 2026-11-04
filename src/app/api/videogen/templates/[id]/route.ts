@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { deleteBlobIfOwned, deleteBlobsByPrefix } from "@/lib/blobStorage";
-import { serializeTemplate } from "@/lib/videogen/templates";
+import { brandAssetUrls, serializeTemplate } from "@/lib/videogen/templates";
 
 export async function GET(_request: Request, ctx: RouteContext<"/api/videogen/templates/[id]">) {
   const { id } = await ctx.params;
@@ -28,7 +28,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/videogen/t
 }
 
 /**
- * Exclui o template, o vídeo de referência e os arquivos gerados (exemplo, textura).
+ * Exclui o template, o vídeo de referência (ou o material da marca) e os arquivos gerados (exemplos, textura, logo).
  * Vídeos já renderizados continuam; os que usam o template não podem mais ir pro render.
  */
 export async function DELETE(_request: Request, ctx: RouteContext<"/api/videogen/templates/[id]">) {
@@ -39,6 +39,8 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/videogen
     return NextResponse.json({ error: "O template está sendo montado. Espere terminar para excluir." }, { status: 409 });
   }
   await deleteBlobIfOwned(template.referenceUrl);
+  // material da marca (template do zero) e todas as versões do exemplo
+  for (const url of brandAssetUrls(template.brandAssets)) await deleteBlobIfOwned(url);
   await deleteBlobsByPrefix(`videogen/templates/${id}/`);
   await prisma.videoTemplate.delete({ where: { id } });
   return NextResponse.json({ ok: true });

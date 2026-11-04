@@ -6,7 +6,18 @@ import patternGuides from "./patternGuides.json";
 import { VIDEO_PATTERNS, getVideoPattern, type VideoPattern } from "./patterns";
 import { FREE_STYLE, FREE_STYLE_ID, describeStyleSpec, freeStyleGuide } from "./freeStyle";
 import { ELEVENLABS_USD_PER_CREDIT, parseCosts } from "./costs";
-import { summarizeCosts, type CostSummary, type TemplateSummary, type VideoTemplateStatus } from "./types";
+import {
+  BRAND_ASSET_KINDS,
+  summarizeCosts,
+  type BrandAssets,
+  type BrandFile,
+  type BrandSfxRole,
+  type CostSummary,
+  type TemplateRevision,
+  type TemplateSummary,
+  type VideoTemplateOrigin,
+  type VideoTemplateStatus,
+} from "./types";
 
 function parseJson<T>(value: string | null): T | null {
   if (!value) return null;
@@ -24,6 +35,14 @@ export interface VideoTemplateDTO {
   /** Link do YouTube/Pinterest quando o template foi montado a partir de um link. */
   sourceUrl: string | null;
   notes: string | null;
+  origin: VideoTemplateOrigin;
+  /** Ideia do template escrita pelo usuário (template de marca). */
+  brief: string | null;
+  brandAssets: BrandAssets | null;
+  /** Versões do exemplo, da primeira à atual. */
+  revisions: TemplateRevision[];
+  /** Alteração pedida que o worker está aplicando (ou vai aplicar). */
+  revisionRequest: string | null;
   status: VideoTemplateStatus;
   progress: number | null;
   summary: TemplateSummary | null;
@@ -42,6 +61,11 @@ export function serializeTemplate(t: VideoTemplate): VideoTemplateDTO {
     referenceUrl: t.referenceUrl,
     sourceUrl: t.sourceUrl,
     notes: t.notes,
+    origin: t.origin === "brand" ? "brand" : "reference",
+    brief: t.brief,
+    brandAssets: parseJson<BrandAssets>(t.brandAssets),
+    revisions: parseJson<TemplateRevision[]>(t.revisions) ?? [],
+    revisionRequest: t.revisionRequest,
     status: t.status as VideoTemplateStatus,
     progress: t.progress,
     summary: parseJson<TemplateSummary>(t.summary),
@@ -95,14 +119,20 @@ export interface ResolvedStyle {
   spec: unknown | null;
 }
 
-/** Acha um estilo pelo id: estilo livre, embutido, depois template pronto. */
+/**
+ * Template que já tem ficha continua valendo para os vídeos que o usam enquanto está sendo ajustado
+ * (na fila, montando ou esperando aprovação) — só não aparece para vídeos novos até ser aprovado.
+ */
+const USABLE_STATUSES = new Set(["ready", "review", "queued", "analyzing"]);
+
+/** Acha um estilo pelo id: estilo livre, embutido, depois template pronto (ou em ajuste, se já tem ficha). */
 export async function resolveStyle(id: string): Promise<ResolvedStyle | null> {
   if (id === FREE_STYLE_ID) return { pattern: FREE_STYLE, guide: freeStyleGuide(null), spec: null };
   const builtin = getVideoPattern(id);
   if (builtin) return { pattern: builtin, guide: (patternGuides as Record<string, string>)[id] ?? "", spec: null };
   if (!id) return null;
   const t = await prisma.videoTemplate.findUnique({ where: { id } });
-  if (!t || t.status !== "ready") return null;
+  if (!t || !t.spec || !USABLE_STATUSES.has(t.status)) return null;
   return { pattern: templateToPattern(t), guide: t.guide ?? "", spec: parseJson<unknown>(t.spec) };
 }
 
@@ -134,4 +164,75 @@ export function normalizeSourceLink(value: string): string | null {
   if (!ok) return null;
   url.protocol = "https:";
   return url.toString();
+}
+
+// ---------- material da marca (templates "do zero") ----------
+
+const BRAND_LIMITS: Record<keyof BrandAssets, number> = { logos: 4, guides: 3, fonts: 4, sfx: 8, music: 1, images: 6 };
+// tudo que o navegador sobe para um template de marca fica em videogen/marcas/<pasta>/ (rota de uploads)
+const BRAND_URL = /^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\/videogen\/marcas\/[a-z0-9]{8,32}\/[^?#]+$/;
+const SFX_ROLES: BrandSfxRole[] = ["transicao", "impacto", "subida"];
+
+function isBrandUrl(url: string): boolean {
+  if (BRAND_URL.test(url)) return true;
+  // testes locais (next dev): arquivos servidos pelo próprio app
+  return process.env.NODE_ENV !== "production" && /^http:\/\/localhost(:\d+)?\//.test(url);
+}
+
+/** Valida o material enviado: só URLs do nosso Blob, limites por tipo. Devolve null se não sobrar nada. */
+export function sanitizeBrandAssets(raw: unknown): BrandAssets | null {
+  const src = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const out = {} as BrandAssets;
+  let total = 0;
+  for (const kind of BRAND_ASSET_KINDS) {
+    const list = Array.isArray(src[kind]) ? (src[kind] as unknown[]) : [];
+    out[kind] = list
+      .map((item): BrandFile | null => {
+        const f = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
+        const url = typeof f.url === "string" ? f.url.trim() : "";
+        if (!isBrandUrl(url)) return null;
+        const name = (typeof f.name === "string" ? f.name.trim() : "").slice(0, 120) || "arquivo";
+        const file: BrandFile = { url, name };
+        if (kind === "sfx") file.role = SFX_ROLES.includes(f.role as BrandSfxRole) ? (f.role as BrandSfxRole) : "impacto";
+        return file;
+      })
+      .filter((f): f is BrandFile => f !== null)
+      .slice(0, BRAND_LIMITS[kind]);
+    total += out[kind].length;
+  }
+  return total ? out : null;
+}
+
+/** Todas as URLs do material (para apagar junto com o template). */
+export function brandAssetUrls(json: string | null): string[] {
+  const assets = parseJson<BrandAssets>(json);
+  if (!assets) return [];
+  return BRAND_ASSET_KINDS.flatMap((k) => (assets[k] ?? []).map((f) => f.url));
+}
+
+/** Versões guardadas do exemplo. */
+export function parseRevisions(json: string | null): TemplateRevision[] {
+  return parseJson<TemplateRevision[]>(json) ?? [];
+}
+
+/** O que o worker recebe no claim de um template (o ajuste parte da ficha e do exemplo atuais). */
+export function templateClaimPayload(t: VideoTemplate) {
+  return {
+    id: t.id,
+    name: t.name,
+    referenceUrl: t.referenceUrl,
+    sourceUrl: t.sourceUrl,
+    notes: t.notes,
+    origin: t.origin,
+    brief: t.brief,
+    brandAssets: parseJson<BrandAssets>(t.brandAssets),
+    revisionRequest: t.revisionRequest,
+    spec: t.revisionRequest ? parseJson<unknown>(t.spec) : null,
+    guide: t.revisionRequest ? t.guide : null,
+    buildState: t.revisionRequest ? parseJson<unknown>(t.buildState) : null,
+    // pedidos anteriores (a IA não desfaz o que já foi pedido)
+    history: parseRevisions(t.revisions)
+      .map((r) => r.request)
+      .filter((r): r is string => Boolean(r)),
+  };
 }

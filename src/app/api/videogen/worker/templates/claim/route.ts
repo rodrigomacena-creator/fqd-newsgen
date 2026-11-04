@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma, withDbRetry } from "@/lib/prisma";
 import { checkWorkerAuth } from "@/lib/videogen/workerAuth";
+import { templateClaimPayload } from "@/lib/videogen/templates";
 
 // Template "analyzing" sem notícia do worker há esse tempo volta pra fila (worker caiu).
 const STALE_MS = 20 * 60 * 1000;
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
   try {
     const t = await withDbRetry(takeNext);
     if (!t) return NextResponse.json({ template: null });
-    return NextResponse.json({ template: { id: t.id, name: t.name, referenceUrl: t.referenceUrl, sourceUrl: t.sourceUrl, notes: t.notes } });
+    return NextResponse.json({ template: templateClaimPayload(t) });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("[videogen template claim]", e);

@@ -3,7 +3,8 @@
 - detect_beats(): acha as batidas da trilha (envelope de ataques + autocorrelação), sem libs extras.
 - sfx_cues(): onde cada efeito entra (whoosh nos cortes, impacto em palavras-chave, riser antes do CTA).
 - build_sfx_track(): monta uma faixa só com todos os efeitos, que o mix() soma à narração e à trilha.
-Os efeitos ficam em assets/sfx (gerados uma vez no ElevenLabs Sound Effects, sem custo por vídeo).
+Os efeitos ficam em assets/sfx (gerados uma vez no ElevenLabs Sound Effects, sem custo por vídeo);
+templates com material da marca podem trocar cada papel pelos efeitos enviados (sfx_file).
 """
 import subprocess
 
@@ -81,14 +82,25 @@ def sfx_cues(tl, script):
     return sorted(cues)
 
 
-def build_sfx_track(cues, duration, out):
+def sfx_file(name, custom=None):
+    """Arquivo do efeito. custom = {"whoosh"|"impact"|"riser": [arquivos]} (efeitos enviados com o material
+    da marca) troca os efeitos fixos daquele papel; whoosh2 = 2º arquivo do papel (em ciclo)."""
+    role = name.rstrip("0123456789")
+    files = (custom or {}).get(role) or []
+    if files:
+        n = int(name[len(role):] or 1) - 1
+        return str(files[n % len(files)])
+    return asset("sfx", f"{name}.mp3")
+
+
+def build_sfx_track(cues, duration, out, custom=None):
     """Faixa wav com todos os efeitos nos tempos certos (None se não houver efeito)."""
     cues = [c for c in cues if 0 <= c[0] < duration]
     if not cues:
         return None
     ins, parts = [], []
     for i, (t, name, vol) in enumerate(cues):
-        ins += ["-i", asset("sfx", f"{name}.mp3")]
+        ins += ["-i", sfx_file(name, custom)]
         ms = int(t * 1000)
         parts.append(f"[{i}:a]aresample=44100,volume={vol},adelay={ms}|{ms}[s{i}]")
     mixin = "".join(f"[s{i}]" for i in range(len(cues)))

@@ -307,6 +307,20 @@ reais encontradas ao construir o projeto, não só a estrutura.
   até 1080p, de vídeo com mais de 3 min usa os 2 primeiros). O YouTube costuma bloquear IP de datacenter:
   se falhar, configurar no `.env` do worker o proxy residencial (`RESIDENTIAL_PROXY_*`, mesmos nomes do
   app) ou `VIDEOGEN_DOWNLOAD_PROXY`. Teste local sem o app: `python3 worker.py --template-video ref.mp4|URL --out pasta/`.
+  **Template do zero com o material da marca** (`VideoTemplate.origin = "brand"`, aba "Do zero, com a sua marca" em
+  `/videogen/templates`, `BrandTemplateForm.tsx`): o usuário escreve a ideia (`brief`) e sobe logos, guia de marca (PDF/imagem),
+  fontes (ttf/otf/woff/woff2), efeitos sonoros (com o papel: transição/impacto/subida), trilha e imagens de referência direto pro
+  Blob (`uploadBrandFile()`, `videogen/marcas/<pasta>/`, lista em `brandAssets`, apagada com o template). O worker
+  (`worker/brand_assets.py`, PyMuPDF para PDF/SVG) prepara o material para a IA (páginas do guia + texto, amostra desenhada de cada
+  fonte, logo em PNG) e a ficha ganha o grupo `spec.brand` (fontes `marca-<hash>`, `logoUrl`, marca d'água num canto, `sfx` por
+  papel, `musicUrl`), que vale em todo vídeo do template: `prepare_render()` no `_produce` registra as fontes, põe o logo no fecho
+  (se o perfil da empresa não tiver) e troca efeitos/trilha. Ficha sem `brand` renderiza igual a antes. Exemplo de marca = 8s.
+  **Ajustes até aprovar** (vale para qualquer template): POST `.../templates/[id]/revise` com o pedido → fila com
+  `revisionRequest`; o worker manda a ficha atual + `buildState` (roteiro do exemplo, imageStyle, musicPrompt) + pedidos anteriores
+  para a IA, que devolve tudo de novo mudando só o pedido (+ `note`), e renderiza outro exemplo. Template de marca e ajustes terminam
+  em `review` ("Para aprovar"; versões em `revisions`, cada uma com o próprio mp4); POST `.../approve` → `ready`. Só `ready` aparece
+  para vídeos novos; `resolveStyle()` aceita review/fila se já há ficha (vídeos que já usam o template continuam renderizando).
+  Teste local sem o app: `python3 worker.py --template-file marca.json --out pasta/` (JSON no formato do claim, URLs `file://`).
   Pronúncia (`pronunciation.ts`): o texto enviado ao TTS troca siglas/marcas em inglês e o site
   (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
   caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.

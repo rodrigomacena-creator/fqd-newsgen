@@ -12,6 +12,17 @@ const VIDEO_PATH = /^videogen\/[a-z0-9]{16,40}\/base\/[a-z0-9-]{1,60}\.(mp4|mov|
 const CLIP_PATH = /^videogen\/[a-z0-9]{16,40}\/clipes\/[a-z0-9-]{1,60}\.(mp4|mov|webm)$/;
 // áudio/vídeo enviado no passo "Quem fala" da criação (sobe antes do job existir)
 const BASE_PATH = /^videogen\/base\/[a-z0-9]{8,32}\/[a-z0-9-]{1,60}\.(mp4|mov|webm|mp3|wav|m4a|ogg)$/;
+// material da marca de um template "do zero" (sobe antes do template existir; apagado com ele)
+const BRAND_PATH = /^videogen\/marcas\/[a-z0-9]{8,32}\/(logo|guia|fonte|sfx|trilha|imagem)-[a-z0-9-]{1,60}\.[a-z0-9]{2,5}$/;
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const BRAND_RULES: Record<string, { types: string[]; maxMb: number }> = {
+  logo: { types: [...IMAGE_TYPES, "image/svg+xml"], maxMb: 15 },
+  guia: { types: [...IMAGE_TYPES, "image/svg+xml", "application/pdf"], maxMb: 60 },
+  fonte: { types: ["font/ttf", "font/otf", "font/woff", "font/woff2"], maxMb: 10 },
+  sfx: { types: [], maxMb: 25 },
+  trilha: { types: [], maxMb: 25 },
+  imagem: { types: IMAGE_TYPES, maxMb: 15 },
+};
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const AUDIO_CONTENT_TYPES = ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/wave", "audio/mp4", "audio/x-m4a", "audio/ogg", "audio/webm"];
@@ -29,6 +40,16 @@ export async function POST(request: Request) {
       body,
       request,
       onBeforeGenerateToken: async (pathname) => {
+        const brand = BRAND_PATH.exec(pathname);
+        if (brand) {
+          const rule = BRAND_RULES[brand[1]];
+          return {
+            allowedContentTypes: rule.types.length ? rule.types : AUDIO_CONTENT_TYPES,
+            maximumSizeInBytes: rule.maxMb * 1024 * 1024,
+            addRandomSuffix: true,
+            validUntil: Date.now() + 60 * 60 * 1000,
+          };
+        }
         if (AUDIO_PATH.test(pathname)) {
           return {
             allowedContentTypes: AUDIO_CONTENT_TYPES,
@@ -63,7 +84,7 @@ export async function POST(request: Request) {
         }
         if (!IMAGE_PATH.test(pathname)) throw new Error("Caminho de upload inválido.");
         return {
-          allowedContentTypes: ["image/jpeg", "image/png", "image/webp"],
+          allowedContentTypes: IMAGE_TYPES,
           maximumSizeInBytes: MAX_IMAGE_BYTES,
           addRandomSuffix: true,
           validUntil: Date.now() + 60 * 60 * 1000,

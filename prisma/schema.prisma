@@ -111,7 +111,13 @@ model VideoTemplate {
   referenceUrl String // vídeo de referência enviado pelo usuário (Vercel Blob) ou o próprio link (quando sourceUrl)
   sourceUrl    String? // link do YouTube/Pinterest; o worker baixa o vídeo com yt-dlp
   notes        String? // observações do usuário sobre o que aproveitar do vídeo
-  status       String    @default("queued") // queued | analyzing | ready | failed
+  status       String    @default("queued") // queued | analyzing | review (exemplo pronto, esperando aprovação) | ready | failed
+  origin       String    @default("reference") // reference (vídeo de referência) | brand (do zero, com o material da marca)
+  brief        String? // ideia do template escrita pelo usuário (só origin = brand)
+  brandAssets  String? // JSON BrandAssets: logos, guia de marca, fontes, efeitos sonoros, trilha, imagens
+  buildState   String? // JSON: roteiro do exemplo, imageStyle, musicPrompt (o worker reaproveita ao ajustar)
+  revisionRequest String? // alteração pedida que o worker ainda vai aplicar
+  revisions    String? // JSON TemplateRevision[]: cada versão do exemplo (pedido + vídeo)
   progress     Int?
   spec         String? // JSON: ficha de estilo (ver worker/render/template_engine.py)
   summary      String? // JSON: { tom, ritmo, cenaS, semNarracao, cta } pro seletor e pro roteiro

@@ -6,9 +6,11 @@ import { checkWorkerAuth } from "@/lib/videogen/workerAuth";
 const FILES = {
   sample: { name: "exemplo.mp4", type: "video/mp4", max: 100 * 1024 * 1024 },
   texture: { name: "textura.jpg", type: "image/jpeg", max: 20 * 1024 * 1024 },
+  // logo da marca já em PNG (o worker rasteriza SVG) para o render e o fecho
+  logo: { name: "logo.png", type: "image/png", max: 20 * 1024 * 1024 },
 } as const;
 
-/** Token de upload do Blob limitado a um arquivo do template (exemplo de 5s ou textura de fundo). */
+/** Token de upload do Blob limitado a um arquivo do template (exemplo, textura de fundo ou logo da marca). */
 export async function POST(request: Request, ctx: RouteContext<"/api/videogen/worker/templates/[id]/upload-token">) {
   const denied = checkWorkerAuth(request);
   if (denied) return denied;
@@ -19,7 +21,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/videogen/wo
   } catch {
     // corpo vazio = exemplo
   }
-  const kind = body.file === "texture" ? "texture" : !body.file || body.file === "sample" ? "sample" : null;
+  const kind = body.file === "texture" || body.file === "logo" ? body.file : !body.file || body.file === "sample" ? "sample" : null;
   if (!kind) return NextResponse.json({ error: "Arquivo inválido." }, { status: 400 });
   const file = FILES[kind];
 

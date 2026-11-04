@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { normalizeSourceLink, serializeTemplate } from "@/lib/videogen/templates";
+import { normalizeSourceLink, sanitizeBrandAssets, serializeTemplate } from "@/lib/videogen/templates";
 
 export async function GET() {
   const templates = await prisma.videoTemplate.findMany({ orderBy: { createdAt: "desc" }, take: 50 });
@@ -22,13 +22,43 @@ function isReferenceUrl(value: string): boolean {
   }
 }
 
-/** Cria o template e coloca na fila: o worker analisa o vídeo e gera o exemplo de 5s. */
+/**
+ * Cria o template e coloca na fila: o worker analisa o vídeo (ou o material da marca, origin = "brand")
+ * e gera o exemplo.
+ */
 export async function POST(request: Request) {
-  let body: { name?: string; referenceUrl?: string; sourceUrl?: string; notes?: string };
+  let body: {
+    name?: string;
+    referenceUrl?: string;
+    sourceUrl?: string;
+    notes?: string;
+    origin?: string;
+    brief?: string;
+    brandAssets?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
+  }
+  if (body.origin === "brand") {
+    const brief = body.brief?.trim().slice(0, 4000) || "";
+    const brandAssets = sanitizeBrandAssets(body.brandAssets);
+    if (!brief && !brandAssets) {
+      return NextResponse.json({ error: "Envie o material da marca ou escreva a ideia do template." }, { status: 400 });
+    }
+    const template = await prisma.videoTemplate.create({
+      data: {
+        name: body.name?.trim().slice(0, 80) || "Novo template",
+        origin: "brand",
+        referenceUrl: "",
+        brief: brief || null,
+        brandAssets: brandAssets ? JSON.stringify(brandAssets) : null,
+        revisions: "[]",
+        costs: "[]",
+      },
+    });
+    return NextResponse.json({ template: serializeTemplate(template) }, { status: 201 });
   }
   // Ou o arquivo já subiu pro Blob (referenceUrl), ou é um link do YouTube/Pinterest que o worker baixa.
   const sourceUrl = body.sourceUrl?.trim() ? normalizeSourceLink(body.sourceUrl) : null;

@@ -57,6 +57,23 @@ FONT_DESCRIPTIONS = {
     "allura": "manuscrita cursiva leve",
 }
 
+# Fontes enviadas com o material da marca (templates "do zero"): a ficha guarda as chaves em
+# spec["brand"]["fonts"] ({"marca-xxxx": {"url", "name"}}) e o worker baixa e registra em FONTS antes do
+# render (register_fonts). Chave de marca que não baixou cai para a fonte padrão (font_path).
+BRAND_FONT_KEY = re.compile(r"^marca-[a-z0-9]{4,16}$")
+
+
+def register_fonts(paths):
+    """{chave: caminho local} das fontes da marca, válidas até o fim do processo."""
+    for key, path in (paths or {}).items():
+        if BRAND_FONT_KEY.match(str(key)) and path:
+            FONTS[key] = str(path)
+
+
+def font_path(key):
+    return FONTS.get(key) or FONTS["inter-black"]
+
+
 CHOICES = {
     "background.kind": ["solid", "gradient", "texture", "blurred_image"],
     "image.layout": ["fullbleed", "card", "circle", "top_half", "polaroid", "split", "text_only", "none"],
@@ -72,7 +89,42 @@ CHOICES = {
     "motion.particles": ["none", "dust", "bokeh", "sparks"],
     "motion.textIdle": ["none", "float", "pulse"],
     "cta.style": ["card", "fullscreen", "banner"],
+    "brand.watermark": ["none", "top_left", "top_right", "bottom_left", "bottom_right"],
 }
+
+# Material da marca (templates "do zero"). Fichas sem este grupo ficam exatamente como antes.
+BRAND_DEFAULT = {"fonts": {}, "logoUrl": "", "watermark": "none", "watermarkSize": 0.16, "watermarkOpacity": 0.85,
+                 "sfx": {}, "musicUrl": ""}
+SFX_ROLES = ("whoosh", "impact", "riser")
+
+
+def _url(v):
+    v = str(v or "").strip()
+    return v[:1500] if v.startswith(("https://", "file://")) else ""
+
+
+def normalize_brand(raw):
+    raw = raw if isinstance(raw, dict) else {}
+    fonts = {}
+    for key, f in (raw.get("fonts") or {}).items() if isinstance(raw.get("fonts"), dict) else []:
+        if BRAND_FONT_KEY.match(str(key)) and isinstance(f, dict) and _url(f.get("url")):
+            fonts[key] = {"url": _url(f.get("url")), "name": str(f.get("name") or key)[:80]}
+    sfx = {}
+    raw_sfx = raw.get("sfx") if isinstance(raw.get("sfx"), dict) else {}
+    for role in SFX_ROLES:
+        urls = [_url(u) for u in (raw_sfx.get(role) or []) if _url(u)] if isinstance(raw_sfx.get(role), list) else []
+        if urls:
+            sfx[role] = urls[:6]
+    wm = raw.get("watermark")
+    return {
+        "fonts": fonts,
+        "logoUrl": _url(raw.get("logoUrl")),
+        "watermark": wm if wm in CHOICES["brand.watermark"] else "none",
+        "watermarkSize": _num(raw.get("watermarkSize"), 0.06, 0.4, BRAND_DEFAULT["watermarkSize"]),
+        "watermarkOpacity": _num(raw.get("watermarkOpacity"), 0.2, 1.0, BRAND_DEFAULT["watermarkOpacity"]),
+        "sfx": sfx,
+        "musicUrl": _url(raw.get("musicUrl")),
+    }
 
 DEFAULT_SPEC = {
     "palette": {"background": "#F5F2EA", "text": "#111111", "accent": "#E10600", "accentText": "#FFFFFF"},
@@ -121,6 +173,7 @@ def normalize_spec(raw):
     """Mescla a ficha recebida com DEFAULT_SPEC e corrige qualquer valor inválido."""
     raw = raw if isinstance(raw, dict) else {}
     out = {}
+    brand = normalize_brand(raw.get("brand"))
     for group, defaults in DEFAULT_SPEC.items():
         src = raw.get(group) if isinstance(raw.get(group), dict) else {}
         g = {}
@@ -130,7 +183,7 @@ def normalize_spec(raw):
             if choices:
                 g[key] = v if v in choices else default
             elif key == "font":
-                g[key] = v if v in FONTS else default
+                g[key] = v if v in FONTS or v in brand["fonts"] else default
             elif isinstance(default, bool):
                 g[key] = bool(v)
             elif isinstance(default, (int, float)):
@@ -148,11 +201,30 @@ def normalize_spec(raw):
                 else:
                     g[key] = _color(v, default or "#000000")
         out[group] = g
+    if raw.get("brand") is not None:
+        out["brand"] = brand
     out["caption"]["maxWordsPerLine"] = int(out["caption"]["maxWordsPerLine"])
     _ensure_legible(out)
+    _place_watermark(out)
     if out["background"]["kind"] == "texture" and not out["background"]["textureUrl"]:
         out["background"]["kind"] = "solid"  # textura não gerada: cai para cor lisa
     return out
+
+
+def _place_watermark(spec):
+    """Marca d'água no canto: se o título (em cima) ou a legenda (embaixo) ocupa aquela faixa e a outra
+    está livre, troca de faixa. Os textos nunca mudam de lugar; se as duas faixas têm texto, o logo fica
+    e o texto é desenhado por cima dele (continua legível)."""
+    brand = spec.get("brand")
+    if not brand or brand["watermark"] == "none":
+        return
+    top_busy = spec["title"]["enabled"] and spec["title"]["y"] < 0.16
+    bottom_busy = spec["caption"]["enabled"] and spec["caption"]["y"] > 0.7
+    side = brand["watermark"].split("_")[1]
+    if brand["watermark"].startswith("top") and top_busy and not bottom_busy:
+        brand["watermark"] = f"bottom_{side}"
+    elif brand["watermark"].startswith("bottom") and bottom_busy and not top_busy:
+        brand["watermark"] = f"top_{side}"
 
 
 def _is_light(hex_color):
@@ -576,7 +648,7 @@ def _plain(text):
 class TextStyle:
     def __init__(self, cfg, palette):
         self.cfg = cfg
-        self.path = FONTS[cfg["font"]]
+        self.path = font_path(cfg["font"])
         self.size = int(cfg["size"])
         self.upper = cfg["uppercase"]
         self.color = rgb(cfg["color"])
@@ -1053,11 +1125,50 @@ class CtaCard:
         return fr
 
 
+class Watermark:
+    """Logo da marca num canto durante o vídeo (spec.brand.watermark); some no CTA, que tem o logo grande.
+    As margens fogem da interface do Reels/Shorts (botões à direita embaixo, perfil no rodapé)."""
+
+    def __init__(self, spec, logo_path):
+        self.im = None
+        b = spec.get("brand") or {}
+        pos = b.get("watermark") or "none"
+        if pos == "none" or not logo_path:
+            return
+        try:
+            im = Image.open(logo_path).convert("RGBA")
+        except Exception:
+            return
+        bbox = im.getbbox()
+        if bbox:
+            im = im.crop(bbox)
+        w = max(24, int(W * float(b.get("watermarkSize") or 0.16)))
+        h = max(1, int(im.height * w / max(im.width, 1)))
+        max_h = int(H * 0.09)
+        if h > max_h:
+            w, h = max(1, int(w * max_h / h)), max_h
+        self.im = im.resize((w, h), Image.LANCZOS)
+        self.alpha = float(b.get("watermarkOpacity") or 0.85)
+        mx = int(W * 0.05)
+        top = int(H * (0.045 if not landscape() else 0.06))
+        bottom = int(H * (0.13 if not landscape() else 0.08))
+        self.x = mx if pos.endswith("left") else W - mx - w
+        self.y = top if pos.startswith("top") else H - bottom - h
+
+    def draw(self, fr):
+        if self.im is not None:
+            _paste_rgba(fr, self.im, self.x, self.y, self.alpha)
+        return fr
+
+
 # ---------- render ----------
 
 def render(job, assets, out_path, on_progress=None):
-    """assets: {"images": {índice: Path}, "texture": Path|None, "spec": dict}. Devolve a duração."""
+    """assets: {"images": {índice: Path}, "texture": Path|None, "spec": dict, "fonts": {chave: Path},
+    "watermark": Path|None (logo da marca)}. Devolve a duração."""
+    register_fonts(assets.get("fonts"))
     spec = normalize_spec(assets.get("spec") or job.get("templateSpec"))
+    watermark = Watermark(spec, assets.get("watermark"))
     script = job.get("script") or {}
     words = job.get("narrationWords") or []
     tl = build_timeline(script, words)
@@ -1182,6 +1293,7 @@ def render(job, assets, out_path, on_progress=None):
                 if flash > 0:
                     fr = np.clip(fr.astype(np.float32) + 60 * flash, 0, 255).astype(np.uint8)
                 particles.draw(fr, t)
+                watermark.draw(fr)  # antes dos textos: se encostar no título/legenda, o texto fica por cima
                 # 16:9: imagem ao lado = texto numa coluna à esquerda; tela cheia = texto mais largo
                 col_x, col_w = text_column(vis.layout)
                 if isinstance(vis.clip, BaseClip):

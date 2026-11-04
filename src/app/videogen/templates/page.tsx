@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import Link from "next/link";
 import { upload } from "@vercel/blob/client";
 import { Header } from "@/components/Header";
+import { BrandTemplateForm } from "@/components/videogen/BrandTemplateForm";
+import { TemplateDetail } from "@/components/videogen/TemplateDetail";
 import { formatUsd } from "@/components/videogen/CostPanel";
 import { Icon, Spinner, cardClass, dangerButton, fieldClass, iconButton, primaryButton, secondaryButton, sectionTitle } from "@/components/videogen/ui";
 import { TEMPLATE_STATUS_LABEL } from "@/lib/videogen/types";
@@ -16,6 +18,12 @@ const HOW = [
   { title: "Cole o link ou envie o vídeo", body: "Um Reels, Short ou pin com a edição que você quer copiar: link do YouTube ou do Pinterest, ou o arquivo." },
   { title: "A IA aprende a edição", body: "Ela assiste o vídeo e anota cores, fontes, legenda, transições e ritmo." },
   { title: "Veja o exemplo de 5s", body: "O motor de render monta um exemplo. Pronto, o estilo aparece no seletor." },
+];
+
+const HOW_BRAND = [
+  { title: "Envie o material e conte a ideia", body: "Logos, guia de marca, fontes, efeitos sonoros e trilha, mais como você imagina os vídeos." },
+  { title: "A IA monta o template", body: "Ela estuda o material e o servidor de render faz um exemplo de 8s com a cara da marca." },
+  { title: "Peça ajustes e aprove", body: "Diga o que mudar quantas vezes quiser. Aprovado, o estilo aparece no seletor." },
 ];
 
 function randomId() {
@@ -31,7 +39,8 @@ function formatMb(bytes: number) {
 }
 
 export default function TemplatesPage() {
-  const [mode, setMode] = useState<"link" | "file">("link");
+  const [mode, setMode] = useState<"brand" | "link" | "file">("brand");
+  const [openId, setOpenId] = useState<string | null>(null);
   const [link, setLink] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState("");
@@ -54,6 +63,11 @@ export default function TemplatesPage() {
   useEffect(load, [load]);
 
   const building = Boolean(templates?.some((t) => t.status === "queued" || t.status === "analyzing"));
+  const opened = templates?.find((t) => t.id === openId) ?? null;
+
+  function replace(t: VideoTemplateDTO) {
+    setTemplates((list) => (list ?? []).map((x) => (x.id === t.id ? t : x)));
+  }
   useEffect(() => {
     if (!building) return;
     const t = setInterval(load, 5000);
@@ -184,11 +198,39 @@ export default function TemplatesPage() {
         </Link>
         <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">Montar template</h1>
         <p className="mt-2 max-w-2xl text-text-secondary">
-          Transforme um vídeo que você admira em um estilo seu. Depois é só escolher o estilo ao criar um vídeo novo.
+          Crie o estilo da sua marca do zero ou transforme um vídeo que você admira em um estilo seu. Depois é só escolher o estilo ao
+          criar um vídeo novo.
         </p>
 
-        <ol className="mt-6 grid gap-3 sm:grid-cols-3">
-          {HOW.map((h, i) => (
+        <div role="tablist" aria-label="Como montar o template" className="mt-6 inline-flex flex-wrap rounded-lg border border-border p-1">
+          {(
+            [
+              ["brand", "Do zero, com a sua marca"],
+              ["link", "De um link"],
+              ["file", "De um vídeo seu"],
+            ] as const
+          ).map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={mode === m}
+              onClick={() => {
+                setMode(m);
+                setError(null);
+              }}
+              disabled={busy}
+              className={`min-h-10 rounded-md px-3 text-sm font-medium transition ${
+                mode === m ? "bg-accent-yellow text-accent-yellow-ink" : "text-text-secondary hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <ol className="mt-4 grid gap-3 sm:grid-cols-3">
+          {(mode === "brand" ? HOW_BRAND : HOW).map((h, i) => (
             <li key={h.title} className="flex gap-3 rounded-2xl border border-border bg-surface p-4">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-yellow text-sm font-bold text-accent-yellow-ink">
                 {i + 1}
@@ -202,34 +244,16 @@ export default function TemplatesPage() {
         </ol>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+          {mode === "brand" ? (
+            <BrandTemplateForm
+              onCreated={(t) => {
+                setTemplates((list) => [t, ...(list ?? [])]);
+                setOpenId(t.id);
+              }}
+            />
+          ) : (
           <form onSubmit={handleSubmit} noValidate className={`${cardClass} min-w-0 space-y-5`} aria-busy={busy}>
-            <h2 className={sectionTitle}>Novo template</h2>
-
-            <div role="tablist" aria-label="Como enviar a referência" className="inline-flex rounded-lg border border-border p-1">
-              {(
-                [
-                  ["link", "Colar link"],
-                  ["file", "Enviar arquivo"],
-                ] as const
-              ).map(([m, label]) => (
-                <button
-                  key={m}
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === m}
-                  onClick={() => {
-                    setMode(m);
-                    setError(null);
-                  }}
-                  disabled={busy}
-                  className={`min-h-9 rounded-md px-3 text-sm font-medium transition ${
-                    mode === m ? "bg-accent-yellow text-accent-yellow-ink" : "text-text-secondary hover:text-foreground"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <h2 className={sectionTitle}>{mode === "link" ? "Template de um link" : "Template de um vídeo seu"}</h2>
 
             {mode === "link" ? (
               <div>
@@ -357,6 +381,7 @@ export default function TemplatesPage() {
               A montagem roda no servidor de render e leva de 2 a 5 minutos. Você pode sair desta página.
             </p>
           </form>
+          )}
 
           <aside className="min-w-0" aria-labelledby="tpl-list-title">
             <h2 id="tpl-list-title" className={sectionTitle}>
@@ -372,26 +397,48 @@ export default function TemplatesPage() {
                 </div>
               )}
               {templates?.map((t) => (
-                <TemplateCard key={t.id} t={t} busy={acting === t.id} onRetry={() => act(t, "retry")} onDelete={() => act(t, "delete")} />
+                <TemplateCard
+                  key={t.id}
+                  t={t}
+                  busy={acting === t.id}
+                  onOpen={() => setOpenId(t.id)}
+                  onRetry={() => act(t, "retry")}
+                  onDelete={() => act(t, "delete")}
+                />
               ))}
             </div>
           </aside>
         </div>
       </main>
+      {opened && (
+        <TemplateDetail t={opened} onClose={() => setOpenId(null)} onChange={replace} onRetry={() => act(opened, "retry")} />
+      )}
     </div>
   );
 }
 
-function TemplateCard({ t, busy, onRetry, onDelete }: { t: VideoTemplateDTO; busy: boolean; onRetry: () => void; onDelete: () => void }) {
+function TemplateCard({
+  t,
+  busy,
+  onOpen,
+  onRetry,
+  onDelete,
+}: {
+  t: VideoTemplateDTO;
+  busy: boolean;
+  onOpen: () => void;
+  onRetry: () => void;
+  onDelete: () => void;
+}) {
   const building = t.status === "queued" || t.status === "analyzing";
   return (
     <article className="flex gap-4 rounded-2xl border border-border bg-surface p-3">
       <div className="relative aspect-[9/16] w-24 shrink-0 overflow-hidden rounded-lg bg-surface-2">
-        {t.status === "ready" && t.sampleUrl ? (
+        {t.sampleUrl ? (
           <video src={t.sampleUrl} muted loop playsInline autoPlay controls aria-label={`Exemplo de ${t.name}`} className="h-full w-full object-cover" />
-        ) : t.sourceUrl ? (
+        ) : t.sourceUrl || t.origin === "brand" ? (
           <span aria-hidden className="flex h-full w-full items-center justify-center text-text-secondary">
-            <Icon name="film" className="h-6 w-6" />
+            <Icon name={t.origin === "brand" ? "sparkles" : "film"} className="h-6 w-6" />
           </span>
         ) : (
           <video src={`${t.referenceUrl}#t=1`} muted playsInline preload="metadata" aria-hidden className="h-full w-full object-cover opacity-60" />
@@ -416,37 +463,64 @@ function TemplateCard({ t, busy, onRetry, onDelete }: { t: VideoTemplateDTO; bus
             className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-semibold ${
               t.status === "ready"
                 ? "bg-success/15 text-success"
+                : t.status === "review"
+                  ? "bg-surface-2 text-foreground"
                 : t.status === "failed"
                   ? "bg-accent-red/10 text-accent-red"
                   : "bg-warning/15 text-warning"
             }`}
           >
-            {building ? <Spinner className="h-3 w-3" /> : <Icon name={t.status === "ready" ? "check" : "alert"} className="h-3 w-3" />}
+            {building ? (
+              <Spinner className="h-3 w-3" />
+            ) : (
+              <Icon name={t.status === "ready" ? "check" : t.status === "review" ? "star" : "alert"} className="h-3 w-3" />
+            )}
             {TEMPLATE_STATUS_LABEL[t.status]}
             {t.status === "analyzing" && t.progress != null && <span className="tabular-nums">{t.progress}%</span>}
           </span>
         </p>
-        {t.status === "ready" && t.summary?.tom && <p className="mt-1.5 line-clamp-3 text-xs text-text-secondary">{t.summary.tom}</p>}
+        {(t.status === "ready" || t.status === "review") && t.summary?.tom && <p className="mt-1.5 line-clamp-3 text-xs text-text-secondary">{t.summary.tom}</p>}
         {building && (
           <p className="mt-1.5 text-xs text-text-secondary">
-            {t.status === "queued"
+            {t.revisionRequest
+              ? `Ajustando: "${t.revisionRequest.slice(0, 80)}"`
+              : t.status === "queued"
               ? "Esperando o servidor de render."
-              : t.sourceUrl && (t.progress ?? 0) < 8
+              : t.origin === "brand"
+                ? "Estudando o material e gerando o exemplo de 8s."
+                : t.sourceUrl && (t.progress ?? 0) < 8
                 ? "Baixando o vídeo do link."
                 : "Analisando o vídeo e gerando o exemplo de 5s."}
           </p>
         )}
         {t.status === "failed" && t.error && <p className="mt-1.5 line-clamp-3 text-xs text-accent-red [overflow-wrap:anywhere]">{t.error}</p>}
         <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 text-xs text-text-secondary">
-          <a href={t.referenceUrl} target="_blank" rel="noreferrer" className="underline-offset-2 hover:text-accent-yellow hover:underline">
-            {t.sourceUrl ? (/pin(terest)?\./i.test(t.sourceUrl) ? "Ver no Pinterest" : "Ver no YouTube") : "Ver referência"}
-          </a>
+          {t.origin === "brand" ? (
+            <span>Marca{t.revisions.length > 1 ? ` · ${t.revisions.length} versões` : ""}</span>
+          ) : (
+            <a href={t.referenceUrl} target="_blank" rel="noreferrer" className="underline-offset-2 hover:text-accent-yellow hover:underline">
+              {t.sourceUrl ? (/pin(terest)?\./i.test(t.sourceUrl) ? "Ver no Pinterest" : "Ver no YouTube") : "Ver referência"}
+            </a>
+          )}
           {t.costSummary && t.costSummary.totalUsd > 0 && <span>≈ {formatUsd(t.costSummary.totalUsd)}</span>}
         </div>
-        {t.status === "ready" && (
-          <Link href={`/videogen?estilo=${t.id}`} className={`mt-2 ${secondaryButton} min-h-10 text-xs`}>
-            Criar vídeo neste estilo
-          </Link>
+        {t.status === "review" ? (
+          <button type="button" onClick={onOpen} className={`mt-2 ${primaryButton} min-h-10 text-xs`}>
+            Ver exemplo e aprovar
+          </button>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {t.status === "ready" && (
+              <Link href={`/videogen?estilo=${t.id}`} className={`${secondaryButton} min-h-10 flex-1 text-xs`}>
+                Criar vídeo
+              </Link>
+            )}
+            {(t.status === "ready" || building) && (
+              <button type="button" onClick={onOpen} className={`${secondaryButton} min-h-10 flex-1 text-xs`}>
+                {t.status === "ready" ? "Ajustar" : "Abrir"}
+              </button>
+            )}
+          </div>
         )}
         {t.status === "failed" && (
           <button type="button" onClick={onRetry} disabled={busy} className={`mt-2 ${dangerButton} min-h-10 justify-start px-0 text-xs`}>

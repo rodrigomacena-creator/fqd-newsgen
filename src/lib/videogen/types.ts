@@ -273,14 +273,51 @@ export const WORDS_PER_SECOND = 2.3;
 
 // ---------- templates (estilos montados a partir de um vídeo de referência) ----------
 
-export type VideoTemplateStatus = "queued" | "analyzing" | "ready" | "failed";
+export type VideoTemplateStatus = "queued" | "analyzing" | "review" | "ready" | "failed";
 
 export const TEMPLATE_STATUS_LABEL: Record<VideoTemplateStatus, string> = {
   queued: "Na fila",
   analyzing: "Montando",
+  review: "Para aprovar",
   ready: "Pronto",
   failed: "Falhou",
 };
+
+/** reference = montado a partir de um vídeo; brand = do zero, com o material da marca. */
+export type VideoTemplateOrigin = "reference" | "brand";
+
+/** Papel de um efeito sonoro da marca (o worker troca o efeito padrão daquele papel). */
+export type BrandSfxRole = "transicao" | "impacto" | "subida";
+
+export interface BrandFile {
+  url: string;
+  /** Nome do arquivo enviado (a IA usa o nome das fontes para descrevê-las). */
+  name: string;
+  /** Só efeitos sonoros. */
+  role?: BrandSfxRole;
+}
+
+/** Material da marca enviado para um template "do zero" (VideoTemplate.brandAssets). */
+export interface BrandAssets {
+  logos: BrandFile[];
+  guides: BrandFile[];
+  fonts: BrandFile[];
+  sfx: BrandFile[];
+  music: BrandFile[];
+  images: BrandFile[];
+}
+
+export const BRAND_ASSET_KINDS = ["logos", "guides", "fonts", "sfx", "music", "images"] as const;
+export type BrandAssetKind = (typeof BRAND_ASSET_KINDS)[number];
+
+/** Uma versão do exemplo: o pedido que a gerou (null = primeira versão) e o vídeo. */
+export interface TemplateRevision {
+  request: string | null;
+  sampleUrl: string | null;
+  at: string;
+  /** O que a IA diz que mudou nesta versão. */
+  note?: string;
+}
 
 /** Resumo do estilo que a IA devolve ao analisar o vídeo (mesmos campos do VideoPattern). */
 export interface TemplateSummary {
