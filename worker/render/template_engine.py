@@ -748,13 +748,15 @@ def _wrap(text, f, max_w):
     return lines
 
 
-def _text_block(text, style, size, max_w=900, align_center=True, color=None):
-    """Bloco de texto (várias linhas) como imagem RGBA, diminuindo a fonte até caber em 4 linhas."""
+def _text_block(text, style, size, max_w=900, align_center=True, color=None, fit_width=False):
+    """Bloco de texto (várias linhas) como imagem RGBA, diminuindo a fonte até caber em 4 linhas.
+    Com fit_width, também até a linha mais larga caber em max_w (palavra longa sem espaço não é cortada)."""
     txt = style.text(text.strip())
     while True:
         f = font(style.path, size)
         lines = _wrap(txt, f, max_w)
-        if len(lines) <= 4 or size <= 40:
+        too_wide = fit_width and any(f.getlength(ln) > max_w for ln in lines)
+        if (len(lines) <= 4 and not too_wide) or size <= 40:
             break
         size = int(size * 0.88)
     lh = int(size * 1.18)
@@ -997,15 +999,25 @@ def _transition(prev, cur, k, kind):
     return cur
 
 
+def cta_font_scale(cta):
+    """Tamanho do texto do CTA escolhido no editor (1 = padrão); fora de 0,6–1,8 ou inválido volta ao padrão."""
+    try:
+        v = float(cta.get("fontScale"))
+    except (TypeError, ValueError):
+        return 1.0
+    return v if 0.6 <= v <= 1.8 else 1.0
+
+
 class CtaCard:
-    def __init__(self, spec, text, background_frame):
+    def __init__(self, spec, text, background_frame, scale=1.0):
         cfg = spec["cta"]
         self.style_kind = cfg["style"]
         self.bg_color = rgb(cfg["background"])
         style = TextStyle({"font": cfg["font"], "size": 96, "uppercase": spec["caption"]["uppercase"],
                            "color": cfg["color"], "stroke": "", "strokeWidth": 0}, spec["palette"])
         text = _plain(text)
-        self.text = _text_block(text, style, 92, max_w=860) if text.strip() else None
+        # texto maior pode usar um pouco mais da largura (o card tem 60px de folga de cada lado)
+        self.text = _text_block(text, style, int(92 * scale), max_w=860 if scale <= 1 else 920, fit_width=True) if text.strip() else None
         self.base = background_frame
 
     def frame(self, local_t):
@@ -1107,7 +1119,7 @@ def render(job, assets, out_path, on_progress=None):
     cta_base = last_visual.frame(1.0, 99.0) if last_visual is not None else None
     if cta_base is not None and spec["cta"]["style"] != "fullscreen":
         cta_base = np.asarray(Image.fromarray(cta_base).filter(ImageFilter.GaussianBlur(18)))
-    cta_card = CtaCard(spec, cta.get("onScreen") or " ".join(w[0] for w in cta_words), cta_base)
+    cta_card = CtaCard(spec, cta.get("onScreen") or " ".join(w[0] for w in cta_words), cta_base, cta_font_scale(cta))
 
     trans = spec["transition"]
     tdur = trans["durationS"] if trans["kind"] != "cut" else 0

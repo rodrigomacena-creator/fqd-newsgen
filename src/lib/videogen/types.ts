@@ -216,6 +216,8 @@ export interface VideoScript {
     /** Logo no topo do fecho: da empresa (padrão), outro enviado (logoUrl) ou nenhum. */
     logo?: "company" | "custom" | "none";
     logoUrl?: string;
+    /** Tamanho do texto do CTA na tela (1 = padrão; ver CTA_FONT_SCALE). Vale no motor genérico (estilo livre e templates). */
+    fontScale?: number;
   };
   /** Palavras que o render destaca (caixa vermelha, cor de destaque etc.). */
   keywords: string[];
@@ -341,6 +343,9 @@ export function summarizeCosts(entries: CostEntry[], usdPerCredit: number): Cost
 }
 
 /** Efeitos do fecho: mesmo cardápio de EFFECTS em worker/render/cta_fx.py. */
+/** Faixa do tamanho do texto do CTA (espelha cta_font_scale em worker/render/template_engine.py). */
+export const CTA_FONT_SCALE = { min: 0.6, max: 1.8, step: 0.1 } as const;
+
 export const CTA_EFFECTS = [
   { id: "none", label: "Nenhum" },
   { id: "confete", label: "Confete" },

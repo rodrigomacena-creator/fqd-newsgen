@@ -7,7 +7,7 @@ import { SceneImage } from "./SceneImage";
 import { VoiceWave } from "./VoiceWave";
 import { sceneTiming } from "@/lib/videogen/sceneTiming";
 import { DIRECTION_FIELD_LABEL, DIRECTION_FIELDS, DIRECTION_OPTIONS, defaultDirection, type SceneDirection } from "@/lib/videogen/direction";
-import { CTA_EFFECTS, MAX_BRIEFING_IMAGES, type AvatarTrack, type BriefingImage, type NarrationWord, type VideoScene, type VideoScript } from "@/lib/videogen/types";
+import { CTA_EFFECTS, CTA_FONT_SCALE, MAX_BRIEFING_IMAGES, type AvatarTrack, type BriefingImage, type NarrationWord, type VideoScene, type VideoScript } from "@/lib/videogen/types";
 
 type Selection = number | "cta";
 
@@ -411,7 +411,7 @@ export function SceneStudio({
           )}
           {shown === "cta" ? (
             <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 rounded-lg bg-[#E10600] px-2 py-2.5 text-center text-[11px] font-extrabold uppercase leading-tight text-white sm:inset-x-3 sm:text-sm">
-              {script.cta.onScreen || "CTA"}
+              <span style={{ fontSize: `${script.cta.fontScale ?? 1}em` }}>{script.cta.onScreen || "CTA"}</span>
             </div>
           ) : (
             shownScene?.onScreen && (
@@ -1187,6 +1187,39 @@ function CtaInspector({
             CTA na tela
           </label>
           <AutoTextarea id="cta-screen" minRows={2} value={script.cta.onScreen} onChange={(e) => onChange({ onScreen: e.target.value })} disabled={disabled} className={`mt-1.5 ${studioField}`} />
+        </div>
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="cta-size" className={studioLabel}>
+              Tamanho do texto
+            </label>
+            <span className="flex items-center gap-2 text-xs tabular-nums text-text-secondary">
+              {Math.round((cta.fontScale ?? 1) * 100)}%
+              {cta.fontScale !== undefined && (
+                <button type="button" disabled={disabled} onClick={() => onChange({ fontScale: undefined })} className="font-semibold text-[#FF3B3B] hover:underline disabled:opacity-50">
+                  Padrão
+                </button>
+              )}
+            </span>
+          </div>
+          <input
+            id="cta-size"
+            type="range"
+            min={CTA_FONT_SCALE.min}
+            max={CTA_FONT_SCALE.max}
+            step={CTA_FONT_SCALE.step}
+            value={cta.fontScale ?? 1}
+            disabled={disabled}
+            aria-describedby="cta-size-help"
+            onChange={(e) => {
+              const v = Math.round(Number(e.target.value) * 100) / 100;
+              onChange({ fontScale: Math.abs(v - 1) < 0.01 ? undefined : v });
+            }}
+            className="mt-2 w-full accent-[#FF3B3B] disabled:opacity-50"
+          />
+          <p id="cta-size-help" className="mt-1 text-xs text-text-secondary">
+            Diminui ou aumenta o texto do CTA na tela. Vale no próximo render (estilo livre e templates).
+          </p>
         </div>
       </div>
 

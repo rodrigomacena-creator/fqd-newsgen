@@ -15,7 +15,7 @@ import { isAllowedImageUrl } from "./profiles";
 import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
 import { SCENE_LAYOUTS, enforcePhotoPrompts, freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
 import { HUMANIZER_RULE } from "./humanizer";
-import { CTA_EFFECTS, type VideoFormat } from "./types";
+import { CTA_EFFECTS, CTA_FONT_SCALE, type VideoFormat } from "./types";
 import { STOCK_URL_RE, UPLOADED_CLIP_RE } from "./stockVideo";
 
 // Claude via OpenRouter (Rodrigo quer um provedor só pra LLM).
@@ -425,6 +425,10 @@ function normalizeCta(cta: Record<string, unknown>): VideoScript["cta"] {
   const effect = CTA_EFFECTS.find((e) => e.id === cta.effect)?.id;
   if (effect && effect !== "none") out.effect = effect;
   if (typeof cta.imageUrl === "string" && isAllowedImageUrl(cta.imageUrl)) out.imageUrl = cta.imageUrl;
+  const scale = Number(cta.fontScale);
+  if (Number.isFinite(scale) && scale >= CTA_FONT_SCALE.min && scale <= CTA_FONT_SCALE.max && Math.abs(scale - 1) > 0.01) {
+    out.fontScale = Math.round(scale * 100) / 100;
+  }
   if (cta.logo === "none") out.logo = "none";
   if (cta.logo === "custom" && typeof cta.logoUrl === "string" && isAllowedImageUrl(cta.logoUrl)) {
     out.logo = "custom";
