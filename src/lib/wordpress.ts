@@ -65,8 +65,10 @@ export async function createWordPressPost(params: {
   excerpt: string;
   categoryIds: number[];
   featuredImageUrl?: string;
+  /** Data de exibição do programa (ISO). Vira a data do post no WordPress. */
+  publishedAt?: string | null;
 }): Promise<{ id: number; editUrl: string }> {
-  const { title, contentHtml, excerpt, categoryIds, featuredImageUrl } = params;
+  const { title, contentHtml, excerpt, categoryIds, featuredImageUrl, publishedAt } = params;
 
   let featuredMediaId: number | undefined;
   if (featuredImageUrl) {
@@ -89,6 +91,7 @@ export async function createWordPressPost(params: {
       content: contentHtml,
       excerpt,
       status: "draft",
+      ...(publishedAt ? { date_gmt: publishedAt.replace(/\.\d{3}Z$/, "") } : {}),
       categories: Array.from(new Set(categoryIds)),
       ...(featuredMediaId ? { featured_media: featuredMediaId } : {}),
     }),
