@@ -71,6 +71,12 @@ def register_fonts(paths):
             FONTS[key] = str(path)
 
 
+def center_crop(im, w, h):
+    """Recorte w×h do MEIO da imagem (o assunto das imagens geradas fica no centro, não no topo)."""
+    x, y = (im.width - w) // 2, (im.height - h) // 2
+    return im.crop((x, y, x + w, y + h))
+
+
 def font_path(key):
     return FONTS.get(key) or FONTS["inter-black"]
 
@@ -329,7 +335,7 @@ def _background(spec, scene_img=None, texture=None):
     if bg["kind"] == "texture" and texture is not None:
         return cover_resize(texture).crop((0, 0, W, H)).convert("RGB")
     if bg["kind"] == "blurred_image" and scene_img is not None:
-        im = cover_resize(scene_img).crop((0, 0, W, H)).filter(ImageFilter.GaussianBlur(40))
+        im = center_crop(cover_resize(scene_img), W, H).filter(ImageFilter.GaussianBlur(40))
         return ImageEnhance.Brightness(im).enhance(0.75)
     if bg["kind"] == "gradient":
         c1, c2 = np.array(base, np.float32), np.array(rgb(bg["color2"]), np.float32)
@@ -399,7 +405,7 @@ class SceneVisual:
             # no 16:9 o tamanho vem da altura (a moldura inteira ocupa ~76% da altura)
             cw = int(W * min(lay["scale"], 0.8)) if not landscape() else int(H * 0.76 / 1.35 * min(lay["scale"], 0.8) / 0.7)
             ch = int(cw * 1.1)
-            photo = cover_resize(img, cw, ch).crop((0, 0, cw, ch))
+            photo = center_crop(cover_resize(img, cw, ch), cw, ch)
             side, base = int(cw * 0.05), int(cw * 0.2)
             framed = Image.new("RGB", (cw + 2 * side, ch + side + base), (250, 248, 242))
             framed.paste(photo, (side, side))
@@ -413,7 +419,7 @@ class SceneVisual:
             if landscape():  # 16:9: tamanho pela altura (card ~74%, círculo ~66% da altura)
                 cw = int(H * (0.66 if self.layout == "circle" else 0.74 / 1.25) * min(lay["scale"], 0.85) / 0.7)
             ch = cw if self.layout == "circle" else int(cw * 1.25)
-            card = cover_resize(img, cw, ch).crop((0, 0, cw, ch))
+            card = center_crop(cover_resize(img, cw, ch), cw, ch)
             radius = cw / 2 if self.layout == "circle" else lay["cornerRadius"]
             mask = _rounded_mask((cw, ch), radius)
             if lay["borderWidth"] and lay["borderColor"]:
