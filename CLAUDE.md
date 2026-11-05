@@ -346,6 +346,16 @@ reais encontradas ao construir o projeto, não só a estrutura.
   (activity_rings, pie, calendar_grid, candles, gauge, bubbles, venn, funnel, rating, battery, thermometer) e interface
   (cursor_click, like_button, price_tag). Novo tipo: método `_<tipo>` em `FXPlus` + `normalize` + `GRAPHIC_TYPES`/labels/prompt em
   `graphics.ts` + `STARTERS`/campos em `GraphicFields.tsx`.
+  **Motion em toda cena (05/11/2026, Rodrigo achou os vídeos "foto + texto" simplórios)**: (1) `scene.overlay`
+  (`worker/render/overlay.py` ↔ `OVERLAY_TYPES`/`sanitizeOverlay` em `graphics.ts`, campo "Motion sobre a foto" no inspector):
+  elemento desenhado ao vivo POR CIMA da foto, entre título e legenda — `callout` (ponto + linha + etiqueta, x/y 0.15-0.85),
+  `stat` (painel com número contando), `tags` (1-3 etiquetas com ícone), `progress` (barra até a %), `focus` (mira com varredura);
+  cena com `graphic` não tem overlay; (2) `graphic.backdrop = true` (tipos base, menos rank_item): a foto da cena fica no fundo,
+  desfocada e puxada para a cor do fundo, com o grafismo por cima (`needs_image`/`graphicNeedsImage` passam a gerar imagem);
+  (3) regras do roteiro (`overlayPromptRule()` + `IMAGE_CONCEPT_RULE`, só motor genérico): toda cena com foto leva overlay,
+  imagens são SITUAÇÕES concretas com pessoas, ação, lugar e enquadramento variados e o mesmo "elenco"; estilo livre sempre
+  `graphics.usage = many` (metade das cenas com grafismo, pelo menos 3 tipos de tela cheia). `max_tokens` do roteiro foi a
+  24000 (o raciocínio passa do teto pedido e cortava o JSON).
   Pronúncia (`pronunciation.ts`): o texto enviado ao TTS troca siglas/marcas em inglês e o site
   (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
   caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.

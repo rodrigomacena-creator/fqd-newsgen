@@ -70,11 +70,21 @@ def _s(v, n=60):
 
 
 def normalize_graphic(g):
-    """Grafismo de uma cena, limpo. None se não serve (a cena fica como sem grafismo)."""
+    """Grafismo de uma cena, limpo. None se não serve (a cena fica como sem grafismo).
+
+    "backdrop": true (só nos tipos base, menos rank_item) = a foto da cena fica no fundo, escurecida,
+    com o grafismo desenhado por cima (a cena gera imagem)."""
     if not isinstance(g, dict) or g.get("type") not in GRAPHIC_TYPES:
         return None
     if g["type"] in mograph_fx2.ALL_FX:
         return mograph_fx2.normalize(g)
+    out = _normalize_base(g)
+    if out and g.get("backdrop") is True and g["type"] != "rank_item":
+        out["backdrop"] = True
+    return out
+
+
+def _normalize_base(g):
     t = g["type"]
     items = [i for i in (g.get("items") or []) if isinstance(i, (dict, str))] if isinstance(g.get("items"), list) else []
 
@@ -134,7 +144,8 @@ def normalize_graphic(g):
 
 
 def needs_image(g):
-    return bool(g) and g.get("type") in IMAGE_GRAPHICS
+    """O grafismo usa a imagem da cena (item de ranking) ou a põe no fundo (backdrop)."""
+    return bool(g) and (g.get("type") in IMAGE_GRAPHICS or bool(g.get("backdrop")))
 
 
 # ---------- números ----------

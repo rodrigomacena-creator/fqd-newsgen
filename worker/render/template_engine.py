@@ -23,6 +23,7 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 from . import mograph as mg
 from . import motion as mv
+from . import overlay as ovl
 from .common import FPS, H, W, FrameWriter, asset, cover_resize, ease, font, grain_frames, group_lines, keyword_set, landscape, norm, spread_words, vignette
 from .timeline import build_timeline
 
@@ -352,12 +353,14 @@ class SceneVisual:
     impacto e flutua) e, se a ficha pedir, a câmera (tremida de mão ou tranco na batida).
     """
 
-    def __init__(self, spec, img, texture, seed, layout=None, clip=None):
+    def __init__(self, spec, img, texture, seed, layout=None, clip=None, backdrop=False):
         self.spec = spec
         lay = spec["image"]
         graphic = layout == "graphic"  # cena com grafismo: só o fundo (a imagem, se houver, é do grafismo)
         if graphic:
             layout, clip = None, None
+        # grafismo sobre a foto: a imagem cobre a tela, desfocada e puxada para a cor do fundo
+        self.backdrop = bool(backdrop and graphic and img is not None)
         self.decor = None
         self.clip = clip  # vídeo de banco: a cena vira tela cheia e cada quadro vem do vídeo
         if clip is not None:
@@ -376,7 +379,8 @@ class SceneVisual:
         img = _filter(img.convert("RGB"), lay["filter"], spec) if img is not None else None
         self.bg = _background(spec, img, texture)
         if graphic:
-            self.layout, img = "graphic", None
+            self.layout = "graphic"
+            img = img if self.backdrop else None
         # fundo com folga para a paralaxe (cor lisa não precisa)
         self.bg_moves = spec["background"]["kind"] != "solid"
         if self.bg_moves:
@@ -387,7 +391,12 @@ class SceneVisual:
         self.direction = None  # direção da cena (motion.py), quando o roteiro tem
         self.box = None  # caixa do card no último quadro (para o traço à mão)
         self.scrim = None
-        if self.layout == "fullbleed":
+        if self.backdrop:
+            soft = img.filter(ImageFilter.GaussianBlur(5))
+            self.big = cover_resize(soft, int(W * 1.3), int(H * 1.3))
+            # puxa a foto para a cor do fundo (texto claro = escurece; texto escuro = clareia)
+            self.scrim = (np.full((H, 1, 1), 0.68, np.float32), np.array(rgb(spec["palette"]["background"]), np.float32))
+        elif self.layout == "fullbleed":
             self.big = cover_resize(img, int(W * 1.3), int(H * 1.3))
             if self.scene_layout:  # foto inteira numa cena avulsa: escurece topo e base para o texto
                 # escurece se o texto é claro; se o texto é escuro, clareia na cor do fundo
@@ -498,7 +507,7 @@ class SceneVisual:
             fr = self.bg_big.crop((int(ox), int(oy), int(ox) + W, int(oy) + H))
         else:
             fr = self.bg.copy()
-        if self.decor is not None and self.layout != "fullbleed" and self.clip is None:
+        if self.decor is not None and self.layout != "fullbleed" and self.clip is None and not self.backdrop:
             # fundo vivo (grade, linhas, formas...) entre o fundo e a imagem
             arr = np.array(fr)
             self.decor.draw(arr, t, local_t, int(t * FPS))
@@ -508,15 +517,16 @@ class SceneVisual:
             self.big = raw if getattr(self.clip, "raw", False) else _filter(raw, self.spec["image"]["filter"], self.spec)
         if self.big is not None:
             bw, bh = self.big.size
-            tw, th = (W, H) if self.layout == "fullbleed" else self._panel()
-            f = self.clip.zoom if self.clip is not None else (1.3 if self.layout == "fullbleed" else 1.25)
+            full = self.layout == "fullbleed" or self.backdrop
+            tw, th = (W, H) if full else self._panel()
+            f = self.clip.zoom if self.clip is not None else (1.3 if full else 1.25)
             r = min(bw / tw, bh / th)
             cw, ch = min(bw, int(tw * r / (f * z))), min(bh, int(th * r / (f * z)))
             cx = (bw - cw) / 2 + panx * (bw - cw) / 2 - sx
             cy = (bh - ch) / 2 + pany * (bh - ch) / 2 - sy
             cx, cy = min(max(cx, 0), bw - cw), min(max(cy, 0), bh - ch)
             crop = self.big.crop((int(cx), int(cy), int(cx) + cw, int(cy) + ch)).resize((tw, th), Image.BILINEAR)
-            px = W - tw if self.layout != "fullbleed" and landscape() else 0
+            px = W - tw if not full and landscape() else 0
             fr.paste(crop, (px, 0))
             if self.scrim is not None:
                 a, tone = self.scrim
@@ -1214,6 +1224,7 @@ def render(job, assets, out_path, on_progress=None):
 
     visuals = {}
     graphics = {}  # grafismo por cena (render/mograph.py)
+    overlays = {}  # motion por cima da foto (render/overlay.py)
     decor = mg.Decor(spec)
     gfonts = {"title": font_path(spec["title"]["font"]), "body": font_path(spec["caption"]["font"])}
     prev_graphic = None
@@ -1225,10 +1236,10 @@ def render(job, assets, out_path, on_progress=None):
         base = (assets.get("base_clips") or {}).get(sc.index)
         g = mg.normalize_graphic(sc.data.get("graphic")) if not base else None
         if g:
-            gr = mg.Graphic(g, spec, gfonts, image=img if mg.needs_image(g) else None, prev=prev_graphic)
+            gr = mg.Graphic(g, spec, gfonts, image=img if g["type"] in mg.IMAGE_GRAPHICS else None, prev=prev_graphic)
             graphics[sc.index] = gr
             prev_graphic = gr
-            visuals[sc.index] = SceneVisual(spec, img, texture, seed=n, layout="graphic")
+            visuals[sc.index] = SceneVisual(spec, img, texture, seed=n, layout="graphic", backdrop=bool(g.get("backdrop")))
             visuals[sc.index].decor = decor if decor.active() else None
             visuals[sc.index].direction = None
             continue
@@ -1245,6 +1256,9 @@ def render(job, assets, out_path, on_progress=None):
                 clip = None
         visuals[sc.index] = SceneVisual(spec, img, texture, seed=n, layout=layout, clip=clip)
         visuals[sc.index].direction = dirs.get(sc.index)
+        ov = ovl.normalize(sc.data.get("overlay")) if img is not None and layout != "text_only" and not base else None
+        if ov:
+            overlays[sc.index] = ovl.Overlay(ov, spec, gfonts)
         if decor.active():
             visuals[sc.index].decor = decor
 
@@ -1366,6 +1380,8 @@ def render(job, assets, out_path, on_progress=None):
                 watermark.draw(fr)  # antes dos textos: se encostar no título/legenda, o texto fica por cima
                 if sc.index in graphics and fx_of(sc.index) is None:
                     graphics[sc.index].draw(fr, local, span, n)
+                if sc.index in overlays:
+                    overlays[sc.index].draw(fr, local, span, n)
                 # 16:9: imagem ao lado = texto numa coluna à esquerda; tela cheia = texto mais largo
                 col_x, col_w = text_column(vis.layout)
                 if isinstance(vis.clip, BaseClip):

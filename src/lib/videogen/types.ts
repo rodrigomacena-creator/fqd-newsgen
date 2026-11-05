@@ -1,7 +1,7 @@
 // Tipos compartilhados do VideoGen (client + servidor + contrato com o worker).
 // Este arquivo é "puro" (sem imports de servidor) de propósito.
 import type { SceneDirection } from "./direction";
-import type { SceneGraphic } from "./graphics";
+import type { SceneGraphic, SceneOverlay } from "./graphics";
 
 export interface VideoScene {
   /** Trecho da narração falado nesta cena, com a grafia de exibição (vira legenda). */
@@ -30,6 +30,8 @@ export interface VideoScene {
   avatar?: boolean;
   /** Grafismo animado da cena (motor genérico: estilo livre e templates). Ver graphics.ts ↔ worker/render/mograph.py. */
   graphic?: SceneGraphic;
+  /** Motion desenhado por cima da foto da cena (anotação, número, etiquetas...). Ver graphics.ts ↔ worker/render/overlay.py. */
+  overlay?: SceneOverlay;
   /** Transição de entrada desta cena (motor genérico); vale mais que a da ficha. Ver TRANSITION_KINDS em freeStyle.ts. */
   transition?: string;
 }

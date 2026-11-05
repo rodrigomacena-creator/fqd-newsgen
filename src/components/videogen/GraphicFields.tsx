@@ -5,7 +5,12 @@
 import { useState } from "react";
 import { AutoTextarea } from "./ui";
 import {
+  BACKDROP_GRAPHICS,
   FX_GRAPHICS,
+  OVERLAY_LABELS,
+  OVERLAY_TYPES,
+  type OverlayType,
+  type SceneOverlay,
   GRAPHIC_LABELS,
   GRAPHIC_TYPES,
   type GraphicItem,
@@ -565,10 +570,25 @@ export function GraphicFields({
               {text("label", "Texto embaixo")}
             </>
           )}
+          {BACKDROP_GRAPHICS.includes(graphic.type) && (
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                id={id("backdrop")}
+                type="checkbox"
+                checked={Boolean(graphic.backdrop)}
+                disabled={disabled}
+                onChange={(e) => set({ backdrop: e.target.checked || undefined })}
+                className="h-4 w-4 accent-foreground"
+              />
+              Foto da cena no fundo
+            </label>
+          )}
           <p className={small}>
             {FX_GRAPHICS.includes(graphic.type)
               ? "Cena de tela cheia: a animação ocupa a tela toda (deixe o texto da tela vazio)."
-              : "O grafismo é desenhado ao vivo no meio da tela, no lugar da imagem."}{" "}
+              : graphic.backdrop
+                ? "O grafismo é desenhado ao vivo por cima da foto da cena (desfocada e escurecida)."
+                : "O grafismo é desenhado ao vivo no meio da tela, no lugar da imagem."}{" "}
             Ícones: nomes da biblioteca Lucide em inglês (search, heart,
             trophy...).
           </p>
@@ -609,6 +629,126 @@ function ListField({
         }}
         className={`mt-1 ${field}`}
       />
+    </div>
+  );
+}
+
+const OVERLAY_STARTERS: Record<OverlayType, SceneOverlay> = {
+  callout: { type: "callout", label: "Ponto-chave", text: "", x: 0.5, y: 0.45 },
+  stat: { type: "stat", value: "87%", label: "dos clientes" },
+  tags: { type: "tags", items: [{ label: "Rápido", icon: "zap" }, { label: "Simples", icon: "check" }] },
+  progress: { type: "progress", value: "72%", label: "da meta" },
+  focus: { type: "focus", label: "Em foco" },
+};
+
+/** Inspector da cena: motion desenhado por cima da foto (worker/render/overlay.py). */
+export function OverlayFields({
+  index,
+  overlay,
+  disabled,
+  onChange,
+}: {
+  index: number;
+  overlay: SceneOverlay | undefined;
+  disabled: boolean;
+  onChange: (o: SceneOverlay | undefined) => void;
+}) {
+  const id = (k: string) => `scene-${index}-o-${k}`;
+  const set = (patch: Partial<SceneOverlay>) => overlay && onChange({ ...overlay, ...patch });
+  const text = (k: "label" | "text" | "value", title: string, placeholder = "", max = 40) => (
+    <div>
+      <label htmlFor={id(k)} className={small}>
+        {title}
+      </label>
+      <input
+        id={id(k)}
+        value={overlay?.[k] ?? ""}
+        placeholder={placeholder}
+        maxLength={max}
+        disabled={disabled}
+        onChange={(e) => set({ [k]: e.target.value })}
+        className={`mt-1 ${field}`}
+      />
+    </div>
+  );
+  return (
+    <div>
+      <label htmlFor={id("type")} className={label}>
+        Motion sobre a foto
+      </label>
+      <select
+        id={id("type")}
+        value={overlay?.type ?? ""}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value ? OVERLAY_STARTERS[e.target.value as OverlayType] : undefined)}
+        className={`mt-1.5 h-10 !py-0 ${field.replace("bg-surface", "bg-background")}`}
+      >
+        <option value="" className="bg-background text-foreground">
+          Nenhum (só a foto)
+        </option>
+        {OVERLAY_TYPES.map((t) => (
+          <option key={t} value={t} className="bg-background text-foreground">
+            {OVERLAY_LABELS[t]}
+          </option>
+        ))}
+      </select>
+      {overlay && (
+        <div className="mt-2.5 space-y-2.5 rounded-xl border border-border p-3">
+          {(overlay.type === "stat" || overlay.type === "progress") && (
+            <>
+              {text("value", overlay.type === "progress" ? "Porcentagem" : "Número", overlay.type === "progress" ? "72%" : "+58%", 16)}
+              {text("label", "Legenda")}
+            </>
+          )}
+          {overlay.type === "callout" && (
+            <>
+              {text("label", "Etiqueta", "Ponto-chave", 28)}
+              {text("text", "Detalhe (opcional)", "", 36)}
+              <div className="grid grid-cols-2 gap-2">
+                {(["x", "y"] as const).map((k) => (
+                  <div key={k}>
+                    <label htmlFor={id(k)} className={small}>
+                      {k === "x" ? "Ponto: esquerda → direita" : "Ponto: cima → baixo"}
+                    </label>
+                    <input
+                      id={id(k)}
+                      type="range"
+                      min={0.15}
+                      max={0.85}
+                      step={0.05}
+                      value={overlay[k] ?? (k === "x" ? 0.5 : 0.45)}
+                      disabled={disabled}
+                      onChange={(e) => set({ [k]: Number(e.target.value) })}
+                      className="mt-2 w-full accent-foreground"
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {overlay.type === "focus" && text("label", "Etiqueta", "Em foco", 28)}
+          {overlay.type === "tags" && (
+            <ListField
+              key={`${index}-otags`}
+              id={id("items")}
+              hint="Etiquetas, uma por linha: texto | ícone (até 3)"
+              initial={(overlay.items ?? []).map((i) => (i.icon ? `${i.label} | ${i.icon}` : i.label)).join("\n")}
+              disabled={disabled}
+              onChange={(t) =>
+                set({
+                  items: t
+                    .split("\n")
+                    .map((l) => l.split("|").map((x) => x.trim()))
+                    .filter(([l]) => l)
+                    .slice(0, 3)
+                    .map(([l, ic]) => (ic ? { label: l.slice(0, 24), icon: ic.slice(0, 30) } : { label: l.slice(0, 24) })),
+                })
+              }
+            />
+          )}
+          <p className={small}>Desenhado ao vivo por cima da foto, entre o título e a legenda.</p>
+        </div>
+      )}
     </div>
   );
 }

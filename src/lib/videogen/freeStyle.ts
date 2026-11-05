@@ -148,7 +148,7 @@ Regras do visual:
 - Texto sobre foto precisa ser legível: contorno, caixa de fundo ou posição fora da imagem. Title e caption não podem ficar na mesma altura (y).
 - Movimento é o que diferencia um Reels de um slideshow: na dúvida, prefira mais movimento. Só use "static", energy "calm" e camera "none" se o assunto pedir algo contemplativo (ou se o usuário pedir).
 - Os "imagePrompt" de todas as cenas seguem o MESMO estilo visual que você inventou (mesma luz, paleta, tipo de imagem: foto, ilustração, colagem, 3D render, etc.), combinando com as cores do styleSpec. Nunca peça texto, letras, números ou logos dentro da imagem.
-- Grafismos: escolha "graphics.usage" conforme o tema (many para dados, rankings, tutoriais e comparações; some no resto; none só se o arquétipo for puramente fotográfico/contemplativo) e um "graphics.decor" que combine com o arquétipo.
+- Grafismos: "graphics.usage" é sempre "many" (o motion é o protagonista do estilo livre). Escolha um "graphics.decor" que combine com o arquétipo.
 - O "musicPrompt" combina com o clima escolhido (e com o direcionamento do usuário, se houver).`;
 }
 

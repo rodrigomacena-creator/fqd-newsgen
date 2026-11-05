@@ -149,6 +149,8 @@ export interface GraphicItem {
 
 export interface SceneGraphic {
   type: GraphicType;
+  /** Foto da cena no fundo, escurecida, com o grafismo por cima (tipos base, menos rank_item). */
+  backdrop?: boolean;
   value?: string;
   from?: string;
   label?: string;
@@ -170,7 +172,62 @@ export interface SceneGraphic {
 
 /** Item de ranking mostra a imagem da cena numa faixa larga; os outros grafismos não usam imagem. */
 export function graphicNeedsImage(g: SceneGraphic | undefined | null): boolean {
-  return g?.type === "rank_item";
+  return g?.type === "rank_item" || Boolean(g?.backdrop);
+}
+
+/** Tipos que podem ter a foto da cena no fundo ("backdrop"): os base, menos rank_item (espelho de mograph.py). */
+export const BACKDROP_GRAPHICS: GraphicType[] = ["counter", "bars", "ranking", "line_chart", "donut", "steps", "checklist", "versus", "timeline", "icon", "icons"];
+
+// ---------- motion por cima da foto (worker/render/overlay.py, normalize() é a fonte da verdade) ----------
+
+export const OVERLAY_TYPES = ["callout", "stat", "tags", "progress", "focus"] as const;
+export type OverlayType = (typeof OVERLAY_TYPES)[number];
+
+export const OVERLAY_LABELS: Record<OverlayType, string> = {
+  callout: "Anotação apontando na foto",
+  stat: "Painel com número contando",
+  tags: "Etiquetas com ícone",
+  progress: "Barra de progresso",
+  focus: "Mira de foco",
+};
+
+export interface SceneOverlay {
+  type: OverlayType;
+  label?: string;
+  text?: string;
+  value?: string;
+  x?: number;
+  y?: number;
+  items?: { label: string; icon?: string }[];
+}
+
+/** Limpa o overlay vindo da IA ou do editor. undefined = cena só com a foto. */
+export function sanitizeOverlay(raw: unknown): SceneOverlay | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const type = o.type as OverlayType;
+  if (!OVERLAY_TYPES.includes(type)) return undefined;
+  const out: SceneOverlay = { type };
+  for (const k of ["label", "text", "value"] as const) {
+    const x = s(o[k], 40);
+    if (x) out[k] = x;
+  }
+  for (const k of ["x", "y"] as const) {
+    const n = Number(o[k]);
+    if (Number.isFinite(n)) out[k] = Math.min(Math.max(n, 0.15), 0.85);
+  }
+  if (Array.isArray(o.items)) {
+    const items = o.items
+      .map((i) => item(i))
+      .filter((i) => i.label)
+      .slice(0, 3)
+      .map((i) => (i.icon ? { label: i.label!, icon: i.icon } : { label: i.label! }));
+    if (items.length) out.items = items;
+  }
+  if ((type === "stat" || type === "progress") && !out.value) return undefined;
+  if (type === "callout" && !out.label) return undefined;
+  if (type === "tags" && !out.items) return undefined;
+  return out;
 }
 
 function s(v: unknown, n: number): string {
@@ -216,6 +273,7 @@ export function sanitizeGraphic(raw: unknown): SceneGraphic | undefined {
   }
   if (o.left) g.left = item(o.left);
   if (o.right) g.right = item(o.right);
+  if (o.backdrop === true && BACKDROP_GRAPHICS.includes(type)) g.backdrop = true;
   return g;
 }
 
@@ -231,9 +289,28 @@ export const GRAPHICS_SPEC_HELP = `"graphics": {"style": clean | hand (traço li
 
 const USAGE_TEXT = {
   none: "",
-  some: "Use grafismo em 1 a 3 cenas, só onde o conteúdo pede (número, lista, comparação, etapas).",
-  many: "Este estilo é de motion graphics: use grafismo na maioria das cenas (pelo menos metade), variando os tipos.",
+  some: "Use grafismo em 2 a 4 cenas, onde o conteúdo pede (número, lista, comparação, etapas, virada de assunto).",
+  many: "Este vídeo é de motion graphics: use grafismo em PELO MENOS METADE das cenas, variando os tipos (misture infográficos com cenas de tela cheia, com pelo menos 3 tipos de tela cheia diferentes no vídeo).",
 };
+
+/**
+ * Regra do "motion por cima da foto" (worker/render/overlay.py) e do ritmo de motion: nenhuma cena com
+ * imagem fica só com a foto e o texto. Vale para os estilos do motor genérico (estilo livre e templates).
+ */
+export function overlayPromptRule(): string {
+  return `
+- Motion em TODA cena: nenhuma cena pode ser só a foto com o texto em cima. Cena que não tem "graphic" e mostra imagem leva "overlay", um elemento desenhado AO VIVO por cima da foto, no meio da tela, que reforça o que é dito naquele trecho:
+  - {"type":"callout","label":"até 3 palavras","text":"detalhe curto (opcional)","x":0.5,"y":0.45}: ponto pulsando num lugar da foto (x/y de 0.15 a 0.85, na área do assunto principal) e uma linha até uma etiqueta, como uma anotação
+  - {"type":"stat","value":"+58%","label":"..."}: painel com um número contando (só número verdadeiro)
+  - {"type":"tags","items":[{"label":"...","icon":"..."}]}: 1 a 3 etiquetas com ícone entrando uma a uma (os conceitos da fala)
+  - {"type":"progress","value":"72%","label":"..."}: barra enchendo até a porcentagem
+  - {"type":"focus","label":"até 3 palavras"}: mira se fechando em volta do assunto, com varredura e etiqueta
+  Varie os tipos (nunca o mesmo em duas cenas seguidas). Só as cenas text_only e as com "graphic" ficam sem "overlay".`;
+}
+
+/** Regra das imagens das cenas: conceito visual concreto, com pessoas e situações, em vez de objetos soltos. */
+export const IMAGE_CONCEPT_RULE = `
+- Conceito das imagens (o "imagePrompt"): cada imagem é uma SITUAÇÃO concreta que mostra o que a frase diz, nunca um objeto solto, um ícone ou uma abstração genérica. Pense como um diretor de fotografia de documentário: QUEM aparece (pessoas reais e específicas: um time, um cliente, um profissional, de idade, roupa e jeito definidos), FAZENDO O QUÊ (uma ação que tem a ver com a fala: discutindo em volta de uma tela, comemorando um resultado, comparando dois produtos, atendendo um cliente), ONDE (lugar específico) e COMO (enquadramento variado entre as cenas: plano aberto, médio, close nas mãos, por cima do ombro, vista de cima; luz e lente). Prefira pessoas interagindo entre si ou com a tecnologia, equipes, bastidores e resultados visíveis. Mantenha o mesmo "elenco" e o mesmo mundo do começo ao fim, para o vídeo contar uma história. Metáfora visual só quando for clara de primeira (ex.: uma fila enorme numa loja vazia ao lado = concorrência).`;
 
 /**
  * Regra do roteiro para os estilos do motor genérico. O grafismo é desenhado AO VIVO na tela
@@ -254,7 +331,8 @@ export function graphicsPromptRule(usage: "none" | "some" | "many"): string {
   - {"type":"versus","left":{"label":"SEO","value":"10 links","icon":"search"},"right":{"label":"GEO","value":"1 resposta","icon":"bot"}}: comparação lado a lado
   - {"type":"timeline","items":[{"label":"1985","text":"..."},...]}: 2 a 5 marcos no tempo
   - {"type":"icon","icon":"rocket","label":"..."} e {"type":"icons","items":[{"icon":"clock","label":"Rápido"},...]}: 1 a 3 ícones desenhados traço a traço
-  Cenas de motion de TELA CHEIA (pintam o próprio fundo, ótimas para abrir, virar capítulo e fechar; use no máximo uma a cada 3 cenas, sem repetir tipo):
+  Grafismo com foto no fundo: nos tipos acima (menos rank_item), "backdrop": true põe a foto da cena no fundo, desfocada e escurecida, com o grafismo desenhado por cima. Aí escreva o "imagePrompt" normalmente (a foto que dá contexto ao dado: as pessoas, o lugar, a situação). Use em boa parte dos grafismos: junta imagem e motion na mesma cena.
+  Cenas de motion de TELA CHEIA (pintam o próprio fundo, ótimas para abrir, virar capítulo, dar um dado de impacto e fechar; nunca duas seguidas, sem repetir tipo no vídeo):
   - {"type":"particle_text","text":"PALAVRA","sub":"..."}: milhares de partículas voam e formam a palavra (1 palavra curta)
   - {"type":"liquid_text","text":"PALAVRA","sub":"..."}: contorno da palavra desenhado e enchendo de líquido com ondas
   - {"type":"kinetic_poster","items":["Rápido","Bonito","Seu"]}: 2 a 7 palavras batendo na tela uma a uma, trocando de cor
