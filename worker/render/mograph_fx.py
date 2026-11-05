@@ -61,7 +61,7 @@ def normalize(g):
     if t == "chat":
         rows = [item(i) for i in items][:5]
         rows = [r for r in rows if r.get("text") or r.get("label")]
-        return {"type": t, "items": rows} if rows else None
+        return {"type": t, "items": rows, "label": _s(g.get("label"), 30)} if rows else None
     if t == "phone":
         rows = [item(i) for i in items][:4]
         rows = [r for r in rows if r.get("label") or r.get("text")]
@@ -602,7 +602,7 @@ class FX:
         hdr = font(self.fonts["title"], 54)
         c.drawRect(skia.Rect(0, 0, W, H * 0.11), fill(mix(self.bg, self.text, 0.07)))
         c.drawCircle(W * 0.1, H * 0.065, 40, fill(self.accent))
-        text(c, "VideoGen", W * 0.1 + 66, H * 0.065 + 20, hdr, self.text, align="left")
+        text(c, self.d.get("label") or "Assistente", W * 0.1 + 66, H * 0.065 + 20, hdr, self.text, align="left")
         for i in visible:
             lines, right, bw, bh = bubbles[i]
             lt = t - i * per
