@@ -168,7 +168,7 @@ export function normalizeSourceLink(value: string): string | null {
 
 // ---------- material da marca (templates "do zero") ----------
 
-const BRAND_LIMITS: Record<keyof BrandAssets, number> = { logos: 4, guides: 3, fonts: 4, sfx: 8, music: 1, images: 6 };
+const BRAND_LIMITS: Record<keyof BrandAssets, number> = { logos: 4, guides: 6, fonts: 6, sfx: 8, music: 1, images: 6 };
 // tudo que o navegador sobe para um template de marca fica em videogen/marcas/<pasta>/ (rota de uploads)
 const BRAND_URL = /^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\/videogen\/marcas\/[a-z0-9]{8,32}\/[^?#]+$/;
 const SFX_ROLES: BrandSfxRole[] = ["transicao", "impacto", "subida"];

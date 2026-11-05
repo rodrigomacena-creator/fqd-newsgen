@@ -35,6 +35,8 @@ export async function POST(request: Request) {
     origin?: string;
     brief?: string;
     brandAssets?: unknown;
+    /** Empresa (perfil) cujo estilo padrão passa a ser este template. */
+    companyId?: string;
   };
   try {
     body = await request.json();
@@ -58,6 +60,9 @@ export async function POST(request: Request) {
         costs: "[]",
       },
     });
+    if (typeof body.companyId === "string" && body.companyId) {
+      await prisma.videoProfile.updateMany({ where: { id: body.companyId, kind: "company" }, data: { brandTemplateId: template.id } });
+    }
     return NextResponse.json({ template: serializeTemplate(template) }, { status: 201 });
   }
   // Ou o arquivo já subiu pro Blob (referenceUrl), ou é um link do YouTube/Pinterest que o worker baixa.

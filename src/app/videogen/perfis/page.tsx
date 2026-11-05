@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Header } from "@/components/Header";
 import { VoiceSelect } from "@/components/videogen/VoiceSelect";
@@ -21,7 +21,9 @@ import { useProfiles } from "@/lib/videogen/useProfiles";
 import { useVoices } from "@/lib/videogen/useVoices";
 import { uploadImage } from "@/lib/videogen/uploadImage";
 import { AvatarCharacterSelect } from "@/components/videogen/AvatarCharacterSelect";
-import { parseCharacter, type AvatarCharacter, type Pronunciation, type VideoProfileDTO, type VideoProfileKind } from "@/lib/videogen/types";
+import { BrandMaterialGrid, uploadPicked, useBrandPicker } from "@/components/videogen/BrandTemplateForm";
+import type { VideoTemplateDTO } from "@/lib/videogen/templates";
+import { TEMPLATE_STATUS_LABEL, parseCharacter, type AvatarCharacter, type Pronunciation, type VideoProfileDTO, type VideoProfileKind } from "@/lib/videogen/types";
 
 interface Draft {
   id: string | null;
@@ -41,6 +43,7 @@ interface Draft {
   pronunciations: Pronunciation[];
   isDefault: boolean;
   neutral: boolean;
+  brandTemplateId: string | null;
 }
 
 function toDraft(p: VideoProfileDTO): Draft {
@@ -62,6 +65,7 @@ function toDraft(p: VideoProfileDTO): Draft {
     pronunciations: p.pronunciations,
     isDefault: p.isDefault,
     neutral: p.neutral,
+    brandTemplateId: p.brandTemplateId ?? null,
   };
 }
 
@@ -84,6 +88,7 @@ function emptyDraft(kind: VideoProfileKind): Draft {
     pronunciations: [],
     isDefault: false,
     neutral: false,
+    brandTemplateId: null,
   };
 }
 
@@ -299,6 +304,9 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
   const { voices, loading: loadingVoices, error: voicesError } = useVoices();
   const logoInput = useRef<HTMLInputElement>(null);
   const isPerson = d.kind === "person";
+  const brand = useBrandPicker();
+  const [brandIdea, setBrandIdea] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setD((x) => ({ ...x, [key]: value }));
 
   async function pickLogo(file: File | undefined) {
@@ -324,7 +332,8 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
     setSaving(true);
     setError(null);
     try {
-      const { id, ...body } = d;
+      const { id, brandTemplateId: _keep, ...body } = d;
+      void _keep;
       const res = await fetch(id ? `/api/videogen/profiles/${id}` : "/api/videogen/profiles", {
         method: id ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -332,10 +341,31 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Não foi possível salvar.");
-      onSaved(data.profile);
+      let profile: VideoProfileDTO = data.profile;
+      // material da marca novo: a IA estuda e monta o estilo dos vídeos desta empresa (template de marca)
+      if (!isPerson && brand.total > 0) {
+        const assets = await uploadPicked(brand.picked, (done, n) => setStatus(`Enviando arquivos da marca… ${done} de ${n}`));
+        setStatus("Mandando a IA estudar a marca…");
+        const tRes = await fetch("/api/videogen/templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            origin: "brand",
+            name: `Estilo ${profile.name}`.slice(0, 80),
+            brief: brandBrief(profile, brandIdea),
+            brandAssets: assets,
+            companyId: profile.id,
+          }),
+        });
+        const tData = await tRes.json();
+        if (!tRes.ok) throw new Error(tData.error || "O perfil foi salvo, mas não deu para montar o estilo da marca.");
+        profile = { ...profile, brandTemplateId: tData.template.id };
+      }
+      onSaved(profile);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado.");
       setSaving(false);
+      setStatus(null);
     }
   }
 
@@ -506,6 +536,37 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
         </div>
       </div>
 
+      {!isPerson && (
+        <section className="mt-6 border-t border-border pt-5" aria-labelledby="brand-material-title">
+          <h3 id="brand-material-title" className="text-base font-semibold">
+            Guia da marca e estilo dos vídeos
+          </h3>
+          <p className="mt-0.5 text-xs text-text-secondary">
+            Suba o manual da marca, as fontes, os logos e peças de referência (pode ser mais de um arquivo de cada). A IA estuda tudo e monta o
+            estilo visual dos vídeos desta empresa: cores, tipografia, animações e onde vai o logo. Vídeos novos desta empresa já saem nesse estilo.
+          </p>
+          {d.brandTemplateId && <BrandStyleStatus id={d.brandTemplateId} replacing={brand.total > 0} />}
+          <BrandMaterialGrid picker={brand} disabled={saving} />
+          {brand.problem && <p className="mt-2 text-xs text-accent-red">{brand.problem}</p>}
+          {brand.total > 0 && (
+            <div className="mt-3">
+              <label htmlFor="profile-brand-idea" className={labelClass}>
+                Como você imagina os vídeos <span className="font-normal text-text-secondary">(opcional)</span>
+              </label>
+              <AutoTextarea
+                id="profile-brand-idea"
+                minRows={2}
+                maxLength={1500}
+                value={brandIdea}
+                onChange={(e) => setBrandIdea(e.target.value)}
+                placeholder="Ex.: animações suaves, cortes rápidos, logo pequeno no canto de cima"
+                className={`mt-1.5 ${fieldClass}`}
+              />
+            </div>
+          )}
+        </section>
+      )}
+
       {error && (
         <div role="alert" className="mt-5 flex gap-2 rounded-lg bg-accent-red/10 px-4 py-3 text-sm text-accent-red">
           <Icon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
@@ -519,7 +580,7 @@ function ProfileForm({ initial, onCancel, onSaved }: { initial: Draft; onCancel:
         </button>
         <button type="submit" disabled={saving || uploadingLogo} className={primaryButton}>
           {saving && <Spinner className="h-4 w-4" />}
-          {d.id ? "Salvar alterações" : "Criar perfil"}
+          {saving && status ? status : d.id ? "Salvar alterações" : "Criar perfil"}
         </button>
       </div>
     </form>
@@ -571,6 +632,47 @@ function PronunciationsEditor({ list, onChange }: { list: Pronunciation[]; onCha
       >
         <Icon name="plus" className="h-4 w-4" /> Adicionar pronúncia
       </button>
+    </div>
+  );
+}
+
+/** Texto que vai para a IA montar o estilo da empresa (junto dos arquivos). */
+function brandBrief(p: VideoProfileDTO, idea: string): string {
+  const parts = [
+    `Estilo padrão de TODOS os vídeos da empresa ${p.name}. Estude cada arquivo enviado (guias de marca, fontes, logos e imagens) e siga a identidade visual à risca: cores exatas do guia, tipografia da marca, uso do logo e o clima das peças de referência.`,
+    p.description ? `Sobre a empresa: ${p.description}` : "",
+    p.tone ? `Tom de voz da marca: ${p.tone}` : "",
+    p.colors ? `Cores informadas no cadastro: ${p.colors}` : "",
+    idea.trim() ? `Como imaginam os vídeos: ${idea.trim()}` : "",
+  ];
+  return parts.filter(Boolean).join("\n").slice(0, 4000);
+}
+
+/** Situação do estilo já montado com o material da marca (link para ver/aprovar na tela de estilos). */
+function BrandStyleStatus({ id, replacing }: { id: string; replacing: boolean }) {
+  const [t, setT] = useState<VideoTemplateDTO | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/videogen/templates/${encodeURIComponent(id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => alive && setT(data?.template ?? null))
+      .catch(() => alive && setT(null));
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+  if (t === undefined) return <p className="mt-3 text-xs text-text-secondary">Carregando o estilo da marca…</p>;
+  if (t === null) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface-2 px-3 py-2.5 text-sm">
+      <Icon name="star" className="h-4 w-4 shrink-0 text-accent-yellow" />
+      <span className="min-w-0 flex-1">
+        Estilo atual: <strong>{t.name}</strong> · {TEMPLATE_STATUS_LABEL[t.status]}
+        {replacing && <span className="block text-xs text-text-secondary">Ao salvar, a IA monta um estilo novo com os arquivos escolhidos.</span>}
+      </span>
+      <Link href="/videogen/templates" className="text-xs font-medium text-accent-yellow hover:underline">
+        {t.status === "review" ? "Ver e aprovar" : "Ver estilos"}
+      </Link>
     </div>
   );
 }

@@ -214,9 +214,11 @@ def collect_material(assets, workdir, log=print):
         try:
             src = download(item["url"], workdir / f"guia_{n}{_ext(item['url'], '.pdf')}")
             if src.suffix.lower() == ".pdf":
-                text, pages = _pdf_pages(src, workdir)
+                # vários guias: as páginas e o texto mostrados à IA se dividem entre eles
+                n_guides = len(assets.get("guides") or [])
+                text, pages = _pdf_pages(src, workdir, max(3, (MAX_GUIDE_PAGES * 2) // max(n_guides, 1)) if n_guides > 1 else MAX_GUIDE_PAGES)
                 if text:
-                    guide_text.append(f"[{item.get('name') or 'guia'}]\n{text}")
+                    guide_text.append(f"[{item.get('name') or 'guia'}]\n{text[:max(2500, (MAX_GUIDE_TEXT * 3 // 2) // max(n_guides, 1))]}")
                 for p, img in pages:
                     images.append((f"Guia de marca \"{item.get('name') or 'guia'}\", página {p}", img))
                 if not text and not pages:
@@ -280,6 +282,6 @@ def collect_material(assets, workdir, log=print):
         lines.append("- Fontes da marca (use as chaves nos campos font de title/caption/cta): "
                      + "; ".join(f"{k} = {f['name']}" for k, f in fonts.items()))
     if guide_text:
-        lines.append("- Texto extraído do guia de marca:\n" + "\n\n".join(guide_text)[:MAX_GUIDE_TEXT])
+        lines.append("- Texto extraído do guia de marca:\n" + "\n\n".join(guide_text)[:MAX_GUIDE_TEXT * 3 // 2])
     return {"text": "\n".join(lines) or "- (nenhum arquivo enviado)", "images": images, "fonts": fonts, "logo": logo,
             "sfx": sfx, "music": music}

@@ -203,6 +203,8 @@ export interface VideoProfileDTO {
   isDefault: boolean;
   /** Conteúdo neutro e informativo: sem marca, sem venda, CTA só de engajamento. */
   neutral: boolean;
+  /** Empresa: template montado com o guia/material da marca (estilo padrão dos vídeos dela). */
+  brandTemplateId: string | null;
   createdAt: string;
   updatedAt: string;
 }

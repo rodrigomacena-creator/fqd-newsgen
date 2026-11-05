@@ -131,6 +131,11 @@ export function profileInput(body: Record<string, unknown>, partial: boolean): {
   if (body.pronunciations !== undefined) data.pronunciations = JSON.stringify(cleanPronunciations(body.pronunciations));
   if (body.isDefault !== undefined) data.isDefault = body.isDefault === true;
   if (body.neutral !== undefined) data.neutral = body.neutral === true;
+  if (body.brandTemplateId !== undefined) {
+    const v = typeof body.brandTemplateId === "string" ? body.brandTemplateId.trim() : "";
+    if (v && !/^[a-z0-9-]{6,64}$/i.test(v)) return { error: "Estilo da marca inválido." };
+    data.brandTemplateId = v || null;
+  }
   return { data };
 }
 

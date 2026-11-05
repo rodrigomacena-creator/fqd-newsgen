@@ -19,8 +19,8 @@ interface Section {
 
 const SECTIONS: Section[] = [
   { kind: "logos", upload: "logo", title: "Logos", hint: "PNG com fundo transparente funciona melhor. SVG também vale. O 1º é o principal.", max: 4, icon: "star" },
-  { kind: "guides", upload: "guia", title: "Guia de marca", hint: "Manual da marca em PDF ou imagens: cores, tipografia, tom de voz.", max: 3, icon: "doc" },
-  { kind: "fonts", upload: "fonte", title: "Fontes", hint: "Arquivos .ttf, .otf, .woff ou .woff2. A IA escolhe onde usar cada uma.", max: 4, icon: "edit" },
+  { kind: "guides", upload: "guia", title: "Guia de marca", hint: "Manual da marca em PDF ou imagens: cores, tipografia, tom de voz. Pode mandar mais de um.", max: 6, icon: "doc" },
+  { kind: "fonts", upload: "fonte", title: "Fontes", hint: "Arquivos .ttf, .otf, .woff ou .woff2. A IA escolhe onde usar cada uma.", max: 6, icon: "edit" },
   { kind: "sfx", upload: "sfx", title: "Efeitos sonoros", hint: "Trocam os efeitos padrão: diga em que momento cada um entra.", max: 8, icon: "wave" },
   { kind: "music", upload: "trilha", title: "Trilha", hint: "Opcional. Se enviar, ela toca em todos os vídeos do template; sem ela, a IA gera.", max: 1, icon: "music" },
   { kind: "images", upload: "imagem", title: "Imagens de referência", hint: "Opcional. Posts, fotos ou peças que mostram o visual que você quer.", max: 6, icon: "image" },
@@ -39,36 +39,25 @@ function guessRole(name: string): BrandSfxRole {
   return "impacto";
 }
 
-interface Picked {
+export interface Picked {
   id: string;
   file: File;
   role?: BrandSfxRole;
 }
 
-type PickedMap = Record<BrandAssetKind, Picked[]>;
+export type PickedMap = Record<BrandAssetKind, Picked[]>;
 
 const EMPTY: PickedMap = { logos: [], guides: [], fonts: [], sfx: [], music: [], images: [] };
 
-const IDEA_EXAMPLES = [
-  "Animações suaves, títulos entrando com desfoque",
-  "Cortes rápidos com chicote, bem energético",
-  "Trilha acústica lo-fi, clima de manhã",
-  "Logo pequeno no canto de cima o vídeo todo",
-];
-
-export function BrandTemplateForm({ onCreated }: { onCreated: (t: VideoTemplateDTO) => void }) {
-  const [name, setName] = useState("");
-  const [brief, setBrief] = useState("");
+/** Arquivos da marca escolhidos no navegador (ainda não enviados). Usado aqui e no cadastro da empresa. */
+export function useBrandPicker() {
   const [picked, setPicked] = useState<PickedMap>(EMPTY);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
   const counter = useRef(0);
-
   const total = Object.values(picked).reduce((n, list) => n + list.length, 0);
 
   function add(section: Section, files: FileList | null) {
-    setError(null);
+    setProblem(null);
     if (!files?.length) return;
     const problems: string[] = [];
     const next: Picked[] = [];
@@ -80,7 +69,7 @@ export function BrandTemplateForm({ onCreated }: { onCreated: (t: VideoTemplateD
     const merged = section.max === 1 ? next.slice(0, 1) : [...picked[section.kind], ...next];
     if (merged.length > section.max) problems.push(`${section.title}: no máximo ${section.max} arquivos.`);
     setPicked((p) => ({ ...p, [section.kind]: merged.slice(0, section.max) }));
-    if (problems.length) setError(problems.join(" "));
+    if (problems.length) setProblem(problems.join(" "));
   }
 
   function remove(kind: BrandAssetKind, id: string) {
@@ -90,6 +79,62 @@ export function BrandTemplateForm({ onCreated }: { onCreated: (t: VideoTemplateD
   function setRole(id: string, role: BrandSfxRole) {
     setPicked((p) => ({ ...p, sfx: p.sfx.map((f) => (f.id === id ? { ...f, role } : f)) }));
   }
+
+  return { picked, total, problem, add, remove, setRole, reset: () => setPicked(EMPTY) };
+}
+
+/** Sobe tudo pro Blob (uma pasta nova) e devolve o material no formato do template. */
+export async function uploadPicked(picked: PickedMap, onProgress: (done: number, total: number) => void): Promise<BrandAssets> {
+  const total = Object.values(picked).reduce((n, list) => n + list.length, 0);
+  const folder = newBrandFolder();
+  const assets: BrandAssets = { logos: [], guides: [], fonts: [], sfx: [], music: [], images: [] };
+  let done = 0;
+  for (const section of SECTIONS) {
+    for (const p of picked[section.kind]) {
+      onProgress(done + 1, total);
+      const url = await uploadBrandFile(p.file, section.upload, folder);
+      assets[section.kind].push({ url, name: p.file.name, ...(p.role ? { role: p.role } : {}) });
+      done++;
+    }
+  }
+  return assets;
+}
+
+/** Grade com uma caixa por tipo de arquivo (arrastar e soltar ou escolher, vários por tipo). */
+export function BrandMaterialGrid({ picker, disabled }: { picker: ReturnType<typeof useBrandPicker>; disabled: boolean }) {
+  return (
+    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      {SECTIONS.map((section) => (
+        <AssetSection
+          key={section.kind}
+          section={section}
+          files={picker.picked[section.kind]}
+          disabled={disabled}
+          onAdd={(files) => picker.add(section, files)}
+          onRemove={(id) => picker.remove(section.kind, id)}
+          onRole={picker.setRole}
+        />
+      ))}
+    </div>
+  );
+}
+
+const IDEA_EXAMPLES = [
+  "Animações suaves, títulos entrando com desfoque",
+  "Cortes rápidos com chicote, bem energético",
+  "Trilha acústica lo-fi, clima de manhã",
+  "Logo pequeno no canto de cima o vídeo todo",
+];
+
+export function BrandTemplateForm({ onCreated }: { onCreated: (t: VideoTemplateDTO) => void }) {
+  const [name, setName] = useState("");
+  const [brief, setBrief] = useState("");
+  const picker = useBrandPicker();
+  const { picked, total } = picker;
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [submitError, setError] = useState<string | null>(null);
+  const error = submitError ?? picker.problem;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -101,17 +146,7 @@ export function BrandTemplateForm({ onCreated }: { onCreated: (t: VideoTemplateD
     }
     setBusy(true);
     try {
-      const folder = newBrandFolder();
-      const assets: BrandAssets = { logos: [], guides: [], fonts: [], sfx: [], music: [], images: [] };
-      let done = 0;
-      for (const section of SECTIONS) {
-        for (const p of picked[section.kind]) {
-          setStatus(`Enviando arquivos… ${done + 1} de ${total}`);
-          const url = await uploadBrandFile(p.file, section.upload, folder);
-          assets[section.kind].push({ url, name: p.file.name, ...(p.role ? { role: p.role } : {}) });
-          done++;
-        }
-      }
+      const assets = await uploadPicked(picked, (done, n) => setStatus(`Enviando arquivos… ${done} de ${n}`));
       setStatus("Criando o template…");
       const res = await fetch("/api/videogen/templates", {
         method: "POST",
@@ -123,7 +158,7 @@ export function BrandTemplateForm({ onCreated }: { onCreated: (t: VideoTemplateD
       onCreated(data.template);
       setName("");
       setBrief("");
-      setPicked(EMPTY);
+      picker.reset();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado no envio.");
     } finally {
@@ -173,19 +208,7 @@ export function BrandTemplateForm({ onCreated }: { onCreated: (t: VideoTemplateD
         <p className="mt-0.5 text-xs text-text-secondary">
           Tudo opcional, mas quanto mais material, mais a cara da marca. Cores e tom de voz saem do guia.
         </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {SECTIONS.map((section) => (
-            <AssetSection
-              key={section.kind}
-              section={section}
-              files={picked[section.kind]}
-              disabled={busy}
-              onAdd={(files) => add(section, files)}
-              onRemove={(id) => remove(section.kind, id)}
-              onRole={setRole}
-            />
-          ))}
-        </div>
+        <BrandMaterialGrid picker={picker} disabled={busy} />
       </div>
 
       <div>

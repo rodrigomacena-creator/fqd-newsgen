@@ -315,6 +315,12 @@ reais encontradas ao construir o projeto, não só a estrutura.
   fonte, logo em PNG) e a ficha ganha o grupo `spec.brand` (fontes `marca-<hash>`, `logoUrl`, marca d'água num canto, `sfx` por
   papel, `musicUrl`), que vale em todo vídeo do template: `prepare_render()` no `_produce` registra as fontes, põe o logo no fecho
   (se o perfil da empresa não tiver) e troca efeitos/trilha. Ficha sem `brand` renderiza igual a antes. Exemplo de marca = 8s.
+  **Guia da marca no cadastro da empresa (05/11/2026)**: o formulário de empresa em `/videogen/perfis` tem a seção "Guia da marca e
+  estilo dos vídeos" (mesma grade de arquivos do template de marca: `useBrandPicker`/`BrandMaterialGrid`/`uploadPicked` exportados de
+  `BrandTemplateForm.tsx`, vários arquivos por tipo, até 6 guias e 6 fontes). Salvar com arquivos cria um template de marca
+  (`POST /api/videogen/templates` com `companyId`, brief montado de descrição/tom/cores da empresa) e grava `VideoProfile.brandTemplateId`
+  (sem FK; apagar o template limpa). Depois de aprovado, vídeo novo dessa empresa começa com esse estilo selecionado (`brandStyleId` na
+  home). Com vários guias, `brand_assets.py` divide páginas e texto mostrados à IA entre eles.
   **Ajustes até aprovar** (vale para qualquer template): POST `.../templates/[id]/revise` com o pedido → fila com
   `revisionRequest`; o worker manda a ficha atual + `buildState` (roteiro do exemplo, imageStyle, musicPrompt) + pedidos anteriores
   para a IA, que devolve tudo de novo mudando só o pedido (+ `note`), e renderiza outro exemplo. Template de marca e ajustes terminam

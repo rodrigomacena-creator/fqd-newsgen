@@ -43,5 +43,7 @@ export async function DELETE(_request: Request, ctx: RouteContext<"/api/videogen
   for (const url of brandAssetUrls(template.brandAssets)) await deleteBlobIfOwned(url);
   await deleteBlobsByPrefix(`videogen/templates/${id}/`);
   await prisma.videoTemplate.delete({ where: { id } });
+  // empresa que tinha este como estilo da marca volta ao estilo livre
+  await prisma.videoProfile.updateMany({ where: { brandTemplateId: id }, data: { brandTemplateId: null } });
   return NextResponse.json({ ok: true });
 }

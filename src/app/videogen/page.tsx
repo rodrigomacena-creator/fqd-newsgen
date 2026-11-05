@@ -146,8 +146,11 @@ export default function VideoGenPage() {
     () => new URLSearchParams(window.location.search).get("estilo"),
     () => null
   );
+  // empresa com estilo montado do guia da marca (aprovado): vídeos dela já começam nesse estilo
+  const brandStyleId =
+    company?.brandTemplateId && styles.some((s) => s.id === company.brandTemplateId) ? company.brandTemplateId : null;
   const patternId =
-    chosenPattern ?? (wantedPattern && styles.some((s) => s.id === wantedPattern) ? wantedPattern : FREE_STYLE_ID);
+    chosenPattern ?? (wantedPattern && styles.some((s) => s.id === wantedPattern) ? wantedPattern : brandStyleId ?? FREE_STYLE_ID);
   const pattern = getStyle(patternId);
   const [styleNotes, setStyleNotes] = useState("");
   const [briefingImages, setBriefingImages] = useState<BriefingImage[]>([]);
@@ -915,7 +918,7 @@ export default function VideoGenPage() {
                               )}
                               {p.kind === "template" && (
                                 <span className="rounded-full bg-accent-yellow/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-yellow">
-                                  seu template
+                                  {p.id === brandStyleId ? `marca ${company?.name ?? ""}`.trim() : "seu template"}
                                 </span>
                               )}
                               {p.semNarracao && (
