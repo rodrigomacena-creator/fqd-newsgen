@@ -356,6 +356,14 @@ reais encontradas ao construir o projeto, não só a estrutura.
   imagens são SITUAÇÕES concretas com pessoas, ação, lugar e enquadramento variados e o mesmo "elenco"; estilo livre sempre
   `graphics.usage = many` (metade das cenas com grafismo, pelo menos 3 tipos de tela cheia). `max_tokens` do roteiro foi a
   24000 (o raciocínio passa do teto pedido e cortava o JSON).
+  **Efeitos de edição (05/11/2026, "tem que parecer que deu trabalho editar")** (`worker/render/edit_fx.py`): por cena,
+  `scene.edit` = `depth_title` (texto da tela ATRÁS da pessoa: máscara U²-Net de `cutout.py` acompanhando o zoom quadro a quadro
+  em `SceneVisual.mask_now`; `depth_y()` escolhe a altura em que a pessoa cobre ~18% do texto e desiste — texto na frente — se
+  cobriria demais) ou `subject_pop` (no meio da cena o fundo perde a cor, a pessoa ganha contorno branco + brilho e soco de zoom);
+  só em tela cheia com foto. `scene.slam` = uma palavra da fala que bate GRANDE na tela inteira quando é falada (sem `slam` por
+  cena, cai nas palavras-chave). No vídeo todo, `spec.edit = {slam, impact}` (impact = soco de zoom + separação RGB no começo de
+  cada cena); o estilo livre liga os dois sozinho (`generateVideoScript`), fichas sem o grupo ficam como antes. Regra do roteiro:
+  `EDIT_RULE` em `graphics.ts`; editor: "Efeito de edição" e "Palavra que bate na tela" (`EditFields`).
   Pronúncia (`pronunciation.ts`): o texto enviado ao TTS troca siglas/marcas em inglês e o site
   (oxyngroup.com.br) por grafia fonética; `alignDisplayWords()` mapeia o alinhamento por
   caractere de volta pra grafia de exibição — a legenda nunca mostra a grafia fonética.

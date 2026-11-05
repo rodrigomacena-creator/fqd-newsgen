@@ -752,3 +752,60 @@ export function OverlayFields({
     </div>
   );
 }
+
+/** Inspector da cena: efeito de edição (worker/render/edit_fx.py) e palavra que bate na tela. */
+export function EditFields({
+  index,
+  edit,
+  slam,
+  disabled,
+  onChange,
+}: {
+  index: number;
+  edit: "depth_title" | "subject_pop" | undefined;
+  slam: string | undefined;
+  disabled: boolean;
+  onChange: (patch: { edit?: "depth_title" | "subject_pop"; slam?: string }) => void;
+}) {
+  const id = (k: string) => `scene-${index}-e-${k}`;
+  return (
+    <div className="space-y-2.5">
+      <div>
+        <label htmlFor={id("edit")} className={label}>
+          Efeito de edição
+        </label>
+        <select
+          id={id("edit")}
+          value={edit ?? ""}
+          disabled={disabled}
+          onChange={(e) => onChange({ edit: (e.target.value || undefined) as "depth_title" | "subject_pop" | undefined })}
+          className={`mt-1.5 h-10 !py-0 ${field.replace("bg-surface", "bg-background")}`}
+        >
+          <option value="" className="bg-background text-foreground">
+            Nenhum
+          </option>
+          <option value="depth_title" className="bg-background text-foreground">
+            Texto atrás da pessoa
+          </option>
+          <option value="subject_pop" className="bg-background text-foreground">
+            Pessoa em destaque (fundo sem cor + contorno)
+          </option>
+        </select>
+        <p className={`mt-1 ${small}`}>Só em cena de tela cheia com foto em que a pessoa aparece grande.</p>
+      </div>
+      <div>
+        <label htmlFor={id("slam")} className={small}>
+          Palavra que bate na tela (uma palavra da fala)
+        </label>
+        <input
+          id={id("slam")}
+          value={slam ?? ""}
+          maxLength={30}
+          disabled={disabled}
+          onChange={(e) => onChange({ slam: e.target.value.trim().split(/\s+/)[0] || undefined })}
+          className={`mt-1 ${field}`}
+        />
+      </div>
+    </div>
+  );
+}

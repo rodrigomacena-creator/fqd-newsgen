@@ -166,7 +166,7 @@ export function sanitizeStyleSpec(raw: unknown): Record<string, unknown> | undef
   const out: Record<string, unknown> = {};
   const archetype = (raw as Record<string, unknown>).archetype;
   if (typeof archetype === "string" && archetype.trim()) out.archetype = archetype.trim().slice(0, 40);
-  for (const group of ["palette", "background", "image", "caption", "title", "transition", "overlay", "cta", "motion", "graphics"]) {
+  for (const group of ["palette", "background", "image", "caption", "title", "transition", "overlay", "cta", "motion", "graphics", "edit"]) {
     const g = (raw as Record<string, unknown>)[group];
     if (g && typeof g === "object" && !Array.isArray(g)) out[group] = g;
   }

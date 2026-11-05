@@ -308,6 +308,14 @@ export function overlayPromptRule(): string {
   Varie os tipos (nunca o mesmo em duas cenas seguidas, e cada tipo no máximo 2 vezes no vídeo). Só as cenas text_only e as com "graphic" ficam sem "overlay".`;
 }
 
+/** Efeitos de edição por cena (worker/render/edit_fx.py): o que dá cara de vídeo editado à mão. */
+export const EDIT_RULE = `
+- Efeitos de edição (é o que faz quem assiste pensar "deu trabalho editar isso"): em cenas de tela cheia (layout fullbleed) cuja foto tem UMA pessoa (ou um objeto) grande e bem destacado do fundo, use "edit":
+  - "depth_title": o texto da tela fica ATRÁS da pessoa, como em capa de revista. O "onScreen" dessa cena tem 1 ou 2 palavras fortes e a imagem mostra a pessoa da cintura para cima, com espaço acima da cabeça. Use em 1 a 3 cenas (a cena 1 é uma ótima candidata).
+  - "subject_pop": no meio da cena o fundo perde a cor e a pessoa ganha contorno branco, congelando a atenção nela. Use em 1 ou 2 cenas que falam de alguém (o cliente, o dono, o especialista).
+  Cena com "edit" não leva "overlay".
+- "slam": em 2 a 4 cenas com foto (sem "graphic"), escolha UMA palavra forte da própria fala da cena (exatamente como está escrita na narração); ela bate GRANDE na tela inteira no instante em que é falada. Não use em cenas seguidas.`;
+
 /** Regra das imagens das cenas: conceito visual concreto, com pessoas e situações, em vez de objetos soltos. */
 export const IMAGE_CONCEPT_RULE = `
 - Conceito das imagens (o "imagePrompt"): cada imagem é uma SITUAÇÃO concreta que mostra o que a frase diz, nunca um objeto solto, um ícone ou uma abstração genérica. Pense como um diretor de fotografia de documentário: QUEM aparece (pessoas reais e específicas: um time, um cliente, um profissional, de idade, roupa e jeito definidos), FAZENDO O QUÊ (uma ação que tem a ver com a fala: discutindo em volta de uma tela, comemorando um resultado, comparando dois produtos, atendendo um cliente), ONDE (lugar específico) e COMO (enquadramento variado entre as cenas: plano aberto, médio, close nas mãos, por cima do ombro, vista de cima; luz e lente). Prefira pessoas interagindo entre si ou com a tecnologia, equipes, bastidores e resultados visíveis. Mantenha o mesmo "elenco" e o mesmo mundo do começo ao fim, para o vídeo contar uma história. Metáfora visual só quando for clara de primeira (ex.: uma fila enorme numa loja vazia ao lado = concorrência).`;

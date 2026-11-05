@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerE
 import { AutoTextarea, CopyButton, Icon, Spinner } from "./ui";
 import { uploadImage } from "@/lib/videogen/uploadImage";
 import { SceneImage } from "./SceneImage";
-import { GraphicFields, OverlayFields } from "./GraphicFields";
+import { EditFields, GraphicFields, OverlayFields } from "./GraphicFields";
 import { graphicNeedsImage } from "@/lib/videogen/graphics";
 import { VoiceWave } from "./VoiceWave";
 import { sceneTiming } from "@/lib/videogen/sceneTiming";
@@ -1002,6 +1002,10 @@ function SceneInspector({
 
         {graphics && !scene.avatar && !scene.graphic && scene.layout !== "text_only" && (
           <OverlayFields index={index} overlay={scene.overlay} disabled={disabled} onChange={(overlay) => onChange({ overlay })} />
+        )}
+
+        {graphics && !scene.avatar && !scene.graphic && scene.layout !== "text_only" && (
+          <EditFields index={index} edit={scene.edit} slam={scene.slam} disabled={disabled} onChange={(patch) => onChange(patch)} />
         )}
 
         {(!scene.graphic || graphicNeedsImage(scene.graphic)) && (

@@ -32,6 +32,10 @@ export interface VideoScene {
   graphic?: SceneGraphic;
   /** Motion desenhado por cima da foto da cena (anotação, número, etiquetas...). Ver graphics.ts ↔ worker/render/overlay.py. */
   overlay?: SceneOverlay;
+  /** Efeito de edição da cena (worker/render/edit_fx.py): texto atrás da pessoa ou pessoa em destaque com contorno. */
+  edit?: "depth_title" | "subject_pop";
+  /** Palavra da fala desta cena que bate grande na tela inteira (estilos com spec.edit.slam). */
+  slam?: string;
   /** Transição de entrada desta cena (motor genérico); vale mais que a da ficha. Ver TRANSITION_KINDS em freeStyle.ts. */
   transition?: string;
 }

@@ -14,7 +14,7 @@ import { mergePronunciations } from "./pronunciation";
 import { isAllowedImageUrl } from "./profiles";
 import { defaultDirection, directionPromptRule, normalizeDirection } from "./direction";
 import { SCENE_LAYOUTS, TRANSITION_KINDS, enforcePhotoPrompts, freeStyleGuide, sanitizeStyleSpec } from "./freeStyle";
-import { IMAGE_CONCEPT_RULE, graphicNeedsImage, graphicsPromptRule, overlayPromptRule, sanitizeGraphic, sanitizeOverlay } from "./graphics";
+import { EDIT_RULE, IMAGE_CONCEPT_RULE, graphicNeedsImage, graphicsPromptRule, overlayPromptRule, sanitizeGraphic, sanitizeOverlay } from "./graphics";
 import { HUMANIZER_RULE } from "./humanizer";
 import { CTA_EFFECTS, CTA_FONT_SCALE, type VideoFormat } from "./types";
 import { STOCK_URL_RE, UPLOADED_CLIP_RE } from "./stockVideo";
@@ -122,7 +122,7 @@ function buildSystemPrompt(pattern: VideoPattern, guide: string, durationS: numb
         ? graphicsPromptRule("many") // estilo livre: motion é o protagonista (pedido do Rodrigo, 05/11/2026)
         : graphicsPromptRule(ctx.graphicsUsage);
   // motor genérico: toda cena com foto ganha um elemento animado por cima, e as imagens viram situações concretas
-  const motionRule = pattern.kind === "builtin" ? "" : overlayPromptRule() + IMAGE_CONCEPT_RULE;
+  const motionRule = pattern.kind === "builtin" ? "" : overlayPromptRule() + IMAGE_CONCEPT_RULE + EDIT_RULE;
   const intro = free
     ? `Você vai escrever o roteiro de UM vídeo e criar o estilo visual dele do zero (estilo livre). Siga o guia abaixo.
 
@@ -175,7 +175,7 @@ Responda SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:
 {
   "title": "título interno curto do vídeo",
   "scenes": [
-    { "narration": "...", "onScreen": "...", "visual": "...", "imagePrompt": "...", "durationS": 2${free ? ', "layout": "...", "stockQuery": "... (opcional)"' : ""}${graphicsRule ? ', "graphic": {...} (opcional)' : ""}${motionRule ? ', "overlay": {...} (cenas com foto)' : ""}${ctx.imageCount ? ', "userImage": null' : ""}, "direction": { "cut": "...", "camera": "...", "object": "...", "mark": "...", "emphasis": "..." } }
+    { "narration": "...", "onScreen": "...", "visual": "...", "imagePrompt": "...", "durationS": 2${free ? ', "layout": "...", "stockQuery": "... (opcional)"' : ""}${graphicsRule ? ', "graphic": {...} (opcional)' : ""}${motionRule ? ', "overlay": {...} (cenas com foto), "edit": "depth_title|subject_pop" (opcional), "slam": "palavra" (opcional)' : ""}${ctx.imageCount ? ', "userImage": null' : ""}, "direction": { "cut": "...", "camera": "...", "object": "...", "mark": "...", "emphasis": "..." } }
   ],
   "cta": { "narration": "...", "onScreen": "..." },
   "hooks": [{ "narration": "...", "onScreen": "..." }],
@@ -218,6 +218,10 @@ export function normalizeScript(input: unknown): VideoScript {
     if (graphic) scene.graphic = graphic;
     const overlay = sanitizeOverlay(o.overlay);
     if (overlay && !graphic) scene.overlay = overlay;
+    const ed = str(o.edit);
+    if (!graphic && (ed === "depth_title" || ed === "subject_pop")) scene.edit = ed;
+    const slam = str(o.slam).slice(0, 30);
+    if (slam && !graphic && slam.split(/\s+/).length === 1) scene.slam = slam;
     const transition = str(o.transition);
     if (TRANSITION_KINDS.includes(transition)) scene.transition = transition;
     const graphicOnly = graphic && !graphicNeedsImage(graphic); // grafismo no lugar da imagem: nada de clipe de banco
@@ -436,7 +440,11 @@ export async function generateVideoScript(params: {
   if (fixed) delete script.hooks; // a abertura já está gravada
   // toda cena sai com direção (a IA às vezes esquece em alguma)
   script.scenes = script.scenes.map((sc, i) => (sc.direction ? sc : { ...sc, direction: defaultDirection(i) }));
-  if (params.pattern.kind === "free") script.scenes = enforcePhotoPrompts(script.scenes, script.styleSpec);
+  if (params.pattern.kind === "free") {
+    script.scenes = enforcePhotoPrompts(script.scenes, script.styleSpec);
+    // estilo livre: palavra batendo na tela e soco de zoom nos cortes sempre ligados (worker/render/edit_fx.py)
+    if (script.styleSpec) script.styleSpec = { ...script.styleSpec, edit: { slam: true, impact: true } };
+  }
   return { script, usd };
 }
 

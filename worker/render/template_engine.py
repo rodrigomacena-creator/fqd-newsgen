@@ -24,6 +24,7 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 from . import mograph as mg
 from . import motion as mv
 from . import overlay as ovl
+from . import edit_fx
 from .common import FPS, H, W, FrameWriter, asset, cover_resize, ease, font, grain_frames, group_lines, keyword_set, landscape, norm, spread_words, vignette
 from .timeline import build_timeline
 
@@ -214,6 +215,8 @@ def normalize_spec(raw):
         out["brand"] = brand
     # motion graphics (render/mograph.py): estilo do traço, fundo vivo e quanto o roteiro usa grafismos
     out["graphics"] = mg.normalize_graphics(raw.get("graphics"))
+    # efeitos de edição no vídeo todo (render/edit_fx.py); fichas sem o grupo ficam como antes
+    out["edit"] = edit_fx.normalize_edit(raw.get("edit"))
     out["caption"]["maxWordsPerLine"] = int(out["caption"]["maxWordsPerLine"])
     _ensure_legible(out)
     _place_watermark(out)
@@ -391,6 +394,8 @@ class SceneVisual:
         self.direction = None  # direção da cena (motion.py), quando o roteiro tem
         self.box = None  # caixa do card no último quadro (para o traço à mão)
         self.scrim = None
+        self.big_mask = None  # máscara do assunto (edit_fx), do tamanho de self.big
+        self.mask_now = None  # a mesma máscara no quadro atual (H, W) 0-1
         if self.backdrop:
             soft = img.filter(ImageFilter.GaussianBlur(5))
             self.big = cover_resize(soft, int(W * 1.3), int(H * 1.3))
@@ -444,6 +449,11 @@ class SceneVisual:
                 sh = Image.new("L", (card.width + 120, card.height + 120), 0)
                 sh.paste(mask.point(lambda v: int(v * 0.45)), (60, 80))
                 self.shadow = sh.filter(ImageFilter.GaussianBlur(28))
+
+    def set_mask(self, mask):
+        """Máscara do assunto (PIL L, do tamanho da imagem original) para os efeitos de edição."""
+        if mask is not None and self.layout == "fullbleed" and self.clip is None and self.big is not None:
+            self.big_mask = cover_resize(mask.convert("L"), self.big.width, self.big.height)
 
     def _panel(self):
         """Tamanho da área da imagem em metade/dividida: faixa de cima (9:16) ou lado direito (16:9)."""
@@ -526,6 +536,9 @@ class SceneVisual:
             cy = (bh - ch) / 2 + pany * (bh - ch) / 2 - sy
             cx, cy = min(max(cx, 0), bw - cw), min(max(cy, 0), bh - ch)
             crop = self.big.crop((int(cx), int(cy), int(cx) + cw, int(cy) + ch)).resize((tw, th), Image.BILINEAR)
+            if self.big_mask is not None:
+                mk = self.big_mask.crop((int(cx), int(cy), int(cx) + cw, int(cy) + ch)).resize((tw, th), Image.BILINEAR)
+                self.mask_now = np.asarray(mk, np.float32) / 255.0
             px = W - tw if not full and landscape() else 0
             fr.paste(crop, (px, 0))
             if self.scrim is not None:
@@ -1256,6 +1269,8 @@ def render(job, assets, out_path, on_progress=None):
                 clip = None
         visuals[sc.index] = SceneVisual(spec, img, texture, seed=n, layout=layout, clip=clip)
         visuals[sc.index].direction = dirs.get(sc.index)
+        if edit_fx.scene_edit(sc.data) and img is not None and clip is None:
+            visuals[sc.index].set_mask(edit_fx.subject_mask(img))
         ov = ovl.normalize(sc.data.get("overlay")) if img is not None and layout != "text_only" and not base else None
         if ov:
             overlays[sc.index] = ovl.Overlay(ov, spec, gfonts)
@@ -1277,6 +1292,21 @@ def render(job, assets, out_path, on_progress=None):
     # cena com imagem na metade de cima: texto da tela vai para a parte lisa de baixo
     low_spec = {**spec, "title": {**spec["title"], "y": 0.645, "box": False}}
     title_low = Title(low_spec)
+    # texto atrás da pessoa (edit_fx depth_title): grande, no terço de cima, onde costuma estar a cabeça
+    depth_titles = {}
+
+    def title_depth(y):
+        if y not in depth_titles:
+            depth_titles[y] = Title({**spec, "title": {**spec["title"], "enabled": True, "y": y, "box": False,
+                                                       "size": min(230, spec["title"]["size"] * 1.9), "strokeWidth": 0}})
+        return depth_titles[y]
+    depth_y = {}
+    ed = spec.get("edit") or edit_fx.EDIT_DEFAULT
+    slam = None
+    if ed["slam"]:
+        blocked = {s.index for s in tl.scenes if s.index in graphics or s.data.get("layout") == "text_only"
+                   or edit_fx.scene_edit(s.data)}
+        slam = edit_fx.Slam(spec, gfonts, edit_fx.slam_times(tl.words, keys, norm, tl.scenes, blocked, tl.cta_start))
     finisher = Finisher(spec)
     particles = Particles(spec)
     mo = spec["motion"]
@@ -1400,8 +1430,17 @@ def render(job, assets, out_path, on_progress=None):
                     captions.col = (col_x, col_w, min(max(spec["caption"]["y"], 0.6), 0.86))
                 else:
                     title.col = captions.col = None  # posição da ficha de estilo
+                settled = i == 0 or local >= max(dur_in, mv.CUT_LEN if directed else 0)
+                sedit = edit_fx.scene_edit(sc.data) if vis.mask_now is not None else None
+                if sedit == "subject_pop" and settled:
+                    fr = np.array(edit_fx.subject_pop(fr, vis.mask_now, edit_fx.pop_strength(local, span), accent), copy=True)
                 if sc.index in graphics and graphics[sc.index].d.get("header"):
                     pass  # a faixa fixa do grafismo (ex.: nome do ranking) já é o título da cena
+                elif (sedit == "depth_title" and settled and (sc.data.get("onScreen") or "").strip()
+                      and depth_y.setdefault(sc.index, edit_fx.depth_y(vis.mask_now, landscape())) is not None):
+                    before = fr.copy()
+                    title_depth(depth_y[sc.index]).draw(fr, sc.data.get("onScreen"), local, span)
+                    fr = np.array(edit_fx.depth_composite(fr, before, vis.mask_now), copy=True)
                 elif side_mode(vis.layout):
                     title.draw(fr, sc.data.get("onScreen") or "", local, span)
                 elif vis.layout in ("split", "top_half") and spec["title"]["y"] < 0.62:
@@ -1410,6 +1449,10 @@ def render(job, assets, out_path, on_progress=None):
                     title_big.draw(fr, sc.data.get("onScreen") or sc.data.get("narration") or "", local, span)
                 else:
                     title.draw(fr, sc.data.get("onScreen") or "", local, span)
+                if ed["impact"] and i > 0 and local < 0.2:
+                    fr = np.array(edit_fx.impact(fr, local), copy=True)
+                if slam is not None:
+                    fr = np.array(slam.draw(fr, t), copy=True)
                 captions.draw(fr, t)
             fr = finisher.apply(np.ascontiguousarray(fr), n)
             writer.write(fr)
