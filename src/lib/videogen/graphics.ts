@@ -305,7 +305,7 @@ export function overlayPromptRule(): string {
   - {"type":"tags","items":[{"label":"...","icon":"..."}]}: 1 a 3 etiquetas com ícone entrando uma a uma (os conceitos da fala)
   - {"type":"progress","value":"72%","label":"..."}: barra enchendo até a porcentagem
   - {"type":"focus","label":"até 3 palavras"}: mira se fechando em volta do assunto, com varredura e etiqueta
-  Varie os tipos (nunca o mesmo em duas cenas seguidas). Só as cenas text_only e as com "graphic" ficam sem "overlay".`;
+  Varie os tipos (nunca o mesmo em duas cenas seguidas, e cada tipo no máximo 2 vezes no vídeo). Só as cenas text_only e as com "graphic" ficam sem "overlay".`;
 }
 
 /** Regra das imagens das cenas: conceito visual concreto, com pessoas e situações, em vez de objetos soltos. */
@@ -319,7 +319,7 @@ export const IMAGE_CONCEPT_RULE = `
 export function graphicsPromptRule(usage: "none" | "some" | "many"): string {
   if (usage === "none") return "";
   return `
-- Grafismos (motion graphics desenhados ao vivo na tela, no lugar da imagem da cena): coloque "graphic" nas cenas em que o conteúdo é um dado, lista, comparação ou etapa. ${USAGE_TEXT[usage]} Nas outras cenas, não coloque o campo. Tipos e formato:
+- Grafismos (motion graphics desenhados ao vivo na tela, no lugar da imagem da cena): coloque "graphic" nas cenas em que o conteúdo é um dado, lista, comparação ou etapa. ${USAGE_TEXT[usage]} Nas outras cenas, não coloque o campo. NUNCA repita um tipo de grafismo no mesmo vídeo: cada "type" aparece no máximo UMA vez (a única exceção é rank_item, que vem em sequência). Os tipos de lista se parecem na tela (steps, checklist, timeline, icons, ranking, card_stack, kinetic_poster): use no máximo 2 deles por vídeo e prefira variar entre número, gráfico, comparação, interface e tela cheia. Tipos e formato:
   - {"type":"counter","value":"87%","from":"0","label":"..."}: número grande contando (value com o número; pode ter prefixo/sufixo: "R$ 1,2 mi", "3x", "45%")
   - {"type":"donut","value":"64%","label":"..."}: porcentagem que completa um círculo
   - {"type":"bars","items":[{"label":"Brasil","value":"120"},...],"unit":"mi"}: 2 a 6 barras crescendo (a maior em destaque)
